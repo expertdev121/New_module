@@ -84,7 +84,7 @@ interface EditAllocation {
   paymentId: number;
   pledgeId: number;
   installmentScheduleId: number | null;
-  allocatedAmount: string; // String for EditPaymentDialog
+  allocatedAmount: string;
   currency: string;
   allocatedAmountUsd: string | undefined;
   notes: string | null;
@@ -159,22 +159,28 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     );
   };
 
-  // Payment Type Indicator
+  // Payment Type Indicator with Plan Badge
   const PaymentTypeIndicator = ({ payment }: { payment: ApiPayment }) => {
     if (payment.isSplitPayment) {
       return (
-        <div className="flex items-center gap-1 text-purple-600">
-          <Split className="h-4 w-4" />
-          <span className="text-xs font-medium">Split</span>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-purple-600">
+            <Split className="h-4 w-4" />
+            <span className="text-xs font-medium">Split</span>
+          </div>
+          <SplitPaymentBadge payment={payment} />
         </div>
       );
     }
 
     if (payment.paymentPlanId) {
       return (
-        <div className="flex items-center gap-1 text-blue-600">
-          <Calendar className="h-4 w-4" />
-          <span className="text-xs font-medium">Planned</span>
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-1 text-blue-600">
+            <Calendar className="h-4 w-4" />
+            <span className="text-xs font-medium">Planned</span>
+          </div>
+          <PaymentPlanBadge payment={payment} />
         </div>
       );
     }
@@ -182,7 +188,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     return (
       <div className="flex items-center gap-1 text-green-600">
         <CreditCard className="h-4 w-4" />
-        <span className="text-xs font-medium">Direct</span>
+        <span className="text-xs font-medium">Paid</span>
       </div>
     );
   };
@@ -321,6 +327,42 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     }
   };
 
+  // Helper function to get applied amount in USD for this payment
+  const getAppliedAmountUSD = (payment: ApiPayment) => {
+    if (payment.isSplitPayment && payment.allocations) {
+      // For split payments, sum all allocated amounts in USD
+      const totalUSD = payment.allocations.reduce((sum, allocation) => {
+        return sum + (parseFloat(allocation.allocatedAmountUsd || "0"));
+      }, 0);
+      return totalUSD.toString();
+    }
+    // For non-split payments, use the payment's USD amount
+    return payment.amountUsd || "0";
+  };
+
+  // Helper function to get applied amount in pledge currency
+  const getAppliedAmountPledgeCurrency = (payment: ApiPayment) => {
+    if (payment.isSplitPayment && payment.allocations) {
+      // For split payments, we can't easily determine a single pledge currency
+      // so we'll show the total payment amount
+      return { amount: payment.amount, currency: payment.currency };
+    }
+    // For non-split payments, use the payment amount and currency
+    return { amount: payment.amount, currency: payment.currency };
+  };
+
+  // Helper function to format method detail with proper capitalization
+  const formatMethodDetail = (methodDetail: string | null | undefined) => {
+    if (!methodDetail) return "N/A";
+    return methodDetail.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  // Helper function to format payment method with proper capitalization and fallback
+  const formatPaymentMethod = (paymentMethod: string | null | undefined) => {
+    if (!paymentMethod || paymentMethod.trim() === "") return "Not Specified";
+    return paymentMethod.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+  };
+
   if (error) {
     return (
       <Alert className="mx-4 my-6">
@@ -372,7 +414,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
             </div>
 
             <Select
-              value={paymentStatus ?? "payment"}
+              value={paymentStatus ?? "all"}
               onValueChange={(value) => {
                 if (
                   value === "pending" ||
@@ -392,6 +434,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
+                <SelectItem value="all">All Status</SelectItem>
                 <SelectItem value="pending">Pending</SelectItem>
                 <SelectItem value="completed">Completed</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
@@ -427,10 +470,16 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Effective
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Total
+                    Total Payment
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Applied
+                    Applied: USD Currency
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-900">
+                    Applied: Plg Currency
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-900">
+                    Payment Method
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
                     Method Detail
@@ -449,7 +498,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                   // Loading skeleton
                   Array.from({ length: currentLimit }).map((_, index) => (
                     <TableRow key={index}>
-                      {Array.from({ length: 9 }).map((_, cellIndex) => (
+                      {Array.from({ length: 11 }).map((_, cellIndex) => (
                         <TableCell key={cellIndex}>
                           <Skeleton className="h-4 w-20" />
                         </TableCell>
@@ -459,7 +508,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                 ) : data?.payments.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={9}
+                      colSpan={11}
                       className="text-center py-8 text-gray-500"
                     >
                       No payments found
@@ -476,13 +525,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                           <PaymentTypeIndicator payment={payment} />
                         </TableCell>
                         <TableCell className="font-medium">
-                          <div className="flex flex-col gap-1">
-                            <span>{formatDate(payment.paymentDate)}</span>
-                            <div className="flex gap-1 flex-wrap">
-                              <PaymentPlanBadge payment={payment} />
-                              <SplitPaymentBadge payment={payment} />
-                            </div>
-                          </div>
+                          {formatDate(payment.paymentDate)}
                         </TableCell>
                         <TableCell className="font-medium">
                           {formatDate(payment.receivedDate || "")}
@@ -507,23 +550,43 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                           </div>
                         </TableCell>
                         <TableCell>
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeColor(
-                              payment.paymentStatus
-                            )}`}
-                          >
-                            {payment.paymentStatus}
+                          <span className="font-medium">
+                            ${formatUSDAmount(getAppliedAmountUSD(payment))}
                           </span>
                         </TableCell>
-                        <TableCell className="capitalize">
-                          {payment.methodDetail?.replace("_", " ") || "-"}
+                        <TableCell>
+                          {(() => {
+                            const appliedAmount = getAppliedAmountPledgeCurrency(payment);
+                            return (
+                              <span className="font-medium">
+                                {formatCurrency(appliedAmount.amount, appliedAmount.currency).symbol}
+                                {formatCurrency(appliedAmount.amount, appliedAmount.currency).amount}
+                              </span>
+                            );
+                          })()}
                         </TableCell>
                         <TableCell>
-                          {payment.referenceNumber ||
-                            payment.checkNumber ||
-                            "-"}
+                          <span className="font-medium text-gray-900">
+                            {formatPaymentMethod(payment.paymentMethod)}
+                          </span>
                         </TableCell>
-                        <TableCell>{payment.notes || "-"}</TableCell>
+                        <TableCell>
+                          <span className="text-gray-700">
+                            {formatMethodDetail(payment.methodDetail)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-gray-700">
+                            {payment.referenceNumber ||
+                              payment.checkNumber ||
+                              "-"}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <span className="text-gray-700">
+                            {payment.notes || "-"}
+                          </span>
+                        </TableCell>
                         <TableCell>
                           <Button
                             variant="ghost"
@@ -543,62 +606,14 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                       {/* Expanded Row Content */}
                       {expandedRows.has(payment.id) && (
                         <TableRow>
-                          <TableCell colSpan={9} className="bg-gray-50 p-6">
+                          <TableCell colSpan={11} className="bg-gray-50 p-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                              {/* Payment Details */}
+                              {/* Column 1: Payment Details */}
                               <div className="space-y-3">
                                 <h4 className="font-semibold text-gray-900">
                                   Payment Details
                                 </h4>
                                 <div className="space-y-2 text-sm">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Payment ID:
-                                    </span>
-                                    <span className="font-medium">
-                                      #{payment.id}
-                                    </span>
-                                  </div>
-                                  {payment.paymentPlanId && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Payment Plan ID:
-                                      </span>
-                                      <span className="font-medium text-blue-600">
-                                        #{payment.paymentPlanId}
-                                      </span>
-                                    </div>
-                                  )}
-                                  {payment.installmentScheduleId && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Installment ID:
-                                      </span>
-                                      <span className="font-medium">
-                                        #{payment.installmentScheduleId}
-                                      </span>
-                                    </div>
-                                  )}
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Payment Type:
-                                    </span>
-                                    <span className="font-medium">
-                                      {payment.isSplitPayment ? (
-                                        <Badge variant="outline" className="bg-purple-50 text-purple-700">
-                                          Split Payment
-                                        </Badge>
-                                      ) : payment.paymentPlanId ? (
-                                        <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                                          Planned Payment
-                                        </Badge>
-                                      ) : (
-                                        <Badge variant="outline" className="bg-green-50 text-green-700">
-                                          Direct Payment
-                                        </Badge>
-                                      )}
-                                    </span>
-                                  </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Scheduled Date:
@@ -617,40 +632,51 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
-                                      Payment (USD):
+                                      Amount (Plg Currency):
                                     </span>
                                     <span className="font-medium">
-                                     {`$`} {formatUSDAmount(payment.amountUsd)}
+                                      {formatCurrency(payment.amount, payment.currency).symbol}
+                                      {formatCurrency(payment.amount, payment.currency).amount}
                                     </span>
                                   </div>
-                                  {!payment.isSplitPayment && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Amount (Pledge Currency)
-                                      </span>
-                                      <span className="font-medium">
-                                        {
-                                          formatCurrency(
-                                            payment.amount,
-                                            payment?.currency
-                                          ).symbol
-                                        }{" "}
-                                        {
-                                          formatCurrency(payment.amount, payment.currency)
-                                            .amount
-                                        }
-                                      </span>
-                                    </div>
-                                  )}
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">
+                                      Amount (USD):
+                                    </span>
+                                    <span className="font-medium">
+                                      ${formatUSDAmount(payment.amountUsd)}
+                                    </span>
+                                  </div>
                                 </div>
                               </div>
 
-                              {/* Receipt Information */}
+                              {/* Column 2: Receipt/Method Information */}
                               <div className="space-y-3">
-                                <h4 className="font-semibold text-gray-900">
-                                  Receipt Information
-                                </h4>
                                 <div className="space-y-2 text-sm">
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">
+                                      Method:
+                                    </span>
+                                    <span className="font-medium">
+                                      {formatPaymentMethod(payment.paymentMethod)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">
+                                      Method Detail:
+                                    </span>
+                                    <span className="font-medium">
+                                      {formatMethodDetail(payment.methodDetail)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">
+                                      Account:
+                                    </span>
+                                    <span className="font-medium">
+                                      { "N/A"}
+                                    </span>
+                                  </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Receipt Number:
@@ -661,18 +687,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
-                                      Payment Method:
+                                      Receipt Date:
                                     </span>
                                     <span className="font-medium">
-                                      {payment.paymentMethod || "N/A"}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Receipt Type:
-                                    </span>
-                                    <span className="font-medium capitalize">
-                                      {payment.receiptType || "N/A"}
+                                      { "N/A"}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -691,51 +709,39 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                 </div>
                               </div>
 
-                              {/* Solicitor Commission */}
+                              {/* Column 3: Campaign/Solicitor/IDs */}
                               <div className="space-y-3">
-                                <h4 className="font-semibold text-gray-900">
-                                  Solicitor Commission
-                                </h4>
                                 <div className="space-y-2 text-sm">
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">
+                                      Campaign Detail:
+                                    </span>
+                                    <span className="font-medium">
+                                      {"N/A"}
+                                    </span>
+                                  </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Solicitor:
                                     </span>
                                     <span className="font-medium">
-                                      {payment.solicitorName || "None"}
+                                      {payment.solicitorName || "N/A"}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
-                                      Commission Rate:
+                                      Payment ID:
                                     </span>
                                     <span className="font-medium">
-                                      {payment.bonusPercentage
-                                        ? `${Number.parseFloat(
-                                          payment.bonusPercentage
-                                        )}%`
-                                        : "N/A"}
+                                      #{payment.id}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
-                                      Commission Amount:
-                                    </span>
-                                    <span className="font-medium text-green-600">
-                                      {payment.bonusAmount
-                                        ? `${payment.currency
-                                        } ${Number.parseFloat(
-                                          payment.bonusAmount
-                                        ).toLocaleString()}`
-                                        : "N/A"}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Bonus Rule ID:
+                                      Plan ID:
                                     </span>
                                     <span className="font-medium">
-                                      {payment.bonusRuleId || "N/A"}
+                                      {payment.paymentPlanId ? `#${payment.paymentPlanId}` : "N/A"}
                                     </span>
                                   </div>
                                 </div>
@@ -906,17 +912,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                 </AlertDialogContent>
                               </AlertDialog>
 
-                              {/* {payment.paymentPlanId && (
-                                <LinkButton
-                                  variant="secondary"
-                                  href={`/contacts/${contactId}/payment-plans/${payment.paymentPlanId}`}
-                                  className="flex items-center gap-2"
-                                >
-                                  <Calendar className="h-4 w-4" />
-                                  View Payment Plan
-                                </LinkButton>
-                              )} */}
-
                               <LinkButton
                                 variant="secondary"
                                 href={`/contacts/${contactId}/payment-plans`}
@@ -977,4 +972,4 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
       </Card>
     </div>
   );
-}
+} 

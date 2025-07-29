@@ -2,25 +2,23 @@
 "use client";
 
 import type React from "react";
-
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
+import { useForm } from "react-hook-form";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-
 import { z } from "zod";
 
-import { AlertTriangle } from "lucide-react";
-
 import {
+  AlertTriangle,
   Check,
   ChevronsUpDown,
   Trash2,
-  Pause,
-  Play,
   Edit,
   Calculator,
   TrendingUp,
+  CalendarIcon,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -66,26 +64,16 @@ import {
 } from "@/components/ui/select";
 
 import { Textarea } from "@/components/ui/textarea";
-
 import { Checkbox } from "@/components/ui/checkbox";
-
-import { CalendarIcon } from "lucide-react";
-
 import { cn } from "@/lib/utils";
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 import {
   useCreatePaymentPlanMutation,
@@ -97,25 +85,15 @@ import {
 } from "@/lib/query/payment-plans/usePaymentPlanQuery";
 
 import useContactId from "@/hooks/use-contact-id";
-
 import { usePledgesQuery } from "@/lib/query/usePledgeData";
-
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
 
-import { useForm } from "react-hook-form";
-import { useMemo } from 'react';
-
+// Supported currencies
 const supportedCurrencies = [
-  "USD",
-  "ILS",
-  "EUR",
-  "JPY",
-  "GBP",
-  "AUD",
-  "CAD",
-  "ZAR",
+  "USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR",
 ] as const;
 
+// Frequency options
 const frequencies = [
   { value: "weekly", label: "Weekly" },
   { value: "monthly", label: "Monthly" },
@@ -743,13 +721,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     pledgeCurrency,
     pledgeDescription,
     remainingBalance,
-    showPledgeSelector = false,
+    showPledgeSelector = true,
     paymentPlanId,
     mode = "create",
     trigger,
     onSuccess,
     onClose,
-    enablePledgeSelectorInEdit = false, // NEW: Default to false for backward compatibility
+    enablePledgeSelectorInEdit = true, // NEW: Default to false for backward compatibility
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -1178,7 +1156,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const onSubmit = async (data: PaymentPlanFormData) => {
     try {
       setSubmitError(""); // Clear previous errors
-      
+      console.log("isEditMode", isEditMode, "paymentPlanId", paymentPlanId);
       if (!isEditMode && !showPreview) {
         setShowPreview(true);
         return;
@@ -1428,88 +1406,86 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 {/* UPDATED: Pledge Selection Card - Now shows in edit mode too when enabled */}
-                {shouldShowPledgeSelector && (
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="text-lg">Pledge Selection</CardTitle>
-                      <CardDescription>
-                        {isEditMode ? "Change the pledge for this payment plan" : "Choose the pledge for this payment plan"}
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <FormField
-                        control={form.control}
-                        name="pledgeId"
-                        render={({ field }) => (
-                          <FormItem className="flex flex-col">
-                            <FormLabel>Select Pledge *</FormLabel>
-                            <Popover open={pledgeSelectorOpen} onOpenChange={setPledgeSelectorOpen}>
-                              <PopoverTrigger asChild>
-                                <FormControl>
-                                  <Button
-                                    variant="outline"
-                                    role="combobox"
-                                    aria-expanded={pledgeSelectorOpen}
-                                    className={cn(
-                                      "w-full justify-between",
-                                      !field.value && "text-muted-foreground"
-                                    )}
-                                    disabled={isLoadingPledges}
-                                  >
-                                    {field.value
-                                      ? pledgeOptions.find(
-                                        (pledge) => pledge.value === field.value
-                                      )?.label
-                                      : isLoadingPledges
-                                        ? "Loading pledges..."
-                                        : "Select pledge"}
-                                    <ChevronsUpDown className="opacity-50" />
-                                  </Button>
-                                </FormControl>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-full p-0" align="start">
-                                <Command>
-                                  <CommandInput
-                                    placeholder="Search pledges..."
-                                    className="h-9"
-                                  />
-                                  <CommandList>
-                                    <CommandEmpty>No pledge found.</CommandEmpty>
-                                    <CommandGroup>
-                                      {pledgeOptions.map((pledge) => (
-                                        <CommandItem
-                                          key={pledge.value}
-                                          value={pledge.value.toString()}
-                                          onSelect={() => {
-                                            setSelectedPledgeId(pledge.value);
-                                            form.setValue("pledgeId", pledge.value);
-                                            setPledgeSelectorOpen(false);
-                                          }}
-                                        >
-                                          {pledge.label}
-                                          <Check
-                                            className={cn(
-                                              "ml-auto",
-                                              pledge.value === field.value
-                                                ? "opacity-100"
-                                                : "opacity-0"
-                                            )}
-                                          />
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
-                                  </CommandList>
-                                </Command>
-                              </PopoverContent>
-                            </Popover>
-                            <FormMessage className="text-sm text-red-600 mt-1" />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
-                )}
-
+               {shouldShowPledgeSelector && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">
+                      Pledge Selection
+                    </CardTitle>
+                    <CardDescription>
+                      {isEditMode
+                        ? "Change the pledge for this payment plan"
+                        : "Choose the pledge for this payment plan"}
+                      <br />
+                   
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <FormField
+                      control={form.control}
+                      name="pledgeId"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                          <FormLabel>Select Pledge *</FormLabel>
+                          <Popover open={pledgeSelectorOpen} onOpenChange={setPledgeSelectorOpen}>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  aria-expanded={pledgeSelectorOpen}
+                                  className={cn(
+                                    "w-full justify-between",
+                                    !field.value && "text-muted-foreground"
+                                  )}
+                                  disabled={isLoadingPledges}
+                                >
+                                  {field.value
+                                    ? pledgeOptions.find((p) => p.value === field.value)?.label
+                                    : isLoadingPledges
+                                    ? "Loading pledges..."
+                                    : "Select pledge"}
+                                  <ChevronsUpDown className="opacity-50 ml-2" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-full p-0" align="start">
+                              <Command>
+                                <CommandInput placeholder="Search pledges..." className="h-9" />
+                                <CommandList>
+                                  <CommandEmpty>No pledge found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {pledgeOptions.map((pledge) => (
+                                      <CommandItem
+                                        key={pledge.value}
+                                        value={pledge.value.toString()}
+                                        onSelect={() => {
+                                          setSelectedPledgeId(pledge.value);
+                                          form.setValue("pledgeId", pledge.value);
+                                          setPledgeSelectorOpen(false);
+                                        }}
+                                      >
+                                        {pledge.label}
+                                        <Check
+                                          className={cn(
+                                            "ml-auto",
+                                            pledge.value === field.value ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                          <FormMessage className="text-sm text-red-600 mt-1" />
+                        </FormItem>
+                      )}
+                    />
+                  </CardContent>
+                </Card>
+              )}
                 {/* Basic Plan Information Card */}
                 <Card>
                   <CardHeader>
@@ -2298,7 +2274,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                 </Card>
 
                 {/* Error display */}
-                {submitError && (
+                {/* {submitError && (
                   <Card className="border-red-200 bg-red-50">
                     <CardContent className="p-3">
                       <div className="flex items-center">
@@ -2307,7 +2283,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                       </div>
                     </CardContent>
                   </Card>
-                )}
+                )} */}
 
                 {isEditing && (
                   <div className="flex justify-end space-x-2 pt-4 border-t">
