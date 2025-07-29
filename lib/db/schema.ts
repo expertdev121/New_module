@@ -367,7 +367,6 @@ export const paymentPlan = pgTable(
 
     planName: text("plan_name"),
     frequency: frequencyEnum("frequency").notNull(),
-
     // NEW FIELD: Distribution type
     distributionType: distributionTypeEnum("distribution_type").notNull().default("fixed"),
 

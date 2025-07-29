@@ -28,7 +28,7 @@ export default function ContactCategoriesCard({
 }: ContactCategoriesCardProps) {
   const { contactId } = useParams<{ contactId: string }>();
 
-  const categoryOrder = ["Tuition", "Donation", "Miscellaneous"];
+  const categoryOrder = ["Donations", "Tuition", "Miscellaneous"];
 
   const createEmptyCategory = (name: string): ExtendedCategory => ({
     categoryId: name.toLowerCase() as unknown as Category['categoryId'],
@@ -100,7 +100,10 @@ export default function ContactCategoriesCard({
 
   const categoryMap = new Map<string, ExtendedCategory>();
   categories.forEach((cat) => {
-    categoryMap.set(cat.categoryName.toLowerCase(), cat as ExtendedCategory);
+    // Map "Donation" to "Donations" if it exists
+    const categoryName = cat.categoryName === "Donation" ? "Donations" : cat.categoryName;
+    const updatedCategory = { ...cat, categoryName };
+    categoryMap.set(categoryName.toLowerCase(), updatedCategory as ExtendedCategory);
   });
 
   const sortedCategories = categoryOrder.map((categoryName) => {
@@ -123,14 +126,13 @@ export default function ContactCategoriesCard({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Category</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead className="text-right">Pledged ($)</TableHead>
-              <TableHead className="text-right">Paid ($)</TableHead>
-              <TableHead className="text-right">Balance ($)</TableHead>
-              <TableHead className="text-right">Pledges</TableHead>
-              <TableHead className="text-right">Scheduled</TableHead>
-              <TableHead className="text-right">Unscheduled</TableHead>
+              <TableHead className="font-bold">Category</TableHead>
+              <TableHead className="font-bold text-right">Pledged</TableHead>
+              <TableHead className="font-bold text-right">Paid</TableHead>
+              <TableHead className="font-bold text-right">Balance</TableHead>
+              <TableHead className="font-bold text-right">Pledges</TableHead>
+              <TableHead className="font-bold text-right italic">Scheduled</TableHead>
+              <TableHead className="font-bold text-right italic">Unscheduled</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -146,15 +148,14 @@ export default function ContactCategoriesCard({
 
               return (
                 <TableRow key={category.categoryId}>
-                  <TableCell className="font-medium">
+                  <TableCell className="font-bold">
                     <Link
                       href={`/contacts/${contactId}/pledges?categoryId=${category?.categoryId}`}
-                      className="font-medium text-primary hover:underline hover:text-primary-dark transition-colors duration-200"
+                      className="font-bold text-primary hover:underline hover:text-primary-dark transition-colors duration-200"
                     >
                       {category.categoryName}
                     </Link>
                   </TableCell>
-                  <TableCell>{category.categoryDescription || "N/A"}</TableCell>
                   <TableCell className="text-right">
                     $ {typeof category.totalPledgedUsd === 'number' ? category.totalPledgedUsd.toFixed(2) : category.totalPledgedUsd}
                   </TableCell>
@@ -167,13 +168,13 @@ export default function ContactCategoriesCard({
                   <TableCell className="text-right">
                     {category.pledgeCount}
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-evenly">
+                  <TableCell className="text-center">
+                    <div className="flex justify-evenly italic text-blue-600">
                       $ {scheduledAmount}
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-evenly">
+                  <TableCell className="text-center">
+                    <div className="flex justify-evenly italic text-red-600">
                       $ {unscheduledAmount}
                     </div>
                   </TableCell>

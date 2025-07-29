@@ -569,7 +569,7 @@ export default function EditPaymentDialog({
       }
     } else {
       setInternalOpen(newOpen);
-    }
+    }                                                                                                           
     if (!newOpen) {
       resetForm();
     }

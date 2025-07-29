@@ -2,7 +2,7 @@
 import { db } from "@/lib/db";
 import { paymentPlan, pledge, installmentSchedule, type PaymentPlan } from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
-import { eq, desc, or, ilike, and, SQL, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -14,17 +14,8 @@ const PlanStatusEnum = z.enum([
   "overdue",
 ]);
 
-const QueryParamsSchema = z.object({
-  page: z.number().min(1).default(1),
-  limit: z.number().min(1).max(100).default(10),
-  search: z.string().optional(),
-  planStatus: PlanStatusEnum.optional(),
-});
-
-type QueryParams = z.infer<typeof QueryParamsSchema>;
-
-// Updated schema for PATCH with better validation
 const updatePaymentPlanSchema = z.object({
+  pledgeId: z.number().positive().optional(),
   planName: z.string().optional(),
   frequency: z
     .enum([
@@ -61,24 +52,31 @@ const updatePaymentPlanSchema = z.object({
   planStatus: PlanStatusEnum.optional(),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
-  customInstallments: z.array(z.object({
-    date: z.string().min(1, "Installment date is required"),
-    amount: z.number().positive("Installment amount must be positive"),
-    notes: z.string().optional(),
-  })).optional(),
+  customInstallments: z
+    .array(
+      z.object({
+        date: z.string().min(1, "Installment date is required"),
+        amount: z.number().positive("Installment amount must be positive"),
+        notes: z.string().optional(),
+      })
+    )
+    .optional(),
   paymentMethod: z.string().optional(),
   methodDetail: z.string().optional(),
 }).refine((data) => {
   if (data.distributionType === "fixed") {
-    return data.installmentAmount !== undefined && data.numberOfInstallments !== undefined;
+    return (
+      data.installmentAmount !== undefined && data.numberOfInstallments !== undefined
+    );
   }
   if (data.distributionType === "custom") {
     return data.customInstallments && data.customInstallments.length > 0;
   }
   return true;
 }, {
-  message: "For 'fixed' distribution type, installmentAmount and numberOfInstallments are required. For 'custom' distribution type, customInstallments array is required.",
-  path: ["distributionType"]
+  message:
+    "For 'fixed' distribution type, installmentAmount and numberOfInstallments are required. For 'custom' distribution type, customInstallments array is required.",
+  path: ["distributionType"],
 });
 
 type UpdatePaymentPlanRequest = z.infer<typeof updatePaymentPlanSchema>;
@@ -90,7 +88,7 @@ export async function GET(
   try {
     const { id: paymentPlanIdString } = await params;
     const paymentPlanId = parseInt(paymentPlanIdString, 10);
-    
+
     if (isNaN(paymentPlanId) || paymentPlanId <= 0) {
       return NextResponse.json(
         { error: "Invalid Payment Plan ID provided in URL" },
@@ -100,7 +98,6 @@ export async function GET(
 
     const paymentPlanResult = await db
       .select({
-        // Payment Plan fields
         id: paymentPlan.id,
         planName: paymentPlan.planName,
         pledgeId: paymentPlan.pledgeId,
@@ -127,8 +124,8 @@ export async function GET(
         createdAt: paymentPlan.createdAt,
         updatedAt: paymentPlan.updatedAt,
         exchangeRate: paymentPlan.exchangeRate,
-        
-        // Pledge related fields
+
+        // Pledge related - subqueries:
         pledgeOriginalAmount: sql<string>`(SELECT ${pledge.originalAmount} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmount"),
         pledgeOriginalAmountUsd: sql<string>`(SELECT ${pledge.originalAmountUsd} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmountUsd"),
         pledgeCurrency: sql<string>`(SELECT ${pledge.currency} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeCurrency"),
@@ -164,11 +161,11 @@ export async function GET(
         .where(eq(installmentSchedule.paymentPlanId, plan.id))
         .orderBy(installmentSchedule.installmentDate);
 
-      customInstallments = installmentSchedules.map(schedule => ({
+      customInstallments = installmentSchedules.map((schedule) => ({
         date: schedule.installmentDate,
         amount: Number.parseFloat(schedule.installmentAmount.toString()),
         notes: schedule.notes || "",
-        isPaid: schedule.status === 'paid',
+        isPaid: schedule.status === "paid",
         paidDate: schedule.paidDate,
       }));
     }
@@ -179,9 +176,7 @@ export async function GET(
     };
 
     return NextResponse.json(
-      { 
-        paymentPlan: responsePaymentPlan 
-      },
+      { paymentPlan: responsePaymentPlan },
       {
         headers: {
           "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
@@ -202,12 +197,35 @@ export async function PATCH(
     const { id: planIdString } = await params;
     const planId = parseInt(planIdString, 10);
     if (isNaN(planId) || planId <= 0) {
-      return NextResponse.json({ error: "Invalid payment plan ID" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid payment plan ID" },
+        { status: 400 }
+      );
     }
 
     const body = await request.json();
-    const validatedData: UpdatePaymentPlanRequest = updatePaymentPlanSchema.parse(body);
 
+    // Parse and validate with Zod, return structured errors if fails
+    let validatedData: UpdatePaymentPlanRequest;
+    try {
+      validatedData = updatePaymentPlanSchema.parse(body);
+    } catch (zodError) {
+      if (zodError instanceof z.ZodError) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: zodError.issues.map((issue) => ({
+              field: issue.path.join("."),
+              message: issue.message,
+            })),
+          },
+          { status: 400 }
+        );
+      }
+      throw zodError;
+    }
+
+    // Fetch existing plan
     const [existingPlan] = await db
       .select()
       .from(paymentPlan)
@@ -215,102 +233,136 @@ export async function PATCH(
       .limit(1);
 
     if (!existingPlan) {
-      return NextResponse.json({ error: "Payment plan not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Payment plan not found" },
+        { status: 404 }
+      );
     }
 
-    // Precision helper functions
-    const toCents = (amount: number): number => Math.round(amount * 100);
-    const fromCents = (cents: number): number => Math.round(cents) / 100;
+    // If pledgeId is provided, validate pledge exists
+    if (validatedData.pledgeId !== undefined) {
+      const pledgeExists = await db
+        .select()
+        .from(pledge)
+        .where(eq(pledge.id, validatedData.pledgeId))
+        .limit(1);
 
-    // Custom Distribution Validation
+      if (!pledgeExists.length) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "pledgeId",
+              message: "Pledge not found with provided pledgeId",
+            }],
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // Helper functions for currency precision
+    const toCents = (amount: number) => Math.round(amount * 100);
+    const fromCents = (cents: number) => Math.round(cents) / 100;
+
+    // Validate custom installments
     if (validatedData.distributionType === "custom" && validatedData.customInstallments) {
       if (validatedData.customInstallments.length === 0) {
-        return NextResponse.json({
-          error: "Validation failed",
-          details: [{
-            field: "customInstallments",
-            message: "Custom installments must be provided for 'custom' distribution type."
-          }]
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "customInstallments",
+              message: "Custom installments must be provided for 'custom' distribution type.",
+            }],
+          },
+          { status: 400 }
+        );
       }
 
-      const totalCustomCents = validatedData.customInstallments.reduce((sum, inst) => 
-        sum + toCents(inst.amount), 0
+      const totalCustomCents = validatedData.customInstallments.reduce(
+        (sum, inst) => sum + toCents(inst.amount),
+        0
       );
-      const expectedCents = toCents(validatedData.totalPlannedAmount || Number.parseFloat(existingPlan.totalPlannedAmount.toString()));
+      const expectedCents = toCents(
+        validatedData.totalPlannedAmount || Number.parseFloat(existingPlan.totalPlannedAmount.toString())
+      );
 
-      // Allow up to 2 cents difference and auto-adjust
       const difference = expectedCents - totalCustomCents;
+
       if (Math.abs(difference) > 2) {
-        return NextResponse.json({
-          error: "Validation failed",
-          details: [{
-            field: "totalPlannedAmount",
-            message: `Sum of custom installments (${fromCents(totalCustomCents)}) must equal the total planned amount (${fromCents(expectedCents)}).`
-          }]
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "totalPlannedAmount",
+              message: `Sum of custom installments (${fromCents(totalCustomCents)}) must equal the total planned amount (${fromCents(expectedCents)}).`,
+            }],
+          },
+          { status: 400 }
+        );
       } else if (difference !== 0) {
-        // Auto-adjust the last installment
+        // Auto-adjust last installment amount
         const lastIndex = validatedData.customInstallments.length - 1;
         const lastCents = toCents(validatedData.customInstallments[lastIndex].amount);
         validatedData.customInstallments[lastIndex].amount = fromCents(lastCents + difference);
       }
 
-      // Validate unique dates
-      const dates = validatedData.customInstallments.map(inst => inst.date);
+      // Validate unique installment dates
+      const dates = validatedData.customInstallments.map((inst) => inst.date);
       if (new Set(dates).size !== dates.length) {
-        return NextResponse.json({
-          error: "Validation failed",
-          details: [{
-            field: "customInstallments",
-            message: "Installment dates must be unique."
-          }]
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "customInstallments",
+              message: "Installment dates must be unique.",
+            }],
+          },
+          { status: 400 }
+        );
       }
     }
 
-    // Fixed Distribution Validation with Auto-Correction
+    // Validate fixed distribution
     if (validatedData.distributionType === "fixed") {
       if (!validatedData.installmentAmount || !validatedData.numberOfInstallments) {
-        return NextResponse.json({
-          error: "Validation failed",
-          details: [{
-            field: "installmentAmount/numberOfInstallments",
-            message: "Installment amount and number of installments are required for 'fixed' distribution type."
-          }]
-        }, { status: 400 });
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "installmentAmount/numberOfInstallments",
+              message: "Installment amount and number of installments are required for 'fixed' distribution type.",
+            }],
+          },
+          { status: 400 }
+        );
       }
 
       const totalPlannedAmount = validatedData.totalPlannedAmount || Number.parseFloat(existingPlan.totalPlannedAmount.toString());
       const numberOfInstallments = validatedData.numberOfInstallments;
-      
-      // Calculate correct installment amount using cent-based math
+
       const totalCents = toCents(totalPlannedAmount);
       const baseCentsPerInstallment = Math.floor(totalCents / numberOfInstallments);
       const remainderCents = totalCents % numberOfInstallments;
-      
-      // The actual installment amount most installments will have
+
       const baseInstallmentAmount = fromCents(baseCentsPerInstallment);
-      
-      // Check if the provided installment amount would create precision issues
+
       const providedInstallmentCents = toCents(validatedData.installmentAmount);
       const calculatedTotalCents = providedInstallmentCents * numberOfInstallments;
-      const expectedTotalCents = toCents(totalPlannedAmount);
-      
-      // If there's a mismatch, auto-correct or convert to custom
-      if (Math.abs(calculatedTotalCents - expectedTotalCents) > 1) {
+
+      if (Math.abs(calculatedTotalCents - totalCents) > 1) {
         if (remainderCents === 0) {
-          // Perfect division - just update the installment amount
           validatedData.installmentAmount = baseInstallmentAmount;
         } else {
-          // Convert to custom distribution to handle remainder properly
+          // Convert to custom installments for handling remainder
           const customInstallments = [];
           const startDate = new Date(validatedData.startDate || existingPlan.startDate);
           const frequency = validatedData.frequency || existingPlan.frequency;
-          
+
           for (let i = 0; i < numberOfInstallments; i++) {
             const installmentDate = new Date(startDate);
-            
+
             switch (frequency) {
               case "weekly":
                 installmentDate.setDate(startDate.getDate() + i * 7);
@@ -330,20 +382,19 @@ export async function PATCH(
               default:
                 installmentDate.setMonth(startDate.getMonth() + i);
             }
-            
-            // Distribute remainder cents among first installments
+
             let installmentCents = baseCentsPerInstallment;
             if (i < remainderCents) {
               installmentCents += 1;
             }
-            
+
             customInstallments.push({
-              date: installmentDate.toISOString().split('T')[0],
+              date: installmentDate.toISOString().split("T")[0],
               amount: fromCents(installmentCents),
               notes: `Installment ${i + 1}`,
             });
           }
-          
+
           validatedData.distributionType = "custom";
           validatedData.customInstallments = customInstallments;
           validatedData.installmentAmount = baseInstallmentAmount;
@@ -351,7 +402,7 @@ export async function PATCH(
       }
     }
 
-    // Transform data for database storage
+    // Prepare update object for DB
     const dataToUpdate: Partial<PaymentPlan> = {
       updatedAt: new Date(),
       ...(validatedData.planName !== undefined && { planName: validatedData.planName }),
@@ -368,16 +419,21 @@ export async function PATCH(
       ...(validatedData.planStatus !== undefined && { planStatus: validatedData.planStatus }),
       ...(validatedData.notes !== undefined && { notes: validatedData.notes }),
       ...(validatedData.internalNotes !== undefined && { internalNotes: validatedData.internalNotes }),
+      ...(validatedData.pledgeId !== undefined && { pledgeId: validatedData.pledgeId }),
+      ...(validatedData.paymentMethod !== undefined && { paymentMethod: validatedData.paymentMethod }),
+      ...(validatedData.methodDetail !== undefined && { methodDetail: validatedData.methodDetail }),
     };
 
-    // Handle distribution type changes
+    // Handle installment schedule update
     if (validatedData.distributionType !== undefined) {
       if (validatedData.distributionType === "custom") {
         if (validatedData.customInstallments) {
+          // Remove old installments
           await db.delete(installmentSchedule).where(eq(installmentSchedule.paymentPlanId, planId));
 
+          // Insert new custom installments
           await db.insert(installmentSchedule).values(
-            validatedData.customInstallments.map(inst => ({
+            validatedData.customInstallments.map((inst) => ({
               paymentPlanId: planId,
               installmentDate: inst.date,
               installmentAmount: inst.amount.toString(),
@@ -387,19 +443,20 @@ export async function PATCH(
           );
 
           dataToUpdate.numberOfInstallments = validatedData.customInstallments.length;
-          
-          // Ensure total matches sum of custom installments exactly
+
+          // Update total planned to exact sum of custom installments
           const exactTotal = fromCents(
-            validatedData.customInstallments.reduce((sum, inst) => 
-              sum + toCents(inst.amount), 0
+            validatedData.customInstallments.reduce(
+              (sum, inst) => sum + toCents(inst.amount),
+              0,
             )
           );
           dataToUpdate.totalPlannedAmount = exactTotal.toString();
         }
       } else if (validatedData.distributionType === "fixed") {
+        // Remove any custom installments if switching to fixed
         await db.delete(installmentSchedule).where(eq(installmentSchedule.paymentPlanId, planId));
-        
-        // For fixed plans, ensure total is exactly installment × count
+
         if (validatedData.installmentAmount && validatedData.numberOfInstallments) {
           const exactTotal = fromCents(
             toCents(validatedData.installmentAmount) * validatedData.numberOfInstallments
@@ -409,6 +466,7 @@ export async function PATCH(
       }
     }
 
+    // Update payment plan record
     const [updatedPlan] = await db
       .update(paymentPlan)
       .set(dataToUpdate)
@@ -419,41 +477,22 @@ export async function PATCH(
       message: "Payment plan updated successfully",
       paymentPlan: updatedPlan,
     });
-
   } catch (error) {
     console.error("Error updating payment plan:", error);
+
     if (error instanceof z.ZodError) {
-      return NextResponse.json({
-        error: "Validation failed",
-        details: error.issues.map((issue) => ({
-          field: issue.path.join("."),
-          message: issue.message,
-        })),
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: "Validation failed",
+          details: error.issues.map((issue) => ({
+            field: issue.path.join("."),
+            message: issue.message,
+          })),
+        },
+        { status: 400 }
+      );
     }
+
     return ErrorHandler.handle(error);
   }
 }
-
-// GET Endpoint for listing payment plans
-const querySchema = z.object({
-  pledgeId: z.coerce.number().positive().optional(),
-  contactId: z.coerce.number().positive().optional(),
-  page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(10),
-  planStatus: z
-    .enum(["active", "completed", "cancelled", "paused", "overdue"])
-    .optional(),
-  frequency: z
-    .enum([
-      "weekly",
-      "monthly",
-      "quarterly",
-      "biannual",
-      "annual",
-      "one_time",
-      "custom",
-    ])
-    .optional(),
-  distributionType: z.enum(["fixed", "custom"]).optional(),
-});

@@ -138,6 +138,7 @@ export default function PaymentPlansTable({
     const converted = convertToUSD(originalAmount, exchangeRate);
     return converted || originalAmount; // Fallback to original if conversion fails
   };
+
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
@@ -161,6 +162,33 @@ export default function PaymentPlansTable({
       default:
         return "bg-gray-100 text-gray-800";
     }
+  };
+
+  // Helper functions to get installment dates
+  const getFirstInstallmentDate = (plan: any) => {
+    // If we have installment schedule, get first date
+    if (plan.installmentSchedule && plan.installmentSchedule.length > 0) {
+      return formatDate(plan.installmentSchedule[0].installmentDate);
+    }
+    // Fallback to start date
+    return formatDate(plan.startDate);
+  };
+
+  const getLastInstallmentDate = (plan: any) => {
+    // If we have installment schedule, get last date
+    if (plan.installmentSchedule && plan.installmentSchedule.length > 0) {
+      const lastIndex = plan.installmentSchedule.length - 1;
+      return formatDate(plan.installmentSchedule[lastIndex].installmentDate);
+    }
+    // Fallback to end date
+    return formatDate(plan.endDate);
+  };
+
+  // Helper function to calculate installments remaining
+  const getInstallmentsRemaining = (plan: any) => {
+    const total = plan.numberOfInstallments || 0;
+    const paid = plan.installmentsPaid || 0;
+    return total - paid;
   };
 
   const handleSuccess = () => {
@@ -254,43 +282,37 @@ export default function PaymentPlansTable({
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Pledge Dt
+                    Pledge Date
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Detail
+                    Pledge Detail
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Rec Type
+                    1st Inst
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Rec Dt 1
+                    Next Inst
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Rec Dt 2
+                    Last Inst
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Pledge USD
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Pledge Cur
+                    Pledge Amount
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
                     Paid USD
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Paid Cur
+                    Paid
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Bal USD
+                    Balance
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Bal Cur
+                    Scheduled
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Sched Cur
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Bal-Sched Cur
+                    Unscheduled
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
                     Notes
@@ -312,19 +334,13 @@ export default function PaymentPlansTable({
                         <Skeleton className="h-4 w-24" />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-4 w-16" />
-                      </TableCell>
-                      <TableCell>
                         <Skeleton className="h-4 w-20" />
                       </TableCell>
                       <TableCell>
                         <Skeleton className="h-4 w-20" />
                       </TableCell>
                       <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
+                        <Skeleton className="h-4 w-20" />
                       </TableCell>
                       <TableCell>
                         <Skeleton className="h-4 w-24" />
@@ -352,7 +368,7 @@ export default function PaymentPlansTable({
                 ) : data?.paymentPlans.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={15}
+                      colSpan={13}
                       className="text-center py-8 text-gray-500"
                     >
                       No payment plans found
@@ -381,6 +397,12 @@ export default function PaymentPlansTable({
                             plan.exchangeRate
                           );
 
+                    // Calculate Total Scheduled USD using exchange rate
+                    const totalScheduledUSD = convertToUSD(
+                      plan.totalPlannedAmount,
+                      plan.exchangeRate
+                    );
+
                     return (
                       <React.Fragment key={plan.id}>
                         <TableRow className="hover:bg-gray-50">
@@ -398,45 +420,32 @@ export default function PaymentPlansTable({
                               )}
                             </Button>
                           </TableCell>
+                          {/* Pledge Date */}
                           <TableCell className="font-medium">
-                            {formatDate(plan.startDate)}
+                            {formatDate(plan.pledgeDate || plan.startDate)}
                           </TableCell>
-                          <TableCell>{plan.notes || "N/A"}</TableCell>
-                          <TableCell>
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(
-                                plan.planStatus
-                              )}`}
-                            >
-                              {plan.planStatus || "N/A"}
-                            </span>
-                          </TableCell>
-                          <TableCell>{formatDate(plan.startDate)}</TableCell>
+                          {/* Pledge Detail */}
+                          <TableCell>{plan.pledgeDescription || plan.notes || "N/A"}</TableCell>
+                          {/* 1st Inst */}
+                          <TableCell>{getFirstInstallmentDate(plan)}</TableCell>
+                          {/* Next Inst */}
                           <TableCell>
                             {formatDate(plan.nextPaymentDate)}
                           </TableCell>
+                          {/* Last Inst */}
+                          <TableCell>{getLastInstallmentDate(plan)}</TableCell>
+                          {/* Pledge Amount (in original pledge currency) */}
                           <TableCell>
                             <div className="flex justify-evenly">
-                              <span>
-                                {formatCurrency(pledgeUSD || "0", "USD").symbol}
-                              </span>
+                              <span>{plan.pledgeCurrency || plan.currency}</span>
                               <span>
                                 {Math.round(
-                                  Number(plan.originalAmountUsd)
+                                  Number(plan.originalAmount || plan.totalPlannedAmount)
                                 ).toLocaleString("en-US")}
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>{plan.pledgeCurrency}</span>
-                              <span>
-                                {Math.round(
-                                  Number(plan.originalAmount)
-                                ).toLocaleString("en-US")}
-                              </span>
-                            </div>
-                          </TableCell>
+                          {/* Paid USD */}
                           <TableCell>
                             <div className="flex justify-evenly">
                               <span>
@@ -447,6 +456,7 @@ export default function PaymentPlansTable({
                               </span>
                             </div>
                           </TableCell>
+                          {/* Paid (in pledge currency) */}
                           <TableCell>
                             <div className="flex justify-evenly">
                               <span>
@@ -463,22 +473,7 @@ export default function PaymentPlansTable({
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>
-                                {
-                                  formatCurrency(remainingUSD || "0", "USD")
-                                    .symbol
-                                }
-                              </span>
-                              <span>
-                                {
-                                  formatCurrency(remainingUSD || "0", "USD")
-                                    .amount
-                                }
-                              </span>
-                            </div>
-                          </TableCell>
+                          {/* Balance (in pledge currency) */}
                           <TableCell>
                             <div className="flex justify-evenly">
                               <span>
@@ -499,12 +494,13 @@ export default function PaymentPlansTable({
                               </span>
                             </div>
                           </TableCell>
+                          {/* Scheduled (in pledge currency) */}
                           <TableCell>
                             <div className="flex justify-evenly">
                               <span>
                                 {
                                   formatCurrency(
-                                    plan.installmentAmount,
+                                    plan.totalPlannedAmount || plan.installmentAmount,
                                     plan.currency
                                   ).symbol
                                 }
@@ -512,13 +508,14 @@ export default function PaymentPlansTable({
                               <span>
                                 {
                                   formatCurrency(
-                                    plan.installmentAmount,
+                                    plan.totalPlannedAmount || plan.installmentAmount,
                                     plan.currency
                                   ).amount
                                 }
                               </span>
                             </div>
                           </TableCell>
+                          {/* Unscheduled (in pledge currency) */}
                           <TableCell>
                             <div className="flex justify-evenly">
                               <span>
@@ -526,7 +523,7 @@ export default function PaymentPlansTable({
                                   formatCurrency(
                                     (
                                       parseFloat(plan.remainingAmount) -
-                                      parseFloat(plan.installmentAmount)
+                                      parseFloat(plan.totalPlannedAmount || plan.installmentAmount)
                                     ).toString(),
                                     plan.currency
                                   ).symbol
@@ -537,7 +534,7 @@ export default function PaymentPlansTable({
                                   formatCurrency(
                                     (
                                       parseFloat(plan.remainingAmount) -
-                                      parseFloat(plan.installmentAmount)
+                                      parseFloat(plan.totalPlannedAmount || plan.installmentAmount)
                                     ).toString(),
                                     plan.currency
                                   ).amount
@@ -545,17 +542,75 @@ export default function PaymentPlansTable({
                               </span>
                             </div>
                           </TableCell>
+                          {/* Notes */}
                           <TableCell>
                             {plan.notes || plan.internalNotes || "-"}
                           </TableCell>
                         </TableRow>
 
-                        {/* Expanded Row Content */}
+                        {/* UPDATED Expanded Row Content - Only requested fields */}
                         {expandedRows.has(plan.id) && (
                           <TableRow>
-                            <TableCell colSpan={15} className="bg-gray-50 p-6">
-                              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {/* Financial Details */}
+                            <TableCell colSpan={13} className="bg-gray-50 p-6">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Column 1: Schedule */}
+                                <div className="space-y-3">
+                                  <h4 className="font-semibold text-gray-900">
+                                    Schedule
+                                  </h4>
+                                  <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Frequency:
+                                      </span>
+                                      <span className="font-medium capitalize">
+                                        {plan.frequency || "N/A"}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Number of Installments:
+                                      </span>
+                                      <span className="font-medium">
+                                        {plan.numberOfInstallments || "N/A"}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Installments Paid:
+                                      </span>
+                                      <span className="font-medium">
+                                        {plan.installmentsPaid || 0}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Installments Remaining:
+                                      </span>
+                                      <span className="font-medium">
+                                        {getInstallmentsRemaining(plan)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Next Installment:
+                                      </span>
+                                      <span className="font-medium">
+                                        {formatDate(plan.nextPaymentDate)}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Last Installment:
+                                      </span>
+                                      <span className="font-medium">
+                                        {getLastInstallmentDate(plan)}
+                                      </span>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Column 2: Financial Details */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
                                     Financial Details
@@ -563,55 +618,55 @@ export default function PaymentPlansTable({
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Exchange Rate:
+                                        Total Scheduled:
                                       </span>
                                       <span className="font-medium">
-                                        {plan.exchangeRate
-                                          ? parseFloat(
-                                              plan.exchangeRate
-                                            ).toFixed(4)
-                                          : "N/A"}
+                                        {formatCurrency(
+                                          plan.totalPlannedAmount || "0",
+                                          plan.currency
+                                        ).symbol}
+                                        {formatCurrency(
+                                          plan.totalPlannedAmount || "0",
+                                          plan.currency
+                                        ).amount}
                                       </span>
                                     </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Total Scheduled (USD):
+                                      </span>
+                                      <span className="font-medium">
+                                        {formatCurrency(
+                                          totalScheduledUSD || "0",
+                                          "USD"
+                                        ).symbol}
+                                        {formatCurrency(
+                                          totalScheduledUSD || "0",
+                                          "USD"
+                                        ).amount}
+                                      </span>
+                                    </div>
+                                    {/* <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Total Scheduled in USD Curr:
+                                      </span>
+                                      <span className="font-medium">
+                                        ${Math.round(parseFloat(totalScheduledUSD || "0")).toLocaleString("en-US")}
+                                      </span>
+                                    </div> */}
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
                                         Installment Amount:
                                       </span>
                                       <span className="font-medium">
                                         {formatCurrency(
-                                          plan.installmentAmount,
+                                          plan.installmentAmount || "0",
                                           plan.currency
-                                        ).symbol +
-                                          formatCurrency(
-                                            plan.installmentAmount,
-                                            plan.currency
-                                          ).amount}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Total Paid:
-                                      </span>
-                                      <span className="font-medium">
+                                        ).symbol}
                                         {formatCurrency(
-                                          plan.totalPaid,
+                                          plan.installmentAmount || "0",
                                           plan.currency
-                                        ).symbol +
-                                          formatCurrency(
-                                            plan.totalPaid,
-                                            plan.currency
-                                          ).amount}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Total Paid (USD):
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatCurrency(paidUSD || "0", "USD")
-                                          .symbol +
-                                          formatCurrency(paidUSD || "0", "USD")
-                                            .amount}
+                                        ).amount}
                                       </span>
                                     </div>
                                     <div className="flex justify-between">
@@ -620,89 +675,24 @@ export default function PaymentPlansTable({
                                       </span>
                                       <span className="font-medium">
                                         {formatCurrency(
-                                          plan.remainingAmount,
+                                          plan.remainingAmount || "0",
                                           plan.currency
-                                        ).symbol +
-                                          formatCurrency(
-                                            plan.remainingAmount,
-                                            plan.currency
-                                          ).amount}
+                                        ).symbol}
+                                        {formatCurrency(
+                                          plan.remainingAmount || "0",
+                                          plan.currency
+                                        ).amount}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
 
-                                {/* Schedule Details */}
-                                <div className="space-y-3">
-                                  <h4 className="font-semibold text-gray-900">
-                                    Schedule Details
-                                  </h4>
-                                  <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Frequency:
-                                      </span>
-                                      <span className="font-medium capitalize">
-                                        {plan.frequency}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Number of Installments:
-                                      </span>
-                                      <span className="font-medium">
-                                        {plan.numberOfInstallments}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Installments Paid:
-                                      </span>
-                                      <span className="font-medium">
-                                        {plan.installmentsPaid}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        End Date:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatDate(plan.endDate)}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Next Payment Date:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatDate(plan.nextPaymentDate)}
-                                      </span>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Additional Details */}
+                                {/* Column 3: Additional Details */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
                                     Additional Details
                                   </h4>
                                   <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Auto Renew:
-                                      </span>
-                                      <span className="font-medium">
-                                        {plan.autoRenew ? "Yes" : "No"}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Reminders Sent:
-                                      </span>
-                                      <span className="font-medium">
-                                        {plan.remindersSent || 0}
-                                      </span>
-                                    </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
                                         Last Reminder:
@@ -727,33 +717,23 @@ export default function PaymentPlansTable({
                                         {formatDate(plan.updatedAt)}
                                       </span>
                                     </div>
-                                  </div>
-
-                                  {/* Notes Section */}
-                                  {(plan.notes || plan.internalNotes) && (
-                                    <div className="pt-2 border-t border-gray-200">
-                                      {plan.notes && (
-                                        <div className="mb-2">
-                                          <span className="text-gray-600 text-xs">
-                                            Notes:
-                                          </span>
-                                          <p className="text-sm font-medium mt-1">
-                                            {plan.notes}
-                                          </p>
-                                        </div>
-                                      )}
-                                      {plan.internalNotes && (
-                                        <div>
-                                          <span className="text-gray-600 text-xs">
-                                            Internal Notes:
-                                          </span>
-                                          <p className="text-sm font-medium mt-1">
-                                            {plan.internalNotes}
-                                          </p>
-                                        </div>
-                                      )}
+                                    {/* <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Last Updated By:
+                                      </span>
+                                      <span className="font-medium">
+                                        {plan.lastUpdatedBy || "N/A"}
+                                      </span>
+                                    </div> */}
+                                    <div>
+                                      <span className="text-gray-600">
+                                        Notes:
+                                      </span>
+                                      <p className="mt-1 text-gray-900 text-sm">
+                                        {plan.notes || "No notes available"}
+                                      </p>
                                     </div>
-                                  )}
+                                  </div>
                                 </div>
                               </div>
 
@@ -819,7 +799,7 @@ export default function PaymentPlansTable({
                   onClick={() => setPage(currentPage + 1)}
                   disabled={data.paymentPlans.length < currentLimit}
                 >
-                  Next
+                  Next  
                 </Button>
               </div>
             </div>

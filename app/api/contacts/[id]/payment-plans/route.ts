@@ -58,7 +58,7 @@ export async function GET(
 
     const pledgeIds = pledges.map((p) => p.id);
 
-    // Build the payment plans query with proper join to get exchange rate
+    // Build the payment plans query with proper join to get exchange rate and pledge details
     let query = db
       .select({
         id: paymentPlan.id,
@@ -87,17 +87,27 @@ export async function GET(
         updatedAt: paymentPlan.updatedAt,
         exchangeRate: pledge.exchangeRate,
         pledgeExchangeRate: sql<string>`(
-                  SELECT exchange_rate FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-                )`.as("pledgeExchangeRate"),
+          SELECT exchange_rate FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+        )`.as("pledgeExchangeRate"),
         pledgeCurrency: sql<string>`(
-                      SELECT currency FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-                    )`.as("pledgeCurrency"),
+          SELECT currency FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+        )`.as("pledgeCurrency"),
         originalAmountUsd: sql<string>`(
-              SELECT original_amount_usd FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-            )`.as("originalAmountUsd"),
+          SELECT original_amount_usd FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+        )`.as("originalAmountUsd"),
         originalAmount: sql<string>`(
-                    SELECT original_amount FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-                  )`.as("originalAmount"),
+          SELECT original_amount FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+        )`.as("originalAmount"),
+        // ADD MISSING PLEDGE FIELDS
+        pledgeDescription: sql<string>`(
+          SELECT description FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+        )`.as("pledgeDescription"),
+        pledgeDate: sql<string>`(
+          SELECT pledge_date FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+        )`.as("pledgeDate"),
+        pledgeNotes: sql<string>`(
+          SELECT notes FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+        )`.as("pledgeNotes"),
       })
       .from(paymentPlan)
       .innerJoin(pledge, eq(paymentPlan.pledgeId, pledge.id))
@@ -120,6 +130,10 @@ export async function GET(
       );
       searchConditions.push(
         ilike(sql`COALESCE(${paymentPlan.internalNotes}, '')`, `%${search}%`)
+      );
+      // ADD SEARCH FOR PLEDGE DESCRIPTION
+      searchConditions.push(
+        ilike(sql`COALESCE((SELECT description FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}), '')`, `%${search}%`)
       );
       conditions.push(or(...searchConditions)!);
     }

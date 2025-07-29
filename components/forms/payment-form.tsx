@@ -31,6 +31,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
 
 import { toast } from "sonner";
@@ -272,7 +273,7 @@ export default function PaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[600px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Payment</DialogTitle>
           <DialogDescription>
@@ -285,269 +286,311 @@ export default function PaymentDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <div className="space-y-4">
-            {/* Payment Amount */}
-            <FormField
-              control={form.control}
-              name="amount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Amount ({watchedCurrency}) *</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      {...field}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value ? parseFloat(value) : 0);
-                      }}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Basic Payment Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Payment Details</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Total Amount */}
+                  <FormField
+                    control={form.control}
+                    name="amount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Total Amount</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            {...field}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              field.onChange(value ? parseFloat(value) : 0);
+                            }}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-            {/* Currency */}
-            <FormField
-              control={form.control}
-              name="currency"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Input Currency *</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                    disabled={isLoadingRates}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue
-                          placeholder={
-                            isLoadingRates
-                              ? "Loading currencies..."
-                              : "Select currency"
-                          }
-                        />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {supportedCurrencies.map((curr) => (
-                        <SelectItem key={curr} value={curr}>
-                          {curr}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {ratesError && (
-                    <FormMessage>Error loading exchange rates</FormMessage>
+                  {/* Currency */}
+                  <FormField
+                    control={form.control}
+                    name="currency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Currency</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={isLoadingRates}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue
+                                placeholder={
+                                  isLoadingRates
+                                    ? "Loading currencies..."
+                                    : "Select a currency"
+                                }
+                              />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {supportedCurrencies.map((curr) => (
+                              <SelectItem key={curr} value={curr}>
+                                {curr}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {ratesError && (
+                          <p className="text-sm text-red-500">Error fetching rates.</p>
+                        )}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Exchange Rate */}
+                  <FormField
+                    control={form.control}
+                    name="exchangeRate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Exchange Rate (to USD)</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.0001"
+                            readOnly
+                            className={isLoadingRates ? "opacity-70" : "opacity-70"}
+                          />
+                        </FormControl>
+                        {isLoadingRates && <p className="text-sm text-gray-500">Fetching latest rates...</p>}
+                        {ratesError && <p className="text-sm text-red-500">Error fetching rates.</p>}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Amount USD */}
+                  <FormField
+                    control={form.control}
+                    name="amountUsd"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amount (USD)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.01" readOnly className="opacity-70" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Amount in Pledge Currency (show conversion if different) */}
+                  {watchedCurrency && watchedCurrency !== pledgeCurrency && (
+                    <FormField
+                      control={form.control}
+                      name="amount"
+                      render={() => (
+                        <FormItem>
+                          <FormLabel>Amount (Pledge Currency: {pledgeCurrency})</FormLabel>
+                          <FormControl>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={(() => {
+                                if (watchedAmount > 0 && exchangeRatesData?.data?.rates && watchedCurrency) {
+                                  const inputToUsdRate =
+                                    parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
+                                  const usdAmount = watchedAmount * inputToUsdRate;
+                                  const usdToPledgeRate =
+                                    parseFloat(exchangeRatesData.data.rates[pledgeCurrency]) || 1;
+                                  const convertedAmount = usdAmount / usdToPledgeRate;
+                                  return Math.round(convertedAmount * 100) / 100;
+                                }
+                                return 0;
+                              })()}
+                              readOnly
+                              className="opacity-70"
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                   )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
-            {/* Show conversion preview if currencies are different */}
-            {watchedCurrency &&
-              watchedCurrency !== pledgeCurrency &&
-              watchedAmount > 0 &&
-              exchangeRatesData?.data?.rates && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                  <div className="text-sm text-blue-800">
-                    <strong>Conversion Preview:</strong>
-                    <br />
-                    {watchedAmount.toLocaleString()} {watchedCurrency} →{" "}
-                    {(() => {
-                      const inputToUsdRate =
-                        parseFloat(
-                          exchangeRatesData.data.rates[watchedCurrency]
-                        ) || 1;
-                      const usdAmount = watchedAmount * inputToUsdRate;
-                      const usdToPledgeRate =
-                        parseFloat(
-                          exchangeRatesData.data.rates[pledgeCurrency]
-                        ) || 1;
-                      const convertedAmount = usdAmount / usdToPledgeRate;
-                      return Math.round(convertedAmount * 100) / 100;
-                    })().toLocaleString()}{" "}
-                    {pledgeCurrency}
-                  </div>
+                  {/* Payment Date */}
+                  <FormField
+                    control={form.control}
+                    name="paymentDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Date</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
-              )}
+              </CardContent>
+            </Card>
 
-            {/* Exchange Rate (Read-only) */}
-            <FormField
-              control={form.control}
-              name="exchangeRate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Exchange Rate (to USD)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.0001"
-                      {...field}
-                      readOnly
-                      className="bg-gray-50"
+            {/* Payment Method and Status Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Payment Method & Status</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Payment Method */}
+                  <FormField
+                    control={form.control}
+                    name="paymentMethod"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Method</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a payment method" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {paymentMethods.map((method) => (
+                              <SelectItem key={method.value} value={method.value}>
+                                {method.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Reference Number */}
+                  <FormField
+                    control={form.control}
+                    name="referenceNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Reference Number</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            value={field.value || ""}
+                            placeholder="Transaction reference number"
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Check Number - only show if payment method is check */}
+                  {watchedPaymentMethod === "check" && (
+                    <FormField
+                      control={form.control}
+                      name="checkNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Check Number</FormLabel>
+                          <FormControl>
+                            <Input 
+                              {...field} 
+                              value={field.value || ""} 
+                              placeholder="Check number" 
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
                     />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                  )}
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Amount USD (Read-only) */}
-            <FormField
-              control={form.control}
-              name="amountUsd"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Amount (USD)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      {...field}
-                      readOnly
-                      className="bg-gray-50"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Receipt Information Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Receipt Information</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Receipt Number */}
+                  <FormField
+                    control={form.control}
+                    name="receiptNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Receipt Number</FormLabel>
+                        <FormControl>
+                          <Input 
+                            {...field} 
+                            value={field.value || ""} 
+                            placeholder="Receipt number" 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
 
-            {/* Payment Date */}
-            <FormField
-              control={form.control}
-              name="paymentDate"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Schedule Date *</FormLabel>
-                  <FormControl>
-                    <Input type="date" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                  {/* Receipt Type */}
+                  <FormField
+                    control={form.control}
+                    name="receiptType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Receipt Type</FormLabel>
+                        <Select onValueChange={field.onChange} value={field.value || ""}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a receipt type" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {receiptTypes.map((type) => (
+                              <SelectItem key={type.value} value={type.value}>
+                                {type.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+              </CardContent>
+            </Card>
 
-            {/* Payment Method */}
-            <FormField
-              control={form.control}
-              name="paymentMethod"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Payment Method *</FormLabel>
-                  <Select
-                    onValueChange={field.onChange}
-                    defaultValue={field.value}
-                  >
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select payment method" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {paymentMethods.map((method) => (
-                        <SelectItem key={method.value} value={method.value}>
-                          {method.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Reference Number */}
-            <FormField
-              control={form.control}
-              name="referenceNumber"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Reference Number</FormLabel>
-                  <FormControl>
-                    <Input
-                      {...field}
-                      placeholder="Transaction reference number"
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Check Number - only show if payment method is check */}
-            {watchedPaymentMethod === "check" && (
-              <FormField
-                control={form.control}
-                name="checkNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Check Number</FormLabel>
-                    <FormControl>
-                      <Input {...field} placeholder="Check number" />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            )}
-
-            {/* Receipt Number */}
-            <FormField
-              control={form.control}
-              name="receiptNumber"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Receipt Number</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="Receipt number" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Receipt Type */}
-            <FormField
-              control={form.control}
-              name="receiptType"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Receipt Type</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select receipt type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {receiptTypes.map((type) => (
-                        <SelectItem key={type.value} value={type.value}>
-                          {type.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Notes */}
+            {/* General Notes */}
             <FormField
               control={form.control}
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Notes</FormLabel>
+                  <FormLabel>General Payment Notes</FormLabel>
                   <FormControl>
                     <Textarea
                       {...field}
+                      value={field.value || ""}
                       placeholder="Additional notes about this payment"
                       rows={3}
                     />
@@ -558,7 +601,7 @@ export default function PaymentDialog({
             />
 
             {/* Action Buttons */}
-            <div className="flex justify-end space-x-2 pt-4 border-t">
+            <div className="flex gap-4 justify-end">
               <Button
                 type="button"
                 variant="outline"
@@ -568,8 +611,7 @@ export default function PaymentDialog({
                 Cancel
               </Button>
               <Button
-                type="button"
-                onClick={form.handleSubmit(onSubmit)}
+                type="submit"
                 disabled={createPaymentMutation.isPending || isLoadingRates}
                 className="bg-green-600 hover:bg-green-700"
               >
@@ -578,7 +620,7 @@ export default function PaymentDialog({
                   : "Record Payment"}
               </Button>
             </div>
-          </div>
+          </form>
         </Form>
       </DialogContent>
     </Dialog>

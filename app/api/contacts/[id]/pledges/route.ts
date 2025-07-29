@@ -1,7 +1,41 @@
 import { db } from "@/lib/db";
-import { pledge, category, contact, paymentPlan } from "@/lib/db/schema";
+import { pledge, category, contact, paymentPlan, installmentSchedule } from "@/lib/db/schema";
 import { sql, eq, and, or, gte, lte, ilike, SQL } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+
+// Define types for payment plan data
+interface PaymentPlanData {
+  totalScheduledAmount: string;
+  activePlanCount: number;
+  hasActivePlan: boolean;
+}
+
+interface InstallmentScheduleItem {
+  id: number;
+  installmentDate: string | null;
+  installmentAmount: string | null;
+  currency: string | null;
+  status: string | null;
+  paidDate: string | null;
+  notes: string | null;
+}
+
+interface DetailedPaymentPlan {
+  planName: string | null;
+  frequency: string | null;
+  distributionType: string | null;
+  totalPlannedAmount: string | null;
+  installmentAmount: string | null;
+  numberOfInstallments: number | null;
+  installmentsPaid: number | null;
+  nextPaymentDate: string | null;
+  planStatus: string | null;
+  autoRenew: boolean | null;
+  notes: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  installmentSchedule: InstallmentScheduleItem[];
+}
 
 export async function GET(
   request: NextRequest,
@@ -42,11 +76,7 @@ export async function GET(
     }
 
     // Get payment plan data with more detailed information
-    let paymentPlanData: Record<number, {
-      totalScheduledAmount: string;
-      activePlanCount: number;
-      hasActivePlan: boolean;
-    }> = {};
+    let paymentPlanData: Record<number, PaymentPlanData> = {};
     
     try {
       const scheduledData = await db
@@ -72,14 +102,90 @@ export async function GET(
           hasActivePlan: parseFloat(item.totalScheduledAmount) > 0
         };
         return acc;
-      }, {} as Record<number, {
-        totalScheduledAmount: string;
-        activePlanCount: number;
-        hasActivePlan: boolean;
-      }>);
+      }, {} as Record<number, PaymentPlanData>);
     } catch (paymentPlanError) {
       console.warn('Warning: Could not fetch payment plan data, using default values:', paymentPlanError);
-      // Continue with empty payment plan data
+    }
+
+    let detailedPaymentPlans: Record<number, DetailedPaymentPlan> = {};
+    
+    try {
+      const paymentPlansWithSchedule = await db
+        .select({
+          pledgeId: paymentPlan.pledgeId,
+          planId: paymentPlan.id,
+          planName: paymentPlan.planName,
+          frequency: paymentPlan.frequency,
+          distributionType: paymentPlan.distributionType,
+          totalPlannedAmount: paymentPlan.totalPlannedAmount,
+          installmentAmount: paymentPlan.installmentAmount,
+          numberOfInstallments: paymentPlan.numberOfInstallments,
+          installmentsPaid: paymentPlan.installmentsPaid,
+          nextPaymentDate: paymentPlan.nextPaymentDate,
+          planStatus: paymentPlan.planStatus,
+          autoRenew: paymentPlan.autoRenew,
+          notes: paymentPlan.notes,
+          startDate: paymentPlan.startDate,
+          endDate: paymentPlan.endDate,
+          // Installment schedule fields
+          scheduleId: installmentSchedule.id,
+          installmentDate: installmentSchedule.installmentDate,
+          scheduleInstallmentAmount: installmentSchedule.installmentAmount,
+          scheduleCurrency: installmentSchedule.currency,
+          scheduleStatus: installmentSchedule.status,
+          paidDate: installmentSchedule.paidDate,
+          scheduleNotes: installmentSchedule.notes,
+        })
+        .from(paymentPlan)
+        .leftJoin(installmentSchedule, eq(paymentPlan.id, installmentSchedule.paymentPlanId))
+        .where(
+          and(
+            eq(paymentPlan.isActive, true),
+            eq(paymentPlan.planStatus, 'active')
+          )
+        )
+        .orderBy(installmentSchedule.installmentDate);
+
+      // Group by pledge ID and organize the data
+      detailedPaymentPlans = paymentPlansWithSchedule.reduce((acc, row) => {
+        if (!acc[row.pledgeId]) {
+          acc[row.pledgeId] = {
+            planName: row.planName,
+            frequency: row.frequency,
+            distributionType: row.distributionType,
+            totalPlannedAmount: row.totalPlannedAmount,
+            installmentAmount: row.installmentAmount,
+            numberOfInstallments: row.numberOfInstallments,
+            installmentsPaid: row.installmentsPaid,
+            nextPaymentDate: row.nextPaymentDate,
+            planStatus: row.planStatus,
+            autoRenew: row.autoRenew,
+            notes: row.notes,
+            startDate: row.startDate,
+            endDate: row.endDate,
+            installmentSchedule: []
+          };
+        }
+
+        // Add installment schedule if it exists
+        if (row.scheduleId) {
+          acc[row.pledgeId].installmentSchedule.push({
+            id: row.scheduleId,
+            installmentDate: row.installmentDate,
+            installmentAmount: row.scheduleInstallmentAmount,
+            currency: row.scheduleCurrency,
+            status: row.scheduleStatus,
+            paidDate: row.paidDate,
+            notes: row.scheduleNotes,
+          });
+        }
+
+        return acc;
+      }, {} as Record<number, DetailedPaymentPlan>);
+
+    } catch (paymentPlanDetailError) {
+      console.warn('Warning: Could not fetch detailed payment plan data:', paymentPlanDetailError);
+      // Continue without detailed payment plan data
     }
 
     // Build main query
@@ -163,6 +269,7 @@ export async function GET(
     // Post-process the results to add payment plan information
     const pledges = pledgesData.map(pledge => {
       const planData = paymentPlanData[pledge.id];
+      const detailedPlan = detailedPaymentPlans[pledge.id];
       const scheduledAmount = planData?.totalScheduledAmount || '0';
       const activePlanCount = planData?.activePlanCount || 0;
       const hasActivePlan = planData?.hasActivePlan || false;
@@ -175,15 +282,17 @@ export async function GET(
 
       return {
         ...pledge,
-        // Payment plan related fields
+        // Payment plan related fields (existing functionality)
         scheduledAmount,
         unscheduledAmount,
         activePlanCount,
         hasActivePlan,
-        // Additional computed fields for UI
+        // Additional computed fields for UI (existing functionality)
         paymentPlanStatus: hasActivePlan ? 'active' : 'none',
         schedulePercentage: balanceNum > 0 ? 
           Math.round((scheduledAmountNum / balanceNum) * 100) : 0,
+        // NEW: Add detailed payment plan information
+        paymentPlan: detailedPlan || null,
       };
     });
 
