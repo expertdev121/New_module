@@ -3,6 +3,40 @@ import { pledge, category, contact, paymentPlan, installmentSchedule } from "@/l
 import { sql, eq, and, or, gte, lte, ilike, SQL } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 
+// Define types for payment plan data
+interface PaymentPlanData {
+  totalScheduledAmount: string;
+  activePlanCount: number;
+  hasActivePlan: boolean;
+}
+
+interface InstallmentScheduleItem {
+  id: number;
+  installmentDate: string | null;
+  installmentAmount: string | null;
+  currency: string | null;
+  status: string | null;
+  paidDate: string | null;
+  notes: string | null;
+}
+
+interface DetailedPaymentPlan {
+  planName: string | null;
+  frequency: string | null;
+  distributionType: string | null;
+  totalPlannedAmount: string | null;
+  installmentAmount: string | null;
+  numberOfInstallments: number | null;
+  installmentsPaid: number | null;
+  nextPaymentDate: string | null;
+  planStatus: string | null;
+  autoRenew: boolean | null;
+  notes: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  installmentSchedule: InstallmentScheduleItem[];
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -42,11 +76,7 @@ export async function GET(
     }
 
     // Get payment plan data with more detailed information
-    let paymentPlanData: Record<number, {
-      totalScheduledAmount: string;
-      activePlanCount: number;
-      hasActivePlan: boolean;
-    }> = {};
+    let paymentPlanData: Record<number, PaymentPlanData> = {};
     
     try {
       const scheduledData = await db
@@ -72,18 +102,12 @@ export async function GET(
           hasActivePlan: parseFloat(item.totalScheduledAmount) > 0
         };
         return acc;
-      }, {} as Record<number, {
-        totalScheduledAmount: string;
-        activePlanCount: number;
-        hasActivePlan: boolean;
-      }>);
+      }, {} as Record<number, PaymentPlanData>);
     } catch (paymentPlanError) {
       console.warn('Warning: Could not fetch payment plan data, using default values:', paymentPlanError);
-      // Continue with empty payment plan data
     }
 
-    // NEW: Get detailed payment plan information for each pledge
-    let detailedPaymentPlans: Record<number, any> = {};
+    let detailedPaymentPlans: Record<number, DetailedPaymentPlan> = {};
     
     try {
       const paymentPlansWithSchedule = await db
@@ -157,7 +181,7 @@ export async function GET(
         }
 
         return acc;
-      }, {} as Record<number, any>);
+      }, {} as Record<number, DetailedPaymentPlan>);
 
     } catch (paymentPlanDetailError) {
       console.warn('Warning: Could not fetch detailed payment plan data:', paymentPlanDetailError);
