@@ -135,8 +135,17 @@ export default function PledgeDialog({
   const [internalOpen, setInternalOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [createdPledge, setCreatedPledge] = useState<any>(null);
+  
+  // Add popover state management
+  const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
+  const [itemSelectionPopoverOpen, setItemSelectionPopoverOpen] = useState(false);
+  
+  // Find the Donation category ID
+  const donationCategory = STATIC_CATEGORIES.find(cat => cat.name.toLowerCase() === "donation");
+  const defaultCategoryId = donationCategory?.id || null;
+  
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    mode === "edit" ? pledgeData?.categoryId || null : null
+    mode === "edit" ? pledgeData?.categoryId || null : defaultCategoryId
   );
 
   // Use controlled state if provided, otherwise use internal state
@@ -165,7 +174,7 @@ export default function PledgeDialog({
 
     return {
       contactId, // Make sure this is always set from props
-      categoryId: undefined,
+      categoryId: defaultCategoryId || undefined, // Set Donation as default
       currency: "USD" as const,
       exchangeRate: 1,
       originalAmount: 0,
@@ -258,6 +267,7 @@ export default function PledgeDialog({
     const id = parseInt(categoryId);
     form.setValue("categoryId", id, { shouldValidate: true });
     setSelectedCategoryId(id);
+    setCategoryPopoverOpen(false); // Close the popover
     // Only clear description in create mode
     if (!isEditMode) {
       form.setValue("description", "", { shouldValidate: true });
@@ -266,6 +276,7 @@ export default function PledgeDialog({
 
   const handleItemSelect = (item: string) => {
     form.setValue("description", item, { shouldValidate: true });
+    setItemSelectionPopoverOpen(false); // Close the popover
   };
 
   // Check if selected category is "Donation"
@@ -375,8 +386,9 @@ export default function PledgeDialog({
   };
 
   const resetForm = () => {
-    form.reset(getDefaultValues());
-    setSelectedCategoryId(null);
+    const defaultValues = getDefaultValues();
+    form.reset(defaultValues);
+    setSelectedCategoryId(defaultCategoryId);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -442,27 +454,13 @@ export default function PledgeDialog({
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit((data) => onSubmit(data, false))} className="space-y-4">
-              {/* Global form errors */}
-              {/* {Object.keys(form.formState.errors).length > 0 && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-3">
-                  <h4 className="text-sm font-medium text-red-800 mb-2">Please fix the following errors:</h4>
-                  <ul className="text-sm text-red-700 space-y-1">
-                    {Object.entries(form.formState.errors).map(([field, error]: [string, any]) => (
-                      <li key={field}>
-                        <strong>{field}:</strong> {error?.message || 'This field is invalid'}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )} */}
-
               <FormField
                 control={form.control}
                 name="categoryId"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
                     <FormLabel>Category</FormLabel>
-                    <Popover>
+                    <Popover open={categoryPopoverOpen} onOpenChange={setCategoryPopoverOpen}>
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button
@@ -496,11 +494,9 @@ export default function PledgeDialog({
                                 <CommandItem
                                   key={category.id}
                                   value={category.name}
-                                  onSelect={() => {
+                                  onSelect={(currentValue) => {
                                     form.setValue("categoryId", category.id, { shouldValidate: true });
-                                    handleCategoryChange(
-                                      category.id.toString()
-                                    );
+                                    handleCategoryChange(category.id.toString());
                                   }}
                                 >
                                   {category.name}
@@ -575,7 +571,7 @@ export default function PledgeDialog({
                               <FormLabel className="text-sm text-muted-foreground">
                                 Or select from {selectedCategory.name} items:
                               </FormLabel>
-                              <Popover>
+                              <Popover open={itemSelectionPopoverOpen} onOpenChange={setItemSelectionPopoverOpen}>
                                 <PopoverTrigger asChild>
                                   <Button
                                     variant="outline"
@@ -602,9 +598,9 @@ export default function PledgeDialog({
                                             <CommandItem
                                               key={index}
                                               value={item}
-                                              onSelect={() =>
-                                                handleItemSelect(item)
-                                              }
+                                              onSelect={(currentValue) => {
+                                                handleItemSelect(item);
+                                              }}
                                             >
                                               {item}
                                             </CommandItem>

@@ -85,7 +85,7 @@ interface PledgeFormData {
   notes?: string;
 }
 
-// Updated interface to match the actual API response (without contactId)
+// Simplified interface that works with current API response
 interface PledgeApiResponse {
   id: number;
   categoryId?: number;
@@ -104,6 +104,31 @@ interface PledgeApiResponse {
   balance: string;
   scheduledAmount?: string | null;
   unscheduledAmount?: string | null;
+  // Payment plan is optional and may not be provided by API
+  paymentPlan?: {
+    planName?: string | null;
+    frequency?: string;
+    distributionType?: string;
+    totalPlannedAmount?: string;
+    installmentAmount?: string;
+    numberOfInstallments?: number;
+    installmentsPaid?: number;
+    nextPaymentDate?: string | null;
+    planStatus?: string;
+    autoRenew?: boolean;
+    notes?: string | null;
+    startDate?: string;
+    endDate?: string | null;
+    installmentSchedule?: {
+      id: number;
+      installmentDate: string;
+      installmentAmount: string;
+      currency: string;
+      status: string;
+      paidDate?: string | null;
+      notes?: string | null;
+    }[];
+  } | null;
 }
 
 export default function PledgesTable() {
@@ -207,7 +232,7 @@ export default function PledgesTable() {
     return { symbol: currencySymbol, amount: numericAmount };
   };
 
-  const formatUSDAmount = (amount: string | null) => {
+  const formatUSDAmount = (amount: string | null | undefined) => {
     if (!amount) return "N/A";
     return `$${Number.parseFloat(amount).toLocaleString()}`;
   };
@@ -276,6 +301,43 @@ export default function PledgesTable() {
     
     // Exchange rate = USD amount / original amount
     return amountUsd / amount;
+  };
+
+  // Simplified helper functions that work without API payment plan data
+  const getPaymentPlanStatus = (scheduledAmount: string | null | undefined) => {
+    const scheduled = Number.parseFloat(scheduledAmount || "0");
+    return scheduled > 0 ? "Yes" : "No";
+  };
+
+  const getInstallmentInfo = (pledge: PledgeApiResponse) => {
+    // If we have scheduled amount, we can infer there's a payment plan
+    const hasScheduled = Number.parseFloat(pledge.scheduledAmount || "0") > 0;
+    
+    if (!hasScheduled) {
+      return {
+        first: "No Plan",
+        last: "No Plan"
+      };
+    }
+
+    // If payment plan data exists, use it
+    if (pledge.paymentPlan) {
+      const firstDate = pledge.paymentPlan.installmentSchedule?.[0]?.installmentDate || 
+                      pledge.paymentPlan.startDate;
+      const lastDate = pledge.paymentPlan.installmentSchedule?.slice(-1)[0]?.installmentDate || 
+                     pledge.paymentPlan.endDate;
+      
+      return {
+        first: firstDate ? formatDate(firstDate) : "TBD",
+        last: lastDate ? formatDate(lastDate) : "TBD"
+      };
+    }
+
+    // Fallback: If we have scheduled amount but no payment plan data
+    return {
+      first: "TBD",
+      last: "TBD"
+    };
   };
 
   // Map API response to form data structure - now uses contactId from query params
@@ -364,30 +426,30 @@ export default function PledgesTable() {
                     Pledge Date
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Pledge Details
+                    Pledge Detail
                   </TableHead>
-                  <TableHead className="font-semibold text-gray-900 text-right">
-                    Pledge Amount (USD)
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900 text-right">
+                  <TableHead className="font-semibold text-gray-900 text-center">
                     Pledge Amount
                   </TableHead>
-                  <TableHead className="font-semibold text-gray-900 text-right">
-                    Paid (USD)
+                  <TableHead className="font-semibold text-gray-900 text-center">
+                    Plg Amount (USD)
                   </TableHead>
-                  <TableHead className="font-semibold text-gray-900 text-right">
+                  <TableHead className="font-semibold text-gray-900 text-center">
                     Paid
                   </TableHead>
-                  <TableHead className="font-semibold  text-right">
-                    Balance (USD)
+                  <TableHead className="font-semibold text-gray-900 text-center">
+                    Paid (USD)
                   </TableHead>
-                  <TableHead className="font-semibold  text-right">
+                  <TableHead className="font-semibold text-gray-900 text-center">
                     Balance
                   </TableHead>
-                  <TableHead className="font-semibold  text-right">
+                  <TableHead className="font-semibold text-gray-900 text-center">
+                    Balance (USD)
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-900 text-center">
                     Scheduled
                   </TableHead>
-                  <TableHead className="font-semibold  text-right">
+                  <TableHead className="font-semibold text-gray-900 text-center">
                     Unscheduled
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
@@ -403,14 +465,14 @@ export default function PledgesTable() {
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
-                      <TableCell className="text-right"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
+                      <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-16" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                     </TableRow>
@@ -425,9 +487,10 @@ export default function PledgesTable() {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  data?.pledges.map((pledge) => {
+                  data?.pledges.map((pledge: PledgeApiResponse) => {
                     // Map API response to form data structure - pass contactId from query params
                     const pledgeData = mapPledgeToFormData(pledge, contactId as number);
+                    const installmentInfo = getInstallmentInfo(pledge);
 
                     return (
                       <React.Fragment key={pledge.id}>
@@ -453,10 +516,7 @@ export default function PledgesTable() {
                             {pledge.categoryName?.split(" ")[0]} {">"}{" "}
                             {pledge.description || "-"}
                           </TableCell>
-                          <TableCell className="text-right">
-                            {formatUSDAmount(pledge.originalAmountUsd)}
-                          </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-center">
                             <div className="flex justify-end items-center gap-1">
                               <span>
                                 {formatCurrency(pledge.originalAmount, pledge.currency).symbol}
@@ -466,10 +526,10 @@ export default function PledgesTable() {
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
-                            {formatUSDAmount(pledge.totalPaidUsd)}
+                          <TableCell className="text-center">
+                            {formatUSDAmount(pledge.originalAmountUsd)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-center">
                             <div className="flex justify-end items-center gap-1">
                               <span>
                                 {formatCurrency(pledge.totalPaid, pledge.currency).symbol}
@@ -479,10 +539,10 @@ export default function PledgesTable() {
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
-                            {formatUSDAmount(pledge.balanceUsd)}
+                          <TableCell className="text-center">
+                            {formatUSDAmount(pledge.totalPaidUsd)}
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-center">
                             <div className="flex justify-end items-center gap-1">
                               <span>
                                 {formatCurrency(pledge.balance, pledge.currency).symbol}
@@ -492,7 +552,10 @@ export default function PledgesTable() {
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-center">
+                            {formatUSDAmount(pledge.balanceUsd)}
+                          </TableCell>
+                          <TableCell className="text-center">
                             <div className="flex justify-end items-center gap-1">
                               <span>
                                 {formatCurrency(pledge.scheduledAmount || "0", pledge.currency).symbol}
@@ -502,7 +565,7 @@ export default function PledgesTable() {
                               </span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
+                          <TableCell className="text-center">
                             <div className="flex justify-end items-center gap-1">
                               <span>
                                 {formatCurrency(pledge.unscheduledAmount || "0", pledge.currency).symbol}
@@ -523,15 +586,6 @@ export default function PledgesTable() {
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end">
-                                {/* <DropdownMenuItem
-                                  onSelect={(e) => {
-                                    e.preventDefault();
-                                    handleEditClick(pledgeData);
-                                  }}
-                                >
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit Pledge
-                                </DropdownMenuItem> */}
                                 <DropdownMenuItem asChild>
                                   <Link
                                     href={`/contacts/${contactId}/payments?pledgeId=${pledge.id}`}
@@ -558,12 +612,56 @@ export default function PledgesTable() {
                           </TableCell>
                         </TableRow>
 
-                        {/* Expanded Row Content */}
+                        {/* Simplified Expanded Row Content - Works Without API Payment Plan Data */}
                         {expandedRows.has(pledge.id) && (
                           <TableRow>
                             <TableCell colSpan={13} className="bg-gray-50 p-6">
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                {/* USD Amounts */}
+                                {/* Column 1: Pledge Details (all in pledge currency) */}
+                                <div className="space-y-3">
+                                  <h4 className="font-semibold text-gray-900">
+                                    Pledge Details
+                                  </h4>
+                                  <div className="space-y-2 text-sm">
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Pledge Amount:
+                                      </span>
+                                      <span className="font-medium">
+                                        {formatCurrency(pledge.originalAmount, pledge.currency).symbol}
+                                        {formatCurrency(pledge.originalAmount, pledge.currency).amount}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Paid:
+                                      </span>
+                                      <span className="font-medium">
+                                        {formatCurrency(pledge.totalPaid, pledge.currency).symbol}
+                                        {formatCurrency(pledge.totalPaid, pledge.currency).amount}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Balance:
+                                      </span>
+                                      <span className="font-medium">
+                                        {formatCurrency(pledge.balance, pledge.currency).symbol}
+                                        {formatCurrency(pledge.balance, pledge.currency).amount}
+                                      </span>
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-600">
+                                        Notes:
+                                      </span>
+                                      <p className="mt-1 text-gray-900">
+                                        {pledge.notes || "No notes available"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Column 2: USD Amounts */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
                                     USD Amounts
@@ -571,60 +669,40 @@ export default function PledgesTable() {
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Pledge Amount (USD):
+                                        Pledge Amount:
                                       </span>
                                       <span className="font-medium">
-                                        {pledge.originalAmountUsd
-                                          ? `$${Number.parseFloat(
-                                            pledge.originalAmountUsd
-                                          ).toLocaleString()}`
-                                          : "N/A"}
+                                        {formatUSDAmount(pledge.originalAmountUsd)}
                                       </span>
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Paid (USD):
+                                        Paid:
                                       </span>
                                       <span className="font-medium">
-                                        {pledge.totalPaidUsd
-                                          ? `$${Number.parseFloat(
-                                            pledge.totalPaidUsd
-                                          ).toLocaleString()}`
-                                          : "N/A"}
+                                        {formatUSDAmount(pledge.totalPaidUsd)}
                                       </span>
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Balance (USD):
+                                        Balance:
                                       </span>
                                       <span className="font-medium">
-                                        {pledge.balanceUsd
-                                          ? `$${Number.parseFloat(
-                                            pledge.balanceUsd
-                                          ).toLocaleString()}`
-                                          : "N/A"}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Exchange Rate:
-                                      </span>
-                                      <span className="font-medium">
-                                        {pledgeData.exchangeRate.toFixed(4)}
+                                        {formatUSDAmount(pledge.balanceUsd)}
                                       </span>
                                     </div>
                                   </div>
                                 </div>
 
-                                {/* Payment Plan Status */}
+                                {/* Column 3: Payment Plan - SIMPLIFIED WITHOUT API DEPENDENCY */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
-                                    Payment Plan Status
+                                    Payment Plan
                                   </h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Scheduled Amount:
+                                        Scheduled:
                                       </span>
                                       <span className="font-medium text-blue-600">
                                         {formatCurrency(pledge.scheduledAmount || "0", pledge.currency).symbol}
@@ -633,7 +711,7 @@ export default function PledgesTable() {
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Unscheduled Amount:
+                                        Unscheduled:
                                       </span>
                                       <span className="font-medium text-orange-600">
                                         {formatCurrency(pledge.unscheduledAmount || "0", pledge.currency).symbol}
@@ -644,38 +722,29 @@ export default function PledgesTable() {
                                       <span className="text-gray-600">
                                         Has Payment Plan:
                                       </span>
-                                      <span className={`font-medium ${Number.parseFloat(pledge.scheduledAmount || "0") > 0
-                                        ? "text-green-600"
-                                        : "text-gray-500"
+                                      <span className={`font-medium ${
+                                        getPaymentPlanStatus(pledge.scheduledAmount) === "Yes"
+                                          ? "text-green-600"
+                                          : "text-gray-500"
                                         }`}>
-                                        {Number.parseFloat(pledge.scheduledAmount || "0") > 0 ? "Yes" : "No"}
+                                        {getPaymentPlanStatus(pledge.scheduledAmount)}
                                       </span>
                                     </div>
-                                  </div>
-                                </div>
-
-                                {/* Additional Details */}
-                                <div className="space-y-3">
-                                  <h4 className="font-semibold text-gray-900">
-                                    Additional Details
-                                  </h4>
-                                  <div className="space-y-2 text-sm">
-                                    <div>
+                                    <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Category Description:
+                                        First Installment:
                                       </span>
-                                      <p className="mt-1 text-gray-900">
-                                        {pledge.categoryDescription ||
-                                          "No description available"}
-                                      </p>
+                                      <span className="font-medium">
+                                        {installmentInfo.first}
+                                      </span>
                                     </div>
-                                    <div>
+                                    <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Notes:
+                                        Last Installment:
                                       </span>
-                                      <p className="mt-1 text-gray-900">
-                                        {pledge.notes || "No notes available"}
-                                      </p>
+                                      <span className="font-medium">
+                                        {installmentInfo.last}
+                                      </span>
                                     </div>
                                   </div>
                                 </div>

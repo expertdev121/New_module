@@ -66,12 +66,12 @@ export default function ContactFormDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
+      {/* <DialogTrigger asChild>
         <Button size="sm" className="border-dashed text-white">
           <PlusCircleIcon />
           New Contact
         </Button>
-      </DialogTrigger>
+      </DialogTrigger> */}
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="text-2xl">Creation of a Contact</DialogTitle>

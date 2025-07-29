@@ -83,7 +83,7 @@ export default function ContactDetailsClient() {
         financialSummary={financialSummary}
         categories={categories || []}
       />
-      <PledgesTable />
+      {/* <PledgesTable /> */}
     </React.Fragment>
   );
 }
