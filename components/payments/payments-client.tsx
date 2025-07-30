@@ -470,9 +470,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Effective
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Total Payment
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
                     Applied: USD Currency
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
@@ -674,7 +671,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Account:
                                     </span>
                                     <span className="font-medium">
-                                      { "N/A"}
+                                      {"N/A"}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -685,14 +682,14 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       {payment.receiptNumber || "N/A"}
                                     </span>
                                   </div>
-                                  <div className="flex justify-between">
+                                  {/* <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Receipt Date:
                                     </span>
                                     <span className="font-medium">
                                       { "N/A"}
                                     </span>
-                                  </div>
+                                  </div> */}
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Receipt Issued:

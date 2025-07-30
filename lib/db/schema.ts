@@ -523,132 +523,115 @@ export const installmentSchedule = pgTable(
 export type InstallmentSchedule = typeof installmentSchedule.$inferSelect;
 export type NewInstallmentSchedule = typeof installmentSchedule.$inferInsert;
 
-  export const payment = pgTable(
-    "payment",
-    {
-      id: serial("id").primaryKey(),
-      // pledgeId remains, can be null if split across multiple pledges via allocations
-      pledgeId: integer("pledge_id").references(() => pledge.id, {
-        onDelete: "set null",
-      }),
-      paymentPlanId: integer("payment_plan_id").references(() => paymentPlan.id, {
-        onDelete: "set null",
-      }),
+ // PAYMENT TABLE
+export const payment = pgTable(
+  "payment",
+  {
+    id: serial("id").primaryKey(),
+    pledgeId: integer("pledge_id").references(() => pledge.id, {
+      onDelete: "set null",
+    }),
+    paymentPlanId: integer("payment_plan_id").references(() => paymentPlan.id, {
+      onDelete: "set null",
+    }),
+    installmentScheduleId: integer("installment_schedule_id").references(
+      () => installmentSchedule.id,
+      { onDelete: "set null" }
+    ),
+    amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
+    currency: currencyEnum("currency").notNull(),
+    amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }),
+    amountInPledgeCurrency: numeric("amount_pledge_currency", {
+      precision: 10,
+      scale: 2,
+    }),
+    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4 }),
+    paymentDate: date("payment_date").notNull(),
+    receivedDate: date("received_date"),
+    checkDate: date("check_date"), // NEW FIELD
+    account: text("account"), // NEW FIELD
+    paymentMethod: paymentMethodEnum("payment_method").notNull(),
+    methodDetail: text("method_detail"),
+    paymentStatus: paymentStatusEnum("payment_status")
+      .notNull()
+      .default("completed"),
+    referenceNumber: text("reference_number"),
+    checkNumber: text("check_number"),
+    receiptNumber: text("receipt_number"),
+    receiptType: receiptTypeEnum("receipt_type"),
+    receiptIssued: boolean("receipt_issued").default(false).notNull(),
+    solicitorId: integer("solicitor_id").references(() => solicitor.id, {
+      onDelete: "set null",
+    }),
+    bonusPercentage: numeric("bonus_percentage", { precision: 5, scale: 2 }),
+    bonusAmount: numeric("bonus_amount", { precision: 10, scale: 2 }),
+    bonusRuleId: integer("bonus_rule_id").references(() => bonusRule.id, {
+      onDelete: "set null",
+    }),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    pledgeIdIdx: index("payment_pledge_id_idx").on(table.pledgeId),
+    paymentPlanIdIdx: index("payment_payment_plan_id_idx").on(table.paymentPlanId),
+    paymentDateIdx: index("payment_payment_date_idx").on(table.paymentDate),
+    statusIdx: index("payment_status_idx").on(table.paymentStatus),
+    methodIdx: index("payment_method_idx").on(table.paymentMethod),
+    referenceIdx: index("payment_reference_idx").on(table.referenceNumber),
+    solicitorIdIdx: index("payment_solicitor_id_idx").on(table.solicitorId),
+    installmentScheduleIdIdx: index("payment_installment_schedule_id_idx").on(table.installmentScheduleId),
+  })
+);
 
-      // installmentScheduleId remains, can be null if fulfilled via allocations or multiple installments
-      installmentScheduleId: integer("installment_schedule_id").references(
-        () => installmentSchedule.id,
-        { onDelete: "set null" }
-      ),
+export type Payment = typeof payment.$inferSelect;
+export type NewPayment = typeof payment.$inferInsert;
 
-      amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-      currency: currencyEnum("currency").notNull(),
-      amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }),
-      // amountInPledgeCurrency remains as well
-      amountInPledgeCurrency: numeric("amount_pledge_currency", {
-        precision: 10,
-        scale: 2,
-      }),
-      exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4 }),
+// PAYMENT_ALLOCATIONS TABLE
+export const paymentAllocations = pgTable(
+  "payment_allocations",
+  {
+    id: serial("id").primaryKey(),
+    paymentId: integer("payment_id")
+      .references(() => payment.id, { onDelete: "cascade" })
+      .notNull(),
+    pledgeId: integer("pledge_id")
+      .references(() => pledge.id, { onDelete: "cascade" })
+      .notNull(),
+    installmentScheduleId: integer("installment_schedule_id").references(
+      () => installmentSchedule.id,
+      { onDelete: "set null" }
+    ),
+    allocatedAmount: numeric("allocated_amount", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    currency: currencyEnum("currency").notNull(),
+    allocatedAmountUsd: numeric("allocated_amount_usd", {
+      precision: 10,
+      scale: 2,
+    }),
+    receiptNumber: text("receipt_number"), // NEW FIELD
+    receiptType: receiptTypeEnum("receipt_type"), // NEW FIELD
+    receiptIssued: boolean("receipt_issued").default(false).notNull(), // NEW FIELD
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    paymentIdIdx: index("payment_allocations_payment_id_idx").on(table.paymentId),
+    pledgeIdIdx: index("payment_allocations_pledge_id_idx").on(table.pledgeId),
+    installmentScheduleIdIdx: index("payment_allocations_installment_schedule_id_idx").on(table.installmentScheduleId),
+    uniqueAllocation: uniqueIndex("payment_allocations_unique").on(
+      table.paymentId,
+      table.pledgeId,
+      table.installmentScheduleId
+    ),
+  })
+);
 
-      paymentDate: date("payment_date").notNull(),
-      receivedDate: date("received_date"),
-
-      paymentMethod: paymentMethodEnum("payment_method").notNull(),
-      methodDetail: text("method_detail"),
-      paymentStatus: paymentStatusEnum("payment_status")
-        .notNull()
-        .default("completed"),
-
-      referenceNumber: text("reference_number"),
-      checkNumber: text("check_number"),
-      receiptNumber: text("receipt_number"),
-      receiptType: receiptTypeEnum("receipt_type"),
-      receiptIssued: boolean("receipt_issued").default(false).notNull(),
-
-      // *** NEW SOLICITOR FIELDS ***
-      solicitorId: integer("solicitor_id").references(() => solicitor.id, {
-        onDelete: "set null",
-      }),
-      bonusPercentage: numeric("bonus_percentage", { precision: 5, scale: 2 }),
-      bonusAmount: numeric("bonus_amount", { precision: 10, scale: 2 }),
-      bonusRuleId: integer("bonus_rule_id").references(() => bonusRule.id, {
-        onDelete: "set null",
-      }),
-
-      notes: text("notes"),
-
-      createdAt: timestamp("created_at").defaultNow().notNull(),
-      updatedAt: timestamp("updated_at").defaultNow().notNull(),
-    },
-    (table) => ({
-      pledgeIdIdx: index("payment_pledge_id_idx").on(table.pledgeId),
-      paymentPlanIdIdx: index("payment_payment_plan_id_idx").on(
-        table.paymentPlanId
-      ),
-      paymentDateIdx: index("payment_payment_date_idx").on(table.paymentDate),
-      statusIdx: index("payment_status_idx").on(table.paymentStatus),
-      methodIdx: index("payment_method_idx").on(table.paymentMethod),
-      referenceIdx: index("payment_reference_idx").on(table.referenceNumber),
-      // *** NEW INDEX ***
-      solicitorIdIdx: index("payment_solicitor_id_idx").on(table.solicitorId),
-      installmentScheduleIdIdx: index("payment_installment_schedule_id_idx").on(table.installmentScheduleId),
-    })
-  );
-
-  export type Payment = typeof payment.$inferSelect;
-  export type NewPayment = typeof payment.$inferInsert;
-
-// NEW TABLE: payment_allocations
-// This table links a payment to one or more pledges, specifying the allocated amount for each.
-// It also links a portion of a payment to a specific installment schedule.
-  export const paymentAllocations = pgTable(
-    "payment_allocations",
-    {
-      id: serial("id").primaryKey(),
-      paymentId: integer("payment_id")
-        .references(() => payment.id, { onDelete: "cascade" })
-        .notNull(),
-      pledgeId: integer("pledge_id")
-        .references(() => pledge.id, { onDelete: "cascade" })
-        .notNull(),
-      // Link to installment schedule if this specific allocation fulfills one
-      installmentScheduleId: integer("installment_schedule_id").references(
-        () => installmentSchedule.id,
-        { onDelete: "set null" }
-      ),
-      allocatedAmount: numeric("allocated_amount", {
-        precision: 10,
-        scale: 2,
-      }).notNull(),
-      currency: currencyEnum("currency").notNull(), // Currency of the allocation (typically matches payment/pledge currency)
-      allocatedAmountUsd: numeric("allocated_amount_usd", {
-        precision: 10,
-        scale: 2,
-      }), // USD equivalent of allocated amount for this specific allocation
-      notes: text("notes"), // Specific notes for this allocation
-      createdAt: timestamp("created_at").defaultNow().notNull(),
-      updatedAt: timestamp("updated_at").defaultNow().notNull(),
-    },
-    (table) => ({
-      paymentIdIdx: index("payment_allocations_payment_id_idx").on(
-        table.paymentId
-      ),
-      pledgeIdIdx: index("payment_allocations_pledge_id_idx").on(
-        table.pledgeId
-      ),
-      installmentScheduleIdIdx: index("payment_allocations_installment_schedule_id_idx").on(table.installmentScheduleId),
-      uniqueAllocation: uniqueIndex("payment_allocations_unique").on(
-        table.paymentId,
-        table.pledgeId,
-        table.installmentScheduleId // Ensures a payment can only allocate to a specific pledge-installment once.
-      ),
-    })
-  );
-
-  export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
-  export type NewPaymentAllocation = typeof paymentAllocations.$inferInsert;
-
+export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
+export type NewPaymentAllocation = typeof paymentAllocations.$inferInsert;
 
 // Bonus calculations for audit trail and reporting
 export const bonusCalculation = pgTable(
