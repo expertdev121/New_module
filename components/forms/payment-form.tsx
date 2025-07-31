@@ -1,9 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// eslint-disable-next-line react-hooks/exhaustive-deps
 "use client";
 
-import React, { useEffect } from "react";
-import { useForm } from "react-hook-form";
+import React, { useEffect, useState, useCallback } from "react";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -32,11 +31,14 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
-
 import { toast } from "sonner";
 import { useCreatePaymentMutation } from "@/lib/query/payments/usePaymentQuery";
+import { X, Plus, Users } from "lucide-react";
+import { cn } from "@/lib/utils";
 
+// Define literal tuples for enums
 const supportedCurrencies = [
   "USD",
   "ILS",
@@ -48,59 +50,127 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
-const paymentMethods = [
-  { value: "credit_card", label: "Credit Card" },
-  { value: "cash", label: "Cash" },
-  { value: "check", label: "Check" },
-  { value: "ach", label: "ACH Transfer" },
-  { value: "wire", label: "Wire Transfer" },
-  { value: "money_order", label: "Money Order" },
-  { value: "stock", label: "Stock" },
-  { value: "unknown", label: "Unknown" },
+const paymentMethodValues = [
+  "ach",
+  "bill_pay",
+  "cash",
+  "check",
+  "credit",
+  "credit_card",
+  "expected",
+  "goods_and_services",
+  "matching_funds",
+  "money_order",
+  "p2p",
+  "pending",
+  "refund",
+  "scholarship",
+  "stock",
+  "student_portion",
+  "unknown",
+  "wire",
+  "xfer",
 ] as const;
 
-const receiptTypes = [
-  { value: "invoice", label: "Invoice" },
-  { value: "confirmation", label: "Confirmation" },
-  { value: "receipt", label: "Receipt" },
-  { value: "other", label: "Other" },
+const methodDetailValues = [
+  "achisomoch",
+  "authorize",
+  "bank_of_america_charitable",
+  "banquest",
+  "banquest_cm",
+  "benevity",
+  "chai_charitable",
+  "charityvest_inc",
+  "cjp",
+  "donors_fund",
+  "earthport",
+  "e_transfer",
+  "facts",
+  "fidelity",
+  "fjc",
+  "foundation",
+  "goldman_sachs",
+  "htc",
+  "jcf",
+  "jcf_san_diego",
+  "jgive",
+  "keshet",
+  "masa",
+  "masa_old",
+  "matach",
+  "matching_funds",
+  "mizrachi_canada",
+  "mizrachi_olami",
+  "montrose",
+  "morgan_stanley_gift",
+  "ms",
+  "mt",
+  "ojc",
+  "paypal",
+  "pelecard",
+  "schwab_charitable",
+  "stripe",
+  "tiaa",
+  "touro",
+  "uktoremet",
+  "vanguard_charitable",
+  "venmo",
+  "vmm",
+  "wise",
+  "worldline",
+  "yaadpay",
+  "yaadpay_cm",
+  "yourcause",
+  "yu",
+  "zelle",
 ] as const;
 
-const paymentSchema = z.object({
+const paymentStatusValues = [
+  "expected",
+  "pending",
+  "completed",
+  "refund",
+  "returned",
+  "declined",
+] as const;
+
+const receiptTypeValues = ["invoice", "confirmation", "receipt", "other"] as const;
+
+const NO_SELECTION = "__NONE__"; // Sentinel for 'None' selection for Select components
+
+// Allocation schema with receipt fields per allocation
+const allocationSchema = z.object({
   pledgeId: z.number().positive(),
-  amount: z.number().positive("Payment amount must be positive"),
-  currency: z.enum(supportedCurrencies).default("USD"),
-  amountUsd: z.number().positive("Payment amount in USD must be positive"),
-  exchangeRate: z.number().positive("Exchange rate must be positive"),
-  paymentDate: z.string().min(1, "Payment date is required"),
-  paymentMethod: z.enum([
-    "ach",
-    "bill_pay",
-    "cash",
-    "check",
-    "credit",
-    "credit_card",
-    "expected",
-    "goods_and_services",
-    "matching_funds",
-    "money_order",
-    "p2p",
-    "pending",
-    "refund",
-    "scholarship",
-    "stock",
-    "student_portion",
-    "unknown",
-    "wire",
-    "xfer",
-  ]),
-  referenceNumber: z.string().optional(),
-  checkNumber: z.string().optional(),
-  receiptNumber: z.string().optional(),
-  receiptType: z
-    .enum(["invoice", "confirmation", "receipt", "other"])
-    .optional(),
-  notes: z.string().optional(),
+  amount: z.number().nonnegative(), // Changed from allocatedAmount to amount
+  installmentScheduleId: z.number().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  receiptNumber: z.string().optional().nullable(),
+  receiptType: z.enum(receiptTypeValues).optional().nullable(),
+  receiptIssued: z.boolean().optional(),
+});
+
+// Payment schema
+const paymentSchema = z.object({
+  pledgeId: z.number().optional().nullable(),
+  amount: z.number().nonnegative(),
+  currency: z.enum(supportedCurrencies),
+  amountUsd: z.number().nonnegative(),
+  exchangeRate: z.number().positive(),
+  paymentDate: z.string(),
+  receivedDate: z.string().optional().nullable(),
+  paymentMethod: z.enum(paymentMethodValues).optional(),
+  methodDetail: z.enum(methodDetailValues).optional().nullable(),
+  account: z.string().optional().nullable(),
+  checkDate: z.string().optional().nullable(),
+  checkNumber: z.string().optional().nullable(),
+  paymentStatus: z.enum(paymentStatusValues).optional(),
+  solicitorId: z.number().optional().nullable(),
+  bonusPercentage: z.number().optional().nullable(),
+  bonusAmount: z.number().optional().nullable(),
+  bonusRuleId: z.number().optional().nullable(),
+  notes: z.string().optional().nullable(),
+  isSplitPayment: z.boolean().optional(),
+  allocations: z.array(allocationSchema).optional(),
 });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
@@ -108,9 +178,9 @@ type PaymentFormData = z.infer<typeof paymentSchema>;
 interface PaymentDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  pledgeId: number;
-  pledgeAmount: number;
-  pledgeCurrency: string;
+  pledgeId?: number;
+  pledgeAmount?: number;
+  pledgeCurrency?: typeof supportedCurrencies[number];
   pledgeDescription?: string;
   onPaymentCreated?: () => void;
 }
@@ -119,9 +189,9 @@ export default function PaymentDialog({
   open,
   onOpenChange,
   pledgeId,
-  pledgeAmount,
-  pledgeCurrency,
-  pledgeDescription,
+  pledgeAmount = 0,
+  pledgeCurrency = "USD",
+  pledgeDescription = "",
   onPaymentCreated,
 }: PaymentDialogProps) {
   const {
@@ -129,456 +199,725 @@ export default function PaymentDialog({
     isLoading: isLoadingRates,
     error: ratesError,
   } = useExchangeRates();
-
   const createPaymentMutation = useCreatePaymentMutation();
 
-  const form = useForm({
+  const [showSolicitorSection, setShowSolicitorSection] = useState(false);
+
+  const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
-      pledgeId,
-      currency: (pledgeCurrency as any) || "USD",
-      exchangeRate: 1,
-      amountUsd: 0,
+      pledgeId: pledgeId ?? null,
       amount: pledgeAmount,
+      currency: pledgeCurrency,
+      amountUsd: 0,
+      exchangeRate: 1,
       paymentDate: new Date().toISOString().split("T")[0],
-      paymentMethod: "cash" as const,
-      referenceNumber: "",
-      checkNumber: "",
-      receiptNumber: "",
+      receivedDate: null,
+      paymentMethod: "cash",
+      methodDetail: null,
+      account: "",
+      checkDate: null,
+      checkNumber: null,
+      paymentStatus: "completed",
+      solicitorId: null,
+      bonusPercentage: null,
+      bonusAmount: null,
+      bonusRuleId: null,
       notes: "",
+      isSplitPayment: false,
+      allocations: [
+        {
+          pledgeId: pledgeId ?? 0,
+          amount: pledgeAmount, // Changed from allocatedAmount to amount
+          installmentScheduleId: null,
+          notes: null,
+          receiptNumber: null,
+          receiptType: null,
+          receiptIssued: false,
+        },
+      ],
     },
   });
 
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "allocations",
+  });
+
+  // Watches
   const watchedCurrency = form.watch("currency");
   const watchedAmount = form.watch("amount");
-  const watchedPaymentDate = form.watch("paymentDate");
-  const watchedPaymentMethod = form.watch("paymentMethod");
+  const watchedExchangeRate = form.watch("exchangeRate");
+  const watchedIsSplitPayment = form.watch("isSplitPayment");
+  const watchedAllocations = form.watch("allocations");
 
-  // Update exchange rate when currency or date changes
+  // Update exchange rate when currency changes
   useEffect(() => {
-    if (
-      watchedCurrency &&
-      watchedPaymentDate &&
-      exchangeRatesData?.data?.rates
-    ) {
-      const rate =
-        parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
+    if (watchedCurrency && exchangeRatesData?.data?.rates) {
+      const rate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
       form.setValue("exchangeRate", rate);
     }
-  }, [watchedCurrency, watchedPaymentDate, exchangeRatesData, form]);
+  }, [watchedCurrency, exchangeRatesData, form]);
 
-  // Auto-calculate USD amount when amount or exchange rate changes
+  // Update amountUsd when amount or exchange rate changes
   useEffect(() => {
-    const exchangeRate = form.getValues("exchangeRate");
-    if (watchedAmount && exchangeRate) {
-      // Since exchange rates are now inverted (currency to USD conversion rates),
-      // we multiply instead of divide
-      const usdAmount = watchedAmount * exchangeRate;
+    const rate = form.getValues("exchangeRate") || 1;
+    if (watchedAmount && rate) {
+      const usdAmount = watchedAmount / rate;
       form.setValue("amountUsd", Math.round(usdAmount * 100) / 100);
     }
-  }, [watchedAmount, form.watch("exchangeRate"), form]);
+  }, [watchedAmount, watchedExchangeRate, form]);
 
+  // Validate allocations sum equals amount
+  const totalAllocated = (watchedAllocations || []).reduce(
+    (sum, alloc) => sum + (alloc.amount || 0), // Changed from allocatedAmount to amount
+    0,
+  );
+  const allocationsValid =
+    !watchedIsSplitPayment || Math.abs(totalAllocated - (watchedAmount || 0)) < 0.01;
+
+  // Sanitize nullable string fields before submit
+  const sanitizeNullable = (value: any) => (value === null ? undefined : value);
+
+  // Submit handler
   const onSubmit = async (data: PaymentFormData) => {
+    if (watchedIsSplitPayment && !allocationsValid) {
+      toast.error("Total allocated amount must equal payment amount.");
+      return;
+    }
+
     try {
-      let convertedAmount = data.amount;
-      const inputCurrency = data.currency;
-      const targetPledgeCurrency =
-        (pledgeCurrency as (typeof supportedCurrencies)[number]) || "USD";
-
-      // Validate that pledge currency is supported
-      if (!supportedCurrencies.includes(targetPledgeCurrency as any)) {
-        toast.error(`Unsupported pledge currency: ${targetPledgeCurrency}`);
-        return;
-      }
-
-      // Convert amount to pledge currency if different
-      if (
-        inputCurrency !== targetPledgeCurrency &&
-        exchangeRatesData?.data?.rates
-      ) {
-        // Convert input currency to USD first
-        const inputToUsdRate =
-          parseFloat(exchangeRatesData.data.rates[inputCurrency]) || 1;
-        const usdAmount = data.amount * inputToUsdRate;
-
-        // Convert USD to pledge currency
-        const usdToPledgeRate =
-          parseFloat(exchangeRatesData.data.rates[targetPledgeCurrency]) || 1;
-        convertedAmount = usdAmount / usdToPledgeRate;
-        convertedAmount = Math.round(convertedAmount * 100) / 100; // Round to 2 decimal places
-      }
-
-      // Create payload with converted amount and pledge currency
-      const payload = {
+      const payload: any = {
         ...data,
-        amount: convertedAmount,
-        currency: targetPledgeCurrency,
-        // Keep the original input for reference in amountUsd calculation
-        amountUsd: data.amountUsd, // This stays as calculated
+        receivedDate: sanitizeNullable(data.receivedDate),
+        methodDetail: sanitizeNullable(data.methodDetail),
+        account: sanitizeNullable(data.account),
+        checkDate: sanitizeNullable(data.checkDate),
+        checkNumber: sanitizeNullable(data.checkNumber),
+        notes: sanitizeNullable(data.notes),
+        solicitorId: data.solicitorId ?? undefined,
+        bonusPercentage: data.bonusPercentage ?? undefined,
+        bonusAmount: data.bonusAmount ?? undefined,
+        bonusRuleId: data.bonusRuleId ?? undefined,
+        allocations: data.allocations?.map((alloc) => ({
+          ...alloc,
+          receiptNumber: sanitizeNullable(alloc.receiptNumber),
+          receiptType: sanitizeNullable(alloc.receiptType),
+          installmentScheduleId: alloc.installmentScheduleId ?? undefined,
+        })),
       };
 
-      console.log("Original amount:", data.amount, data.currency);
-      console.log("Converted amount:", convertedAmount, targetPledgeCurrency);
+      // Handle pledgeId and allocations based on split payment mode
+      if (!data.isSplitPayment) {
+        if (data.pledgeId == null) {
+          throw new Error("pledgeId is required when not split payment");
+        }
+        payload.pledgeId = data.pledgeId;
+        // Remove allocations for non-split payments
+        delete payload.allocations;
+      } else {
+        delete payload.pledgeId;
+      }
 
       await createPaymentMutation.mutateAsync(payload);
 
-      toast.success("Payment created successfully!");
-
-      // Reset form
-      form.reset({
-        pledgeId,
-        currency: (pledgeCurrency as any) || "USD",
-        exchangeRate: 1,
-        amountUsd: 0,
-        amount: pledgeAmount,
-        paymentDate: new Date().toISOString().split("T")[0],
-        paymentMethod: "cash" as const,
-        referenceNumber: "",
-        checkNumber: "",
-        receiptNumber: "",
-        notes: "",
-      });
-
+      toast.success("Payment created successfully");
+      form.reset();
+      setShowSolicitorSection(false);
       onOpenChange(false);
-
-      if (onPaymentCreated) {
-        onPaymentCreated();
-      }
+      onPaymentCreated?.();
     } catch (error) {
-      console.error("Error creating payment:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create payment"
-      );
+      toast.error(error instanceof Error ? error.message : "Failed to create payment");
     }
   };
 
   const handleOpenChange = (newOpen: boolean) => {
     onOpenChange(newOpen);
     if (!newOpen) {
-      form.reset({
-        pledgeId,
-        currency: (pledgeCurrency as any) || "USD",
-        exchangeRate: 1,
-        amountUsd: 0,
-        amount: pledgeAmount,
-        paymentDate: new Date().toISOString().split("T")[0],
-        paymentMethod: "cash" as const,
-        referenceNumber: "",
-        checkNumber: "",
-        receiptNumber: "",
-        notes: "",
-      });
+      form.reset();
+      setShowSolicitorSection(false);
     }
   };
 
+  // Add allocation
+  const addAllocation = () => {
+    append({
+      pledgeId: 0,
+      amount: 0, // Changed from allocatedAmount to amount
+      installmentScheduleId: null,
+      notes: null,
+      receiptNumber: null,
+      receiptType: null,
+      receiptIssued: false,
+    });
+  };
+
+  // Remove allocation
+  const removeAllocation = (index: number) => remove(index);
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-[800px] max-h-[80vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-[800px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Add Payment</DialogTitle>
           <DialogDescription>
-            Record a payment for pledge:{" "}
-            {pledgeDescription || `Pledge #${pledgeId}`}
-            <span className="block mt-1 text-sm text-muted-foreground">
-              Target currency: {pledgeCurrency} (amount will be auto-converted)
-            </span>
+            Record a payment for pledge: {pledgeDescription || `#${pledgeId ?? "-"}`}
           </DialogDescription>
         </DialogHeader>
-
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-            {/* Basic Payment Information */}
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
+            {/* Payment Details */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Payment Details</CardTitle>
+                <CardTitle>Payment Details</CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Total Amount */}
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="amount"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Amount</FormLabel>
+                      <FormControl>
+                        <Input
+                          {...field}
+                          type="number"
+                          step="0.01"
+                          min={0}
+                          value={field.value ?? ""}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            field.onChange(val ? parseFloat(val) : 0);
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency</FormLabel>
+                      <Select value={field.value} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select currency" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {supportedCurrencies.map((curr) => (
+                            <SelectItem key={curr} value={curr}>
+                              {curr}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {ratesError && (
+                        <p className="text-sm text-red-600">Error fetching rates.</p>
+                      )}
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="exchangeRate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>
+                        Exchange Rate (1 {watchedCurrency} = {field.value} USD)
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.0001" min={0} readOnly value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="amountUsd"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Amount (USD)</FormLabel>
+                      <FormControl>
+                        <Input type="number" step="0.01" min={0} readOnly value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="paymentDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Date</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="receivedDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Effective Date</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Payment Method & Status */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Payment Method & Status</CardTitle>
+              </CardHeader>
+              <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="paymentMethod"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Method</FormLabel>
+                      <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select payment method" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {paymentMethodValues.map((method) => (
+                            <SelectItem key={method} value={method}>
+                              {method}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="methodDetail"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Method Detail</FormLabel>
+                      <Select
+                        value={field.value ?? NO_SELECTION}
+                        onValueChange={(value) => {
+                          field.onChange(value === NO_SELECTION ? null : value);
+                        }}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select method detail" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value={NO_SELECTION}>None</SelectItem>
+                          {methodDetailValues.map((detail) => (
+                            <SelectItem key={detail} value={detail}>
+                              {detail}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="account"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Account</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="checkDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Check Date</FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="checkNumber"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Check Number</FormLabel>
+                      <FormControl>
+                        <Input {...field} value={field.value ?? ""} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="paymentStatus"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Payment Status</FormLabel>
+                      <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select payment status" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {paymentStatusValues.map((status) => (
+                            <SelectItem key={status} value={status}>
+                              {status}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Solicitor Section */}
+            <div className="flex items-center space-x-2">
+              <Switch
+                id="show-solicitor-section"
+                checked={showSolicitorSection}
+                onCheckedChange={(checked) => {
+                  setShowSolicitorSection(checked);
+                  if (!checked) {
+                    form.setValue("solicitorId", null);
+                    form.setValue("bonusPercentage", null);
+                    form.setValue("bonusAmount", null);
+                    form.setValue("bonusRuleId", null);
+                  }
+                }}
+              />
+              <label htmlFor="show-solicitor-section" className="text-sm font-medium">
+                Assign Solicitor
+              </label>
+            </div>
+            {showSolicitorSection && (
+              <Card>
+                <CardHeader>
+                  <CardTitle>Solicitor Information</CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
-                    name="amount"
+                    name="solicitorId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Total Amount</FormLabel>
+                        <FormLabel>Solicitor ID</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? Number(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="bonusPercentage"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Bonus Percentage (%)</FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.01"
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? Number(e.target.value) : null)
+                            }
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="bonusAmount"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Bonus Amount</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
                             step="0.01"
-                            {...field}
-                            onChange={(e) => {
-                              const value = e.target.value;
-                              field.onChange(value ? parseFloat(value) : 0);
-                            }}
+                            value={field.value ?? ""}
+                            disabled
+                            onChange={field.onChange}
                           />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
-                  {/* Currency */}
                   <FormField
                     control={form.control}
-                    name="currency"
+                    name="bonusRuleId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Currency</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                          disabled={isLoadingRates}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue
-                                placeholder={
-                                  isLoadingRates
-                                    ? "Loading currencies..."
-                                    : "Select a currency"
-                                }
-                              />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {supportedCurrencies.map((curr) => (
-                              <SelectItem key={curr} value={curr}>
-                                {curr}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {ratesError && (
-                          <p className="text-sm text-red-500">Error fetching rates.</p>
-                        )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Exchange Rate */}
-                  <FormField
-                    control={form.control}
-                    name="exchangeRate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Exchange Rate (to USD)</FormLabel>
+                        <FormLabel>Bonus Rule ID</FormLabel>
                         <FormControl>
                           <Input
                             {...field}
                             type="number"
-                            step="0.0001"
-                            readOnly
-                            className={isLoadingRates ? "opacity-70" : "opacity-70"}
+                            value={field.value ?? ""}
+                            onChange={(e) =>
+                              field.onChange(e.target.value ? Number(e.target.value) : null)
+                            }
                           />
                         </FormControl>
-                        {isLoadingRates && <p className="text-sm text-gray-500">Fetching latest rates...</p>}
-                        {ratesError && <p className="text-sm text-red-500">Error fetching rates.</p>}
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                </CardContent>
+              </Card>
+            )}
 
-                  {/* Amount USD */}
-                  <FormField
-                    control={form.control}
-                    name="amountUsd"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Amount (USD)</FormLabel>
-                        <FormControl>
-                          <Input {...field} type="number" step="0.01" readOnly className="opacity-70" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+            {/* Split Payment Allocations */}
+            {watchedIsSplitPayment && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Payment Allocations
+                    <span className="ml-2 rounded bg-gray-200 px-2 text-xs">
+                      {fields.length} allocation{fields.length !== 1 ? "s" : ""}
+                    </span>
+                  </CardTitle>
+                  <DialogDescription>
+                    Add allocation amounts for this split payment. All allocations must use the same currency as the payment.
+                  </DialogDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {fields.length > 0 ? (
+                    fields.map((field, index) => (
+                      <div
+                        key={field.id}
+                        className="border border-gray-300 rounded-lg p-6 bg-white shadow-sm hover:shadow-md"
+                      >
+                        <div className="flex justify-between mb-4">
+                          <h4 className="font-semibold text-lg">Allocation #{index + 1}</h4>
+                          {fields.length > 1 && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800"
+                              aria-label={`Remove allocation ${index + 1}`}
+                              onClick={() => removeAllocation(index)}
+                            >
+                              <X className="h-5 w-5" />
+                            </Button>
+                          )}
+                        </div>
 
-                  {/* Amount in Pledge Currency (show conversion if different) */}
-                  {watchedCurrency && watchedCurrency !== pledgeCurrency && (
-                    <FormField
-                      control={form.control}
-                      name="amount"
-                      render={() => (
-                        <FormItem>
-                          <FormLabel>Amount (Pledge Currency: {pledgeCurrency})</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              value={(() => {
-                                if (watchedAmount > 0 && exchangeRatesData?.data?.rates && watchedCurrency) {
-                                  const inputToUsdRate =
-                                    parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
-                                  const usdAmount = watchedAmount * inputToUsdRate;
-                                  const usdToPledgeRate =
-                                    parseFloat(exchangeRatesData.data.rates[pledgeCurrency]) || 1;
-                                  const convertedAmount = usdAmount / usdToPledgeRate;
-                                  return Math.round(convertedAmount * 100) / 100;
-                                }
-                                return 0;
-                              })()}
-                              readOnly
-                              className="opacity-70"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.pledgeId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Pledge ID *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    value={field.value ?? ""}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        e.target.value ? parseInt(e.target.value) : null,
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.amount`} // Changed from allocatedAmount to amount
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Allocated Amount *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    value={field.value ?? ""}
+                                    onChange={(e) =>
+                                      field.onChange(
+                                        e.target.value ? parseFloat(e.target.value) : null,
+                                      )
+                                    }
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.notes`}
+                            render={({ field }) => (
+                              <FormItem className="md:col-span-2">
+                                <FormLabel>Allocation Notes</FormLabel>
+                                <FormControl>
+                                  <Textarea
+                                    rows={2}
+                                    value={field.value ?? ""}
+                                    onChange={(e) => field.onChange(e.target.value)}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptNumber`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Number</FormLabel>
+                                <FormControl>
+                                  <Input value={field.value ?? ""} onChange={field.onChange} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptType`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Type</FormLabel>
+                                <Select
+                                  value={field.value ?? NO_SELECTION}
+                                  onValueChange={(val) =>
+                                    field.onChange(val === NO_SELECTION ? null : val)
+                                  }
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select receipt type" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value={NO_SELECTION}>None</SelectItem>
+                                    {receiptTypeValues.map((type) => (
+                                      <SelectItem key={type} value={type}>
+                                        {type}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptIssued`}
+                            render={({ field }) => (
+                              <FormItem className="flex justify-between items-center md:col-span-2 rounded-lg border p-4 shadow-sm">
+                                <FormLabel>Receipt Issued</FormLabel>
+                                <FormControl>
+                                  <Switch
+                                    checked={!!field.value}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-center p-4 text-muted-foreground">
+                      No allocations yet.
+                    </p>
                   )}
+                  <Button type="button" variant="outline" onClick={addAllocation} className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" /> Add Allocation
+                  </Button>
 
-                  {/* Payment Date */}
-                  <FormField
-                    control={form.control}
-                    name="paymentDate"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+                  {/* Allocation summary and validation */}
+                  <div className="mt-4 border-t pt-4">
+                    <div className="flex justify-between font-semibold text-lg">
+                      <span>Total Allocated:</span>
+                      <span>
+                        {watchedCurrency}{" "}
+                        {totalAllocated.toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm text-muted-foreground mt-1">
+                      <span>Payment Amount:</span>
+                      <span>
+                        {watchedCurrency}{" "}
+                        {(watchedAmount ?? 0).toLocaleString(undefined, {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                    {!allocationsValid && (
+                      <p className="mt-2 text-red-600 font-medium">
+                        Total allocated amount must equal payment amount.
+                      </p>
                     )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Payment Method and Status Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Payment Method & Status</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Payment Method */}
-                  <FormField
-                    control={form.control}
-                    name="paymentMethod"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Method</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          defaultValue={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a payment method" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {paymentMethods.map((method) => (
-                              <SelectItem key={method.value} value={method.value}>
-                                {method.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
+                    {allocationsValid && (
+                      <p className="mt-2 text-green-600 font-medium">
+                        Allocations are balanced.
+                      </p>
                     )}
-                  />
-
-                  {/* Reference Number */}
-                  <FormField
-                    control={form.control}
-                    name="referenceNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Reference Number</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            value={field.value || ""}
-                            placeholder="Transaction reference number"
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Check Number - only show if payment method is check */}
-                  {watchedPaymentMethod === "check" && (
-                    <FormField
-                      control={form.control}
-                      name="checkNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Check Number</FormLabel>
-                          <FormControl>
-                            <Input 
-                              {...field} 
-                              value={field.value || ""} 
-                              placeholder="Check number" 
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Receipt Information Section */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Receipt Information</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Receipt Number */}
-                  <FormField
-                    control={form.control}
-                    name="receiptNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Receipt Number</FormLabel>
-                        <FormControl>
-                          <Input 
-                            {...field} 
-                            value={field.value || ""} 
-                            placeholder="Receipt number" 
-                          />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Receipt Type */}
-                  <FormField
-                    control={form.control}
-                    name="receiptType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Receipt Type</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value || ""}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a receipt type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {receiptTypes.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
 
             {/* General Notes */}
             <FormField
@@ -588,12 +927,7 @@ export default function PaymentDialog({
                 <FormItem>
                   <FormLabel>General Payment Notes</FormLabel>
                   <FormControl>
-                    <Textarea
-                      {...field}
-                      value={field.value || ""}
-                      placeholder="Additional notes about this payment"
-                      rows={3}
-                    />
+                    <Textarea {...field} value={field.value ?? ""} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -612,12 +946,14 @@ export default function PaymentDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={createPaymentMutation.isPending || isLoadingRates}
+                disabled={
+                  createPaymentMutation.isPending ||
+                  isLoadingRates ||
+                  (watchedIsSplitPayment && !allocationsValid)
+                }
                 className="bg-green-600 hover:bg-green-700"
               >
-                {createPaymentMutation.isPending
-                  ? "Creating..."
-                  : "Record Payment"}
+                {createPaymentMutation.isPending ? "Creating..." : "Record Payment"}
               </Button>
             </div>
           </form>

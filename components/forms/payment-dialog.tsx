@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import PledgeDialog from "../forms/pledge-form";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -263,6 +264,7 @@ export default function PaymentFormDialog({
 
   const [open, setOpen] = useState(false);
   const [showSolicitorSection, setShowSolicitorSection] = useState(false);
+  const [pledgeDialogOpen, setPledgeDialogOpen] = useState(false);
 
   const contactId = useContactId() || propContactId;
 
@@ -445,7 +447,6 @@ export default function PaymentFormDialog({
       checkDate: null,
       checkNumber: null,
       paymentStatus: "completed",
-      // Removed receipt fields from common section
       solicitorId: null,
       bonusPercentage: null,
       bonusAmount: null,
@@ -690,8 +691,21 @@ export default function PaymentFormDialog({
               </div>
             )}
           </DialogDescription>
+          {/* <Button
+            type="button"
+            variant="outline"
+            onClick={() => setPledgeDialogOpen(true)}
+            className="ml-2 mt-2"
+          >
+            <PlusCircleIcon className="mr-2 h-4 w-4" />
+            Create New Pledge
+          </Button> */}
         </DialogHeader>
-
+        <PledgeDialog
+          open={pledgeDialogOpen}
+          onOpenChange={setPledgeDialogOpen}
+          contactId={contactId ?? 0}
+        />
         <Form {...form}>
           <form
             onSubmit={(e) => {
@@ -1579,6 +1593,15 @@ export default function PaymentFormDialog({
               >
                 {createPaymentMutation.isPending ? "Creating Payment..." : "Record Payment"}
               </Button>
+               <Button
+              type="button"
+              onClick={() => setPledgeDialogOpen(true)}
+              disabled={createPaymentMutation.isPending}
+              className="ml-2"
+            >
+              <PlusCircleIcon className="mr-2 h-4 w-4" />
+              Create New Pledge
+            </Button>
             </div>
           </form>
         </Form>
