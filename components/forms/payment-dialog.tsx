@@ -6,7 +6,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronsUpDown, X, Plus ,Split,Users} from "lucide-react";
+import { Check, ChevronsUpDown, X, Plus, Split, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -79,8 +79,8 @@ interface Pledge {
   };
 }
 
-const useSolicitors = (params: { search?: string; status?: "active" | "inactive" | "suspended"; } = {}) => {
-  return useQuery<{ solicitors: Solicitor[] }>({
+const useSolicitors = (params: { search?: string; status?: "active" | "inactive" | "suspended" } = {}) =>
+  useQuery<{ solicitors: Solicitor[] }>({
     queryKey: ["solicitors", params],
     queryFn: async () => {
       const searchParams = new URLSearchParams();
@@ -92,7 +92,6 @@ const useSolicitors = (params: { search?: string; status?: "active" | "inactive"
       return response.json();
     },
   });
-};
 
 const supportedCurrencies = [
   "USD",
@@ -196,13 +195,18 @@ const receiptTypes = [
   { value: "other", label: "Other" },
 ] as const;
 
+// Allocation schema with receipt fields per allocation
 const allocationSchema = z.object({
   pledgeId: z.number().optional(),
   allocatedAmount: z.number().optional(),
   installmentScheduleId: z.number().optional().nullable(),
   notes: z.string().optional().nullable(),
+  receiptNumber: z.string().optional().nullable(),
+  receiptType: z.string().optional().nullable(),
+  receiptIssued: z.boolean().optional(),
 });
 
+// Payment schema without common receipt fields
 const paymentSchema = z.object({
   amount: z.number().optional(),
   currency: z.enum(supportedCurrencies).optional(),
@@ -212,12 +216,10 @@ const paymentSchema = z.object({
   receivedDate: z.string().optional().nullable(),
   paymentMethod: z.string().optional(),
   methodDetail: z.string().optional().nullable(),
+  account: z.string().optional().nullable(),
   paymentStatus: z.string().optional(),
-  referenceNumber: z.string().optional().nullable(),
+  checkDate: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),
-  receiptNumber: z.string().optional().nullable(),
-  receiptType: z.string().optional().nullable(),
-  receiptIssued: z.boolean().optional(),
 
   solicitorId: z.number().optional().nullable(),
   bonusPercentage: z.number().optional().nullable(),
@@ -287,11 +289,11 @@ export default function PaymentFormDialog({
       receivedDate: null,
       paymentMethod: "cash",
       methodDetail: null,
+      account: "",
+      checkDate: null,
+      checkNumber: null,
       paymentStatus: "completed",
-      referenceNumber: null,
-      receiptNumber: null,
-      receiptType: null,
-      receiptIssued: false,
+      // Removed receipt fields from common section
       solicitorId: null,
       bonusPercentage: null,
       bonusAmount: null,
@@ -301,9 +303,30 @@ export default function PaymentFormDialog({
       paymentPlanId: null,
       installmentScheduleId: null,
       isSplitPayment: false,
+      // Initialize allocations with receipt fields inside
       allocations: initialPledgeId
-        ? [{ pledgeId: initialPledgeId, allocatedAmount: 0, installmentScheduleId: null, notes: null }]
-        : [{ pledgeId: 0, allocatedAmount: 0, installmentScheduleId: null, notes: null }],
+        ? [
+          {
+            pledgeId: initialPledgeId,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ]
+        : [
+          {
+            pledgeId: 0,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ],
     },
   });
 
@@ -316,7 +339,6 @@ export default function PaymentFormDialog({
     if (supportedCurrencies.includes(currency as typeof supportedCurrencies[number])) {
       form.setValue("currency", currency as typeof supportedCurrencies[number]);
     } else {
-      // Fallback to USD if currency is not supported
       form.setValue("currency", "USD");
       console.warn(`Unsupported currency: ${currency}, defaulting to USD`);
     }
@@ -337,6 +359,7 @@ export default function PaymentFormDialog({
     0
   );
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
+
   const { data: pledgeData, isLoading: isLoadingPledge } = usePledgeDetailsQuery(
     watchedMainPledgeId!,
     { enabled: !watchedIsSplitPayment && !!watchedMainPledgeId && watchedMainPledgeId !== 0 }
@@ -354,12 +377,11 @@ export default function PaymentFormDialog({
     return 1;
   };
 
-  // Auto-fill exchange rate when currency changes
   useEffect(() => {
     if (watchedCurrency && exchangeRatesData?.data?.rates) {
       const autoRate = getExchangeRate(watchedCurrency);
       if (autoRate) {
-        form.setValue('exchangeRate', autoRate);
+        form.setValue("exchangeRate", autoRate);
       }
     }
   }, [watchedCurrency, exchangeRatesData, form]);
@@ -387,13 +409,11 @@ export default function PaymentFormDialog({
     const updateCalculatedAmounts = () => {
       const currency = form.getValues("currency");
       const amount = form.getValues("amount");
-
       let currentExchangeRate = form.getValues("exchangeRate");
-      // Ensure exchange rate is a positive number
-      currentExchangeRate = (currentExchangeRate && currentExchangeRate > 0) ? currentExchangeRate : 1;
+      currentExchangeRate = currentExchangeRate && currentExchangeRate > 0 ? currentExchangeRate : 1;
 
       if (currency && amount) {
-        const rate = (currency === "USD") ? 1 : currentExchangeRate;
+        const rate = currency === "USD" ? 1 : currentExchangeRate;
         const usdAmount = amount / rate;
         form.setValue("amountUsd", Math.round(usdAmount * 100) / 100);
       }
@@ -421,11 +441,11 @@ export default function PaymentFormDialog({
       receivedDate: null,
       paymentMethod: "cash",
       methodDetail: null,
+      account: "",
+      checkDate: null,
+      checkNumber: null,
       paymentStatus: "completed",
-      referenceNumber: null,
-      receiptNumber: null,
-      receiptType: null,
-      receiptIssued: false,
+      // Removed receipt fields from common section
       solicitorId: null,
       bonusPercentage: null,
       bonusAmount: null,
@@ -436,8 +456,28 @@ export default function PaymentFormDialog({
       installmentScheduleId: null,
       isSplitPayment: false,
       allocations: initialPledgeId
-        ? [{ pledgeId: initialPledgeId, allocatedAmount: 0, installmentScheduleId: null, notes: null }]
-        : [{ pledgeId: 0, allocatedAmount: 0, installmentScheduleId: null, notes: null }],
+        ? [
+          {
+            pledgeId: initialPledgeId,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ]
+        : [
+          {
+            pledgeId: 0,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ],
     });
     setShowSolicitorSection(false);
   }, [form, initialPledgeId]);
@@ -452,13 +492,10 @@ export default function PaymentFormDialog({
     toCurrency: string,
     exchangeRates: Record<string, string> | undefined
   ): number => {
-    // Ensure currencies are valid, default to USD if not
     const validFromCurrency = isValidCurrency(fromCurrency) ? fromCurrency : "USD";
     const validToCurrency = isValidCurrency(toCurrency) ? toCurrency : "USD";
 
-    if (validFromCurrency === validToCurrency || !exchangeRates) {
-      return Math.round(amount * 100) / 100;
-    }
+    if (validFromCurrency === validToCurrency || !exchangeRates) return Math.round(amount * 100) / 100;
 
     const fromRate = parseFloat(exchangeRates[validFromCurrency] || "1");
     const toRate = parseFloat(exchangeRates[validToCurrency] || "1");
@@ -478,9 +515,8 @@ export default function PaymentFormDialog({
 
   const onSubmit = async (data: PaymentFormData) => {
     try {
-      console.log('Form submitted with data:', data);
+      console.log("Form submitted with data:", data);
       const isSplit = data.isSplitPayment;
-
       const commonPaymentFields = {
         amount: data.amount,
         currency: data.currency,
@@ -490,11 +526,10 @@ export default function PaymentFormDialog({
         receivedDate: data.receivedDate,
         paymentMethod: data.paymentMethod,
         methodDetail: data.methodDetail,
+        account: data.account,
+        checkDate: data.checkDate,
+        checkNumber: data.checkNumber,
         paymentStatus: data.paymentStatus,
-        referenceNumber: data.referenceNumber,
-        receiptNumber: data.receiptNumber,
-        receiptType: data.receiptType,
-        receiptIssued: data.receiptIssued,
         solicitorId: data.solicitorId ? String(data.solicitorId) : null,
         bonusPercentage: data.bonusPercentage,
         bonusAmount: data.bonusAmount,
@@ -508,54 +543,49 @@ export default function PaymentFormDialog({
         if (!data.allocations || data.allocations.length === 0) {
           throw new Error("Split payment requires at least one allocation.");
         }
-
-        // For split payments, create the payload with allocations
         paymentPayload = {
           ...commonPaymentFields,
-          // Remove pledgeId for split payments - don't include installmentScheduleId
           pledgeId: null,
-          allocations: await Promise.all((data.allocations || []).map(async (allocation) => {
-            const targetPledge = pledgesData?.pledges?.find(p => p.id === allocation.pledgeId);
-            if (!targetPledge) {
-              throw new Error(`Pledge with ID ${allocation.pledgeId} not found for allocation.`);
-            }
+          allocations: await Promise.all(
+            (data.allocations || []).map(async (allocation) => {
+              const targetPledge = pledgesData?.pledges?.find(p => p.id === allocation.pledgeId);
+              if (!targetPledge) {
+                throw new Error(`Pledge with ID ${allocation.pledgeId} not found for allocation.`);
+              }
+              const paymentCurrency = data.currency || "USD";
+              const validPaymentCurrency = isValidCurrency(paymentCurrency) ? paymentCurrency : "USD";
+              const allocatedAmountInPledgeCurrency = convertAmountBetweenCurrencies(
+                allocation.allocatedAmount || 0,
+                validPaymentCurrency,
+                targetPledge.currency,
+                exchangeRatesData?.data?.rates
+              );
 
-            // Type assertion to ensure we have a valid supported currency
-            const paymentCurrency = data.currency || "USD";
-            const validPaymentCurrency = isValidCurrency(paymentCurrency) ? paymentCurrency : "USD";
-
-            const allocatedAmountInPledgeCurrency = convertAmountBetweenCurrencies(
-              allocation.allocatedAmount || 0,
-              validPaymentCurrency,
-              targetPledge.currency,
-              exchangeRatesData?.data?.rates
-            );
-
-            return {
-              pledgeId: String(allocation.pledgeId),
-              installmentScheduleId: allocation.installmentScheduleId ? String(allocation.installmentScheduleId) : null,
-              amount: allocation.allocatedAmount,
-              notes: allocation.notes,
-            };
-          })),
+              return {
+                pledgeId: String(allocation.pledgeId),
+                installmentScheduleId: allocation.installmentScheduleId ? String(allocation.installmentScheduleId) : null,
+                amount: allocation.allocatedAmount,
+                notes: allocation.notes,
+                // Include receipt fields per allocation
+                receiptNumber: allocation.receiptNumber,
+                receiptType: allocation.receiptType,
+                receiptIssued: allocation.receiptIssued,
+              };
+            })
+          ),
         };
       } else {
-        // Single payment
         if (!data.pledgeId) {
           throw new Error("Single payment requires a pledge ID.");
         }
-
-        // For single payments, build the payload conditionally
         const singlePaymentPayload: any = {
           ...commonPaymentFields,
           pledgeId: String(data.pledgeId),
         };
-
-        // Only include installmentScheduleId if it exists and is valid
         if (data.allocations?.length === 1 && data.allocations[0].installmentScheduleId) {
           singlePaymentPayload.installmentScheduleId = String(data.allocations[0].installmentScheduleId);
         }
-
+        // For single payments, no receipt fields are included here inside allocations (if not split)
         paymentPayload = singlePaymentPayload;
       }
 
@@ -569,12 +599,9 @@ export default function PaymentFormDialog({
         },
         onError: (error) => {
           console.error("Error creating payment:", error);
-          toast.error(
-            error instanceof Error ? error.message : "Failed to create payment"
-          );
-        }
+          toast.error(error instanceof Error ? error.message : "Failed to create payment");
+        },
       });
-
     } catch (error) {
       console.error("Unexpected error:", error);
       toast.error(error instanceof Error ? error.message : "An unexpected error occurred");
@@ -600,8 +627,7 @@ export default function PaymentFormDialog({
 
   const solicitorOptions =
     solicitorsData?.solicitors?.map((solicitor: Solicitor) => ({
-      label: `${solicitor.firstName} ${solicitor.lastName}${solicitor.id ? ` (${solicitor.id})` : ""
-        }`,
+      label: `${solicitor.firstName} ${solicitor.lastName}${solicitor.id ? ` (${solicitor.id})` : ""}`,
       value: solicitor.id,
       commissionRate: solicitor.commissionRate,
       contact: solicitor.contact,
@@ -612,7 +638,15 @@ export default function PaymentFormDialog({
   };
 
   const addAllocation = () => {
-    append({ pledgeId: 0, allocatedAmount: 0, installmentScheduleId: null, notes: null });
+    append({
+      pledgeId: 0,
+      allocatedAmount: 0,
+      installmentScheduleId: null,
+      notes: null,
+      receiptNumber: null,
+      receiptType: null,
+      receiptIssued: false,
+    });
   };
 
   const removeAllocation = (index: number) => {
@@ -659,10 +693,13 @@ export default function PaymentFormDialog({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={(e) => {
-            e.preventDefault();
-            onSubmit(form.getValues());
-          }} className="space-y-6">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              onSubmit(form.getValues());
+            }}
+            className="space-y-6"
+          >
             {/* Basic Payment Information */}
             <Card>
               <CardHeader>
@@ -679,9 +716,29 @@ export default function PaymentFormDialog({
                         form.setValue("isSplitPayment", checked);
                         if (checked) {
                           form.setValue("pledgeId", null);
-                          form.setValue("allocations", [{ pledgeId: 0, allocatedAmount: 0, installmentScheduleId: null, notes: null }]);
+                          form.setValue("allocations", [
+                            {
+                              pledgeId: 0,
+                              allocatedAmount: 0,
+                              installmentScheduleId: null,
+                              notes: null,
+                              receiptNumber: null,
+                              receiptType: null,
+                              receiptIssued: false,
+                            },
+                          ]);
                         } else {
-                          form.setValue("allocations", [{ pledgeId: initialPledgeId || 0, allocatedAmount: 0, installmentScheduleId: null, notes: null }]);
+                          form.setValue("allocations", [
+                            {
+                              pledgeId: initialPledgeId || 0,
+                              allocatedAmount: 0,
+                              installmentScheduleId: null,
+                              notes: null,
+                              receiptNumber: null,
+                              receiptType: null,
+                              receiptIssued: false,
+                            },
+                          ]);
                           if (initialPledgeId) {
                             form.setValue("pledgeId", initialPledgeId);
                             const initialPledge = pledgesData?.pledges?.find(p => p.id === initialPledgeId);
@@ -689,13 +746,19 @@ export default function PaymentFormDialog({
                               const balance = parseFloat(initialPledge.balance);
                               form.setValue("amount", balance);
                               form.setValue("allocations.0.allocatedAmount", balance);
-                              form.setValue("currency", initialPledge.currency as typeof supportedCurrencies[number]);
+                              form.setValue(
+                                "currency",
+                                initialPledge.currency as typeof supportedCurrencies[number]
+                              );
                             }
                           }
                         }
                       }}
                     />
-                    <label htmlFor="isSplitPayment" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+                    <label
+                      htmlFor="isSplitPayment"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
                       Split Payment Across Multiple Pledges
                     </label>
                   </div>
@@ -713,7 +776,10 @@ export default function PaymentFormDialog({
                                 <Button
                                   variant="outline"
                                   role="combobox"
-                                  className={cn("w-full justify-between", (!field.value || field.value === 0) && "text-muted-foreground")}
+                                  className={cn(
+                                    "w-full justify-between",
+                                    (!field.value || field.value === 0) && "text-muted-foreground"
+                                  )}
                                   disabled={isLoadingPledges}
                                 >
                                   {field.value
@@ -729,10 +795,7 @@ export default function PaymentFormDialog({
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                               <Command>
-                                <CommandInput
-                                  placeholder="Search pledges..."
-                                  className="h-9"
-                                />
+                                <CommandInput placeholder="Search pledges..." className="h-9" />
                                 <CommandList>
                                   <CommandEmpty>No pledge found.</CommandEmpty>
                                   <CommandGroup>
@@ -755,9 +818,7 @@ export default function PaymentFormDialog({
                                         <Check
                                           className={cn(
                                             "ml-auto h-4 w-4",
-                                            pledge.value === field.value
-                                              ? "opacity-100"
-                                              : "opacity-0"
+                                            pledge.value === field.value ? "opacity-100" : "opacity-0"
                                           )}
                                         />
                                       </CommandItem>
@@ -793,7 +854,6 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-
                   {/* Currency */}
                   <FormField
                     control={form.control}
@@ -818,21 +878,21 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-
                   {/* Exchange Rate */}
                   <FormField
                     control={form.control}
                     name="exchangeRate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Exchange Rate (1 {watchedCurrency} = {field.value} USD)</FormLabel>
+                        <FormLabel>
+                          Exchange Rate (1 {watchedCurrency} = {field.value} USD)
+                        </FormLabel>
                         <FormControl>
                           <Input type="number" step="0.0001" {...field} />
                         </FormControl>
                       </FormItem>
                     )}
                   />
-
                   {/* Amount in USD */}
                   <FormField
                     control={form.control}
@@ -846,7 +906,6 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-
                   {/* Payment Date */}
                   <FormField
                     control={form.control}
@@ -860,7 +919,6 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-
                   {/* Received Date */}
                   <FormField
                     control={form.control}
@@ -878,13 +936,14 @@ export default function PaymentFormDialog({
               </CardContent>
             </Card>
 
-            {/* Payment Method and Status Section */}
+            {/* Payment Method & Status Card */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Payment Method & Status</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Payment Method */}
                   <FormField
                     control={form.control}
                     name="paymentMethod"
@@ -897,15 +956,10 @@ export default function PaymentFormDialog({
                               <Button
                                 variant="outline"
                                 role="combobox"
-                                className={cn(
-                                  "w-full justify-between",
-                                  !field.value && "text-muted-foreground"
-                                )}
+                                className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
                               >
                                 {field.value
-                                  ? paymentMethods.find(
-                                    (method) => method.value === field.value
-                                  )?.label
+                                  ? paymentMethods.find(method => method.value === field.value)?.label
                                   : "Select payment method"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -916,7 +970,7 @@ export default function PaymentFormDialog({
                               <CommandInput placeholder="Search payment methods..." />
                               <CommandEmpty>No payment method found.</CommandEmpty>
                               <CommandGroup>
-                                {paymentMethods.map((method) => (
+                                {paymentMethods.map(method => (
                                   <CommandItem
                                     value={method.label}
                                     key={method.value}
@@ -927,9 +981,7 @@ export default function PaymentFormDialog({
                                     <Check
                                       className={cn(
                                         "mr-2 h-4 w-4",
-                                        method.value === field.value
-                                          ? "opacity-100"
-                                          : "opacity-0"
+                                        method.value === field.value ? "opacity-100" : "opacity-0"
                                       )}
                                     />
                                     {method.label}
@@ -943,7 +995,7 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-
+                  {/* Method Detail */}
                   <FormField
                     control={form.control}
                     name="methodDetail"
@@ -956,15 +1008,10 @@ export default function PaymentFormDialog({
                               <Button
                                 variant="outline"
                                 role="combobox"
-                                className={cn(
-                                  "w-full justify-between",
-                                  !field.value && "text-muted-foreground"
-                                )}
+                                className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
                               >
                                 {field.value
-                                  ? methodDetails.find(
-                                    (detail) => detail.value === field.value
-                                  )?.label
+                                  ? methodDetails.find(detail => detail.value === field.value)?.label
                                   : "Select method detail"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -982,16 +1029,13 @@ export default function PaymentFormDialog({
                                   }}
                                 >
                                   <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      !field.value ? "opacity-100" : "opacity-0"
-                                    )}
+                                    className={cn("mr-2 h-4 w-4", !field.value ? "opacity-100" : "opacity-0")}
                                   />
                                   None
                                 </CommandItem>
-                                {methodDetails.map((detail) => (
+                                {methodDetails.map(detail => (
                                   <CommandItem
-                                    value={detail.label}
+                                    value={detail.value}
                                     key={detail.value}
                                     onSelect={() => {
                                       form.setValue("methodDetail", detail.value);
@@ -1000,9 +1044,7 @@ export default function PaymentFormDialog({
                                     <Check
                                       className={cn(
                                         "mr-2 h-4 w-4",
-                                        detail.value === field.value
-                                          ? "opacity-100"
-                                          : "opacity-0"
+                                        detail.value === field.value ? "opacity-100" : "opacity-0"
                                       )}
                                     />
                                     {detail.label}
@@ -1016,7 +1058,50 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-
+                  {/* Account */}
+                  <FormField
+                    control={form.control}
+                    name="account"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Account</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value || ""} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {/* Check Date and Check Number side by side */}
+                  <div className="flex gap-4 md:col-span-2">
+                    <FormField
+                      control={form.control}
+                      name="checkDate"
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormLabel>Check Date</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} value={field.value ?? ""} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="checkNumber"
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormLabel>Check Number</FormLabel>
+                          <FormControl>
+                            <Input {...field} value={field.value || ""} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                  {/* Payment Status */}
                   <FormField
                     control={form.control}
                     name="paymentStatus"
@@ -1040,84 +1125,11 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="referenceNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Reference Number</FormLabel>
-                        <FormControl>
-                          <Input {...field} value={field.value || ""} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="receiptNumber"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Receipt Number</FormLabel>
-                        <FormControl>
-                          <Input {...field} value={field.value || ""} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="receiptType"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Receipt Type</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(value === "__NONE_SELECTED__" ? null : value)}
-                          value={field.value || ""}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select receipt type" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="__NONE_SELECTED__">None</SelectItem>
-                            {receiptTypes.map((type) => (
-                              <SelectItem key={type.value} value={type.value}>
-                                {type.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="receiptIssued"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm md:col-span-2">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Receipt Issued</FormLabel>
-                          <DialogDescription>
-                            Mark if a receipt has been issued for this payment.
-                          </DialogDescription>
-                        </div>
-                        <FormControl>
-                          <Switch
-                            checked={field.value}
-                            onCheckedChange={field.onChange}
-                          />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
                 </div>
               </CardContent>
             </Card>
+
+            {/* Note: The common Receipt Information card is removed to enforce per-allocation receipt data */}
 
             {/* Solicitor Section */}
             <div className="flex items-center space-x-2">
@@ -1134,7 +1146,10 @@ export default function PaymentFormDialog({
                   }
                 }}
               />
-              <label htmlFor="show-solicitor-section" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
+              <label
+                htmlFor="show-solicitor-section"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
                 Assign Solicitor
               </label>
             </div>
@@ -1165,9 +1180,7 @@ export default function PaymentFormDialog({
                                   disabled={isLoadingSolicitors}
                                 >
                                   {field.value
-                                    ? solicitorOptions.find(
-                                      (solicitor: any) => solicitor.value === field.value
-                                    )?.label
+                                    ? solicitorOptions.find((solicitor: any) => solicitor.value === field.value)?.label
                                     : isLoadingSolicitors
                                       ? "Loading solicitors..."
                                       : "Select solicitor"}
@@ -1177,10 +1190,7 @@ export default function PaymentFormDialog({
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                               <Command>
-                                <CommandInput
-                                  placeholder="Search solicitors..."
-                                  className="h-9"
-                                />
+                                <CommandInput placeholder="Search solicitors..." className="h-9" />
                                 <CommandList>
                                   <CommandEmpty>No solicitor found.</CommandEmpty>
                                   <CommandGroup>
@@ -1199,9 +1209,7 @@ export default function PaymentFormDialog({
                                         <Check
                                           className={cn(
                                             "ml-auto h-4 w-4",
-                                            solicitor.value === field.value
-                                              ? "opacity-100"
-                                              : "opacity-0"
+                                            solicitor.value === field.value ? "opacity-100" : "opacity-0"
                                           )}
                                         />
                                       </CommandItem>
@@ -1215,7 +1223,6 @@ export default function PaymentFormDialog({
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="bonusPercentage"
@@ -1238,7 +1245,6 @@ export default function PaymentFormDialog({
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="bonusAmount"
@@ -1252,7 +1258,6 @@ export default function PaymentFormDialog({
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="bonusRuleId"
@@ -1279,7 +1284,7 @@ export default function PaymentFormDialog({
               </Card>
             )}
 
-            {/* Split Payment Section */}
+            {/* Split Payment Allocations Section with receipt fields per allocation */}
             {watchedIsSplitPayment && (
               <Card>
                 <CardHeader>
@@ -1287,7 +1292,7 @@ export default function PaymentFormDialog({
                     <Users className="h-5 w-5" />
                     Payment Allocations
                     <Badge variant="secondary" className="ml-2">
-                      {fields.length} allocation{fields.length !== 1 ? 's' : ''}
+                      {fields.length} allocation{fields.length !== 1 ? "s" : ""}
                     </Badge>
                   </CardTitle>
                   <DialogDescription>
@@ -1297,23 +1302,26 @@ export default function PaymentFormDialog({
                 <CardContent className="space-y-4">
                   {fields.length > 0 ? (
                     fields.map((field, index) => (
-                      <div key={field.id} className="border rounded-lg p-4 bg-gray-50">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium">Allocation #{index + 1}</h4>
+                      <div
+                        key={field.id}
+                        className="border border-gray-300 rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-lg font-semibold">Allocation #{index + 1}</h4>
                           {fields.length > 1 && (
                             <Button
                               type="button"
                               variant="ghost"
                               size="sm"
                               onClick={() => removeAllocation(index)}
-                              className="h-8 w-8 p-0 text-red-500 hover:text-red-700"
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800"
+                              aria-label={`Remove allocation ${index + 1}`}
                             >
-                              <X className="h-4 w-4" />
+                              <X className="h-5 w-5" />
                             </Button>
                           )}
                         </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {/* Pledge Selection */}
                           <FormField
                             control={form.control}
@@ -1328,18 +1336,18 @@ export default function PaymentFormDialog({
                                         variant="outline"
                                         role="combobox"
                                         className={cn(
-                                          "w-full justify-between",
-                                          !field.value && "text-muted-foreground"
+                                          "w-full flex justify-between items-center min-w-0",
+                                          (!field.value || field.value === 0) && "text-muted-foreground"
                                         )}
                                         disabled={isLoadingPledges}
                                       >
-                                        {field.value
-                                          ? pledgeOptions.find(
-                                            (pledge) => pledge.value === field.value
-                                          )?.label
-                                          : isLoadingPledges
-                                            ? "Loading pledges..."
-                                            : "Select pledge"}
+                                        <span className="block truncate max-w-[calc(100%-1.5rem)]" style={{ minWidth: 0 }}>
+                                          {field.value
+                                            ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
+                                            : isLoadingPledges
+                                              ? "Loading pledges..."
+                                              : "Select pledge"}
+                                        </span>
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
                                     </FormControl>
@@ -1363,9 +1371,7 @@ export default function PaymentFormDialog({
                                               <Check
                                                 className={cn(
                                                   "ml-auto h-4 w-4",
-                                                  pledge.value === field.value
-                                                    ? "opacity-100"
-                                                    : "opacity-0"
+                                                  pledge.value === field.value ? "opacity-100" : "opacity-0"
                                                 )}
                                               />
                                             </CommandItem>
@@ -1376,12 +1382,6 @@ export default function PaymentFormDialog({
                                   </PopoverContent>
                                 </Popover>
                                 <FormMessage className="text-xs text-red-500" />
-                                {field.value && getPledgeById(field.value) && (
-                                  <p className="text-xs text-muted-foreground mt-1">
-                                    Pledge Balance: {getPledgeById(field.value)?.currency}{" "}
-                                    {parseFloat(getPledgeById(field.value)?.balance || "").toLocaleString()}
-                                  </p>
-                                )}
                               </FormItem>
                             )}
                           />
@@ -1408,7 +1408,6 @@ export default function PaymentFormDialog({
                               </FormItem>
                             )}
                           />
-
                           {/* Allocation Notes */}
                           <div className="md:col-span-2">
                             <FormField
@@ -1418,18 +1417,79 @@ export default function PaymentFormDialog({
                                 <FormItem>
                                   <FormLabel>Allocation Notes</FormLabel>
                                   <FormControl>
-                                    <Textarea
-                                      {...field}
-                                      value={field.value || ""}
-                                      rows={2}
-                                      className="resize-none"
-                                    />
+                                    <Textarea {...field} value={field.value || ""} rows={2} className="resize-none" />
                                   </FormControl>
                                   <FormMessage className="text-xs text-red-500" />
                                 </FormItem>
                               )}
                             />
                           </div>
+
+                          {/* Receipt Number */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptNumber`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Number</FormLabel>
+                                <FormControl>
+                                  <Input {...field} value={field.value || ""} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Receipt Type */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptType`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Type</FormLabel>
+                                <Select
+                                  onValueChange={(value) =>
+                                    field.onChange(value === "__NONE_SELECTED__" ? null : value)
+                                  }
+                                  value={field.value || ""}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select receipt type" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="__NONE_SELECTED__">None</SelectItem>
+                                    {receiptTypes.map((type) => (
+                                      <SelectItem key={type.value} value={type.value}>
+                                        {type.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Receipt Issued */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptIssued`}
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm md:col-span-2">
+                                <div className="space-y-0.5">
+                                  <FormLabel className="text-base">Receipt Issued</FormLabel>
+                                  <DialogDescription>
+                                    Mark if a receipt has been issued for this allocation&apos;s payment.
+                                  </DialogDescription>
+                                </div>
+                                <FormControl>
+                                  <Switch checked={field.value} onCheckedChange={field.onChange} />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
                         </div>
                       </div>
                     ))
@@ -1439,43 +1499,34 @@ export default function PaymentFormDialog({
                       <p>No allocations found for this split payment</p>
                     </div>
                   )}
-
-                  {/* Add Allocation Button */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addAllocation}
-                    className="flex items-center gap-2"
-                  >
+                  <Button type="button" variant="outline" size="sm" onClick={addAllocation} className="flex items-center gap-2">
                     <Plus className="h-4 w-4" />
                     Add Allocation
                   </Button>
 
-                  {/* Total Summary with validation */}
+                  {/* Allocation summary and validation */}
                   <div className="border-t pt-4 mt-4">
                     <div className="flex justify-between items-center font-medium">
                       <span>Total Allocated:</span>
-                      <span className={cn(
-                        "text-lg",
-                        remainingToAllocate === 0 ? "text-green-600" : "text-red-600"
-                      )}>
-                        {watchedCurrency} {totalAllocatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      <span className={cn("text-lg", remainingToAllocate === 0 ? "text-green-600" : "text-red-600")}>
+                        {watchedCurrency}{" "}
+                        {totalAllocatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-sm text-gray-600 mt-1">
                       <span>Payment Amount:</span>
                       <span>
-                        {watchedCurrency} {(watchedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        {watchedCurrency}{" "}
+                        {(watchedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
 
-                    {/* Validation Messages */}
                     {remainingToAllocate !== 0 && (
                       <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
                         <p className="text-sm text-red-600 font-medium">⚠️ Validation Error</p>
                         <p className="text-xs text-red-600 mt-1">
-                          Total allocated amount ({totalAllocatedAmount.toFixed(2)}) must equal payment amount ({(watchedAmount || 0).toFixed(2)})
+                          Total allocated amount ({totalAllocatedAmount.toFixed(2)}) must equal payment amount (
+                          {(watchedAmount || 0).toFixed(2)})
                         </p>
                       </div>
                     )}
@@ -1483,9 +1534,7 @@ export default function PaymentFormDialog({
                     {remainingToAllocate === 0 && (
                       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
                         <p className="text-sm text-green-600 font-medium">✓ Allocations Valid</p>
-                        <p className="text-xs text-green-600 mt-1">
-                          All allocations are properly balanced
-                        </p>
+                        <p className="text-xs text-green-600 mt-1">All allocations are properly balanced</p>
                       </div>
                     )}
                   </div>
@@ -1508,6 +1557,7 @@ export default function PaymentFormDialog({
               )}
             />
 
+            {/* Form Actions */}
             <div className="flex gap-4 justify-end">
               <Button
                 type="button"
