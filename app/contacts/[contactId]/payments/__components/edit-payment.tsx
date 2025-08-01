@@ -286,7 +286,7 @@ export default function EditPaymentDialog({
 
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
-  const setOpen = isControlled ? (controlledOnOpenChange || (() => {})) : setInternalOpen;
+  const setOpen = isControlled ? (controlledOnOpenChange || (() => { })) : setInternalOpen;
 
   const isPaymentPlanPayment = payment.paymentPlanId !== null;
   const isSplitPayment = payment.isSplitPayment || false;
@@ -367,10 +367,11 @@ export default function EditPaymentDialog({
 
   useEffect(() => {
     if (watchedAmount && watchedExchangeRate) {
-      const usdAmount = watchedAmount / watchedExchangeRate;
+      const usdAmount = watchedAmount * watchedExchangeRate; // Multiply instead of divide
       form.setValue("amountUsd", Math.round(usdAmount * 100) / 100);
     }
   }, [watchedAmount, watchedExchangeRate, form]);
+
 
   useEffect(() => {
     if (watchedBonusPercentage != null && watchedAmount != null) {
@@ -737,7 +738,7 @@ export default function EditPaymentDialog({
                   />
 
                   {/* Amount in Pledge Currency (only for non-split payments) */}
-                  {!isSplitPayment && (
+                  {/* {!isSplitPayment && (
                     <FormField
                       control={form.control}
                       name="amountInPledgeCurrency"
@@ -763,7 +764,7 @@ export default function EditPaymentDialog({
                         </FormItem>
                       )}
                     />
-                  )}
+                  )} */}
 
                   {/* Payment Date */}
                   <FormField

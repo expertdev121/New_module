@@ -527,7 +527,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                         <TableCell className="font-medium">
                           {formatDate(payment.receivedDate || "")}
                         </TableCell>
-                        <TableCell>
+                        {/* <TableCell>
                           <div className="flex flex-col">
                             <span className="font-medium">
                               {
@@ -545,7 +545,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                               </span>
                             )}
                           </div>
-                        </TableCell>
+                        </TableCell> */}
                         <TableCell>
                           <span className="font-medium">
                             ${formatUSDAmount(getAppliedAmountUSD(payment))}

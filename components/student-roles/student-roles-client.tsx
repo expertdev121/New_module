@@ -246,7 +246,7 @@ export default function StudentRolesTable({
       )}
       <Card>
         <CardHeader>
-          <CardTitle>Student Roles</CardTitle>
+          <CardTitle>Enrollment</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 mb-6">

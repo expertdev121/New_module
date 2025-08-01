@@ -37,6 +37,7 @@ export const relationshipEnum = pgEnum("relationship", [
   "mother",
   "father",
   "grandmother",
+  "grandchild",
   "grandfather",
   "grandparent",
   "parent",
@@ -137,7 +138,7 @@ export const machzorEnum = pgEnum("machzor", [
 
 export const paymentMethodEnum = pgEnum("payment_method", [
     "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
+    "goods_and_services", "matching_funds", "money_order", "p2p", "pending","bank_transfer",
     "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer",'other'
 ]);
 
