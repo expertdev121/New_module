@@ -743,6 +743,7 @@ export default function EditPaymentDialog({
                       control={form.control}
                       name="amountInPledgeCurrency"
                       render={({ field }) => (
+                      
                         <FormItem>
                           <FormLabel>Amount (Pledge Currency: {effectivePledgeCurrency})</FormLabel>
                           <FormControl>

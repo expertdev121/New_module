@@ -5,7 +5,10 @@ export const studentRoleSchema = z
     contactId: z.number().positive(),
     year: z.string().default("2024-2025"),
     program: z.enum(["LH", "LLC", "ML", "Kollel", "Madrich"]),
-    track: z.enum(["Alef", "Bet", "Gimmel", "Dalet", "Heh"]),
+    track: z.enum(["Alef", "Bet", "Gimmel", "Dalet", "Heh",  "March Draft",
+      "August Draft",
+      "Room & Board",
+      "Other Draft",]),
     trackDetail: z
       .enum(["Full Year", "Fall", "Spring", "Until Pesach"])
       .optional(),

@@ -18,6 +18,14 @@ import {
   useContactDetailsQuery,
 } from "@/lib/query/relationships/useRelationshipQuery";
 
+// Define Contact interface for strong typing
+interface Contact {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email?: string | null;
+}
+
 // -- Relationship Types
 const relationshipTypes = [
   { value: "mother", label: "Mother" },
@@ -105,7 +113,7 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
   const { contactId, contactName } = props;
   const [open, setOpen] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
-  const [selectedContact, setSelectedContact] = useState<any>(null);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
   // Fetch main contact details to display
   const { data: contactData, isLoading: isLoadingContact } = useContactDetailsQuery(contactId);
@@ -156,7 +164,7 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
     }
   };
 
-  const handleContactSelect = (contact: any) => {
+  const handleContactSelect = (contact: Contact) => {
     form.setValue("relatedContactId", contact.id);
     setSelectedContact(contact);
     setContactSearch(`${contact.firstName} ${contact.lastName}`);
@@ -209,8 +217,8 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
                         <div className="p-2 text-sm text-muted-foreground">Searching...</div>
                       ) : searchResults?.contacts && searchResults.contacts.length > 0 ? (
                         searchResults.contacts
-                          .filter((c: any) => c.id !== contactId)
-                          .map((contact: any) => (
+                          .filter((c: Contact) => c.id !== contactId)
+                          .map((contact: Contact) => (
                             <button
                               key={contact.id}
                               type="button"

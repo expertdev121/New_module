@@ -1,5 +1,6 @@
 "use client";
-import React, { useState } from "react";
+
+import React, { useState, useEffect } from "react";
 import { useQueryState } from "nuqs";
 import { z } from "zod";
 import {
@@ -59,9 +60,7 @@ const QueryParamsSchema = z.object({
 
 type QueryParams = z.infer<typeof QueryParamsSchema>;
 
-export default function StudentRolesTable({
-  contactId,
-}: StudentRolesTableProps) {
+export default function StudentRolesTable({ contactId }: StudentRolesTableProps) {
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -188,11 +187,10 @@ export default function StudentRolesTable({
   } = useDeactivateStudentRole();
 
   // Handle deactivation error - MOVED BEFORE EARLY RETURNS
-  React.useEffect(() => {
+  useEffect(() => {
     if (deactivateError) {
       setErrorMessage(
-        deactivateError.response?.data?.error ||
-          "Failed to deactivate student role"
+        deactivateError.response?.data?.error || "Failed to deactivate student role"
       );
     }
   }, [deactivateError]);
@@ -263,9 +261,7 @@ export default function StudentRolesTable({
               value={program || "all"}
               onValueChange={(value) =>
                 setProgram(
-                  value === "all"
-                    ? null
-                    : (value as "LH" | "LLC" | "ML" | "Kollel" | "Madrich")
+                  value === "all" ? null : (value as "LH" | "LLC" | "ML" | "Kollel" | "Madrich")
                 )
               }
             >
@@ -346,65 +342,56 @@ export default function StudentRolesTable({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Program
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Status
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Year
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Track
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Active
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Created At
-                  </TableHead>
-                  <TableHead className="w-12">Actions</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Year</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Program</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Track</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Track Detail</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Status</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Machzor</TableHead>
+                  {/* <TableHead className="font-semibold text-gray-900">Active</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Created At</TableHead> */}
+                  {/* <TableHead className="w-12">Actions</TableHead> */}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  Array.from({ length: queryParams?.limit || 10 }).map(
-                    (_, index) => (
-                      <TableRow key={index}>
-                        <TableCell>
-                          <Skeleton className="h-4 w-4" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-24" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-16" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-20" />
-                        </TableCell>
-                        <TableCell>
-                          <Skeleton className="h-4 w-4" />
-                        </TableCell>
-                      </TableRow>
-                    )
-                  )
+                  Array.from({ length: queryParams?.limit || 10 }).map((_, index) => (
+                    <TableRow key={index}>
+                      <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-24" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-16" />
+                      </TableCell>
+                      {/* <TableCell>
+                        <Skeleton className="h-4 w-20" />
+                      </TableCell>
+                      <TableCell>
+                        <Skeleton className="h-4 w-4" />
+                      </TableCell> */}
+                    </TableRow>
+                  ))
                 ) : data?.studentRoles.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={8}
-                      className="text-center py-8 text-gray-500"
-                    >
+                    <TableCell colSpan={10} className="text-center py-8 text-gray-500">
                       No student roles found
                     </TableCell>
                   </TableRow>
@@ -426,13 +413,17 @@ export default function StudentRolesTable({
                             )}
                           </Button>
                         </TableCell>
-                        <TableCell className="font-medium">
-                          {role.program}
-                        </TableCell>
-                        <TableCell>{role.status}</TableCell>
-                        <TableCell>{role.year}</TableCell>
-                        <TableCell>{role.track || "N/A"}</TableCell>
-                        <TableCell>
+                        <TableCell>{role.year}</TableCell> {/* Year */}
+                        <TableCell className="font-medium">{role.program}</TableCell> {/* Program */}
+                        <TableCell>{role.track || "N/A"}</TableCell> {/* Track */}
+
+                        {/* Track Detail - using additionalNotes as example */}
+                        <TableCell>{role.trackDetail || "N/A"}</TableCell>
+
+                        <TableCell>{role.status}</TableCell> {/* Status */}
+                        <TableCell>{role.machzor || "N/A"}</TableCell> {/* Machzor */}
+
+                        {/* <TableCell>
                           <span
                             className={`px-2 py-1 rounded-full text-xs ${
                               role.isActive
@@ -443,7 +434,9 @@ export default function StudentRolesTable({
                             {role.isActive ? "Active" : "Inactive"}
                           </span>
                         </TableCell>
+
                         <TableCell>{formatDate(role.createdAt)}</TableCell>
+
                         <TableCell>
                           {role.isActive && (
                             <Button
@@ -452,76 +445,51 @@ export default function StudentRolesTable({
                               onClick={() => handleDeactivate(role.id)}
                               disabled={isDeactivating}
                             >
-                              {isDeactivating
-                                ? "Deactivating..."
-                                : "Deactivate"}
+                              {isDeactivating ? "Deactivating..." : "Deactivate"}
                             </Button>
                           )}
-                        </TableCell>
+                        </TableCell> */}
                       </TableRow>
                       {expandedRows.has(role.id) && (
                         <TableRow>
-                          <TableCell colSpan={8} className="bg-gray-50 p-6">
+                          <TableCell colSpan={10} className="bg-gray-50 p-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                               <div className="space-y-3">
-                                <h4 className="font-semibold text-gray-900">
-                                  Role Details
-                                </h4>
+                                <h4 className="font-semibold text-gray-900">Role Details</h4>
                                 <div className="space-y-2 text-sm">
                                   <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Contact ID:
-                                    </span>
-                                    <span className="font-medium">
-                                      {role.contactId}
-                                    </span>
+                                    <span className="text-gray-600">Contact ID:</span>
+                                    <span className="font-medium">{role.contactId}</span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Machzor:
-                                    </span>
-                                    <span className="font-medium">
-                                      {role.machzor || "N/A"}
-                                    </span>
+                                    <span className="text-gray-600">Machzor:</span>
+                                    <span className="font-medium">{role.machzor || "N/A"}</span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Start Date:
-                                    </span>
+                                    <span className="text-gray-600">Start Date:</span>
                                     <span className="font-medium">
                                       {formatDate(role.startDate || "")}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      End Date:
-                                    </span>
+                                    <span className="text-gray-600">End Date:</span>
                                     <span className="font-medium">
                                       {formatDate(role.endDate || "")}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Updated At:
-                                    </span>
-                                    <span className="font-medium">
-                                      {formatDate(role.updatedAt)}
-                                    </span>
+                                    <span className="text-gray-600">Updated At:</span>
+                                    <span className="font-medium">{formatDate(role.updatedAt)}</span>
                                   </div>
                                 </div>
                               </div>
                               <div className="space-y-3">
-                                <h4 className="font-semibold text-gray-900">
-                                  Additional Details
-                                </h4>
+                                <h4 className="font-semibold text-gray-900">Additional Details</h4>
                                 <div className="space-y-2 text-sm">
                                   <div>
-                                    <span className="text-gray-600">
-                                      Notes:
-                                    </span>
+                                    <span className="text-gray-600">Notes:</span>
                                     <p className="mt-1 text-gray-900">
-                                      {role.additionalNotes ||
-                                        "No notes available"}
+                                      {role.additionalNotes || "No notes available"}
                                     </p>
                                   </div>
                                 </div>
@@ -540,8 +508,7 @@ export default function StudentRolesTable({
             <div className="flex items-center justify-between mt-6">
               <div className="text-sm text-gray-600">
                 Showing{" "}
-                {((queryParams?.page ?? 1) - 1) * (queryParams?.limit ?? 10) +
-                  1}{" "}
+                {((queryParams?.page ?? 1) - 1) * (queryParams?.limit ?? 10) + 1}{" "}
                 to{" "}
                 {Math.min(
                   (queryParams?.page ?? 1) * (queryParams?.limit ?? 10),
