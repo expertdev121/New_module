@@ -84,13 +84,20 @@ const relationshipTypes = [
   { value: "machatunim", label: "Machatunim" },
 ] as const;
 
-const relationshipValues = relationshipTypes.map((type) => type.value);
+// Extract the union type from the relationship types
+type RelationshipType = typeof relationshipTypes[number]['value'];
+
+// Create a tuple type for the enum values
+const relationshipValues = relationshipTypes.map(t => t.value);
+const [firstValue, ...restValues] = relationshipValues;
 
 const relationshipSchema = z.object({
   contactId: z.coerce.number().positive("Contact ID is required"),
   relatedContactId: z.number().positive("Related contact must be selected"),
-  relationshipType: z.enum(relationshipValues as [string, ...string[]], { required_error: "Relationship type is required" }),
-  isActive: z.boolean().default(true),
+  relationshipType: z.enum([firstValue, ...restValues] as [RelationshipType, ...RelationshipType[]], { 
+    required_error: "Relationship type is required" 
+  }),
+  isActive: z.boolean(),
   notes: z.string().optional(),
 }).refine(
   (data) => data.contactId !== data.relatedContactId,
@@ -101,6 +108,15 @@ const relationshipSchema = z.object({
 );
 
 type RelationshipFormData = z.infer<typeof relationshipSchema>;
+
+// Define the mutation input type based on your database NewRelationship type
+interface CreateRelationshipInput {
+  contactId: number;
+  relatedContactId: number;
+  relationshipType: RelationshipType; // Use the proper type instead of string
+  isActive: boolean;
+  notes?: string;
+}
 
 interface RelationshipDialogProps {
   contactId: number;
@@ -124,12 +140,12 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
   const effectiveContactName = contactName || contactData?.contact.firstName || "Unknown Contact";
   const createRelationshipMutation = useCreateRelationshipMutation();
 
-  const form = useForm({
+  const form = useForm<RelationshipFormData>({
     resolver: zodResolver(relationshipSchema),
     defaultValues: {
       contactId,
       relatedContactId: 0,
-      relationshipType: undefined,
+      relationshipType: undefined as RelationshipFormData['relationshipType'] | undefined,
       isActive: true,
       notes: "",
     },
@@ -139,7 +155,7 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
     form.reset({
       contactId,
       relatedContactId: 0,
-      relationshipType: undefined,
+      relationshipType: undefined as RelationshipFormData['relationshipType'] | undefined,
       isActive: true,
       notes: "",
     });
@@ -149,7 +165,15 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
 
   const onSubmit = async (data: RelationshipFormData) => {
     try {
-      await createRelationshipMutation.mutateAsync(data as any);
+      const relationshipData: CreateRelationshipInput = {
+        contactId: data.contactId,
+        relatedContactId: data.relatedContactId,
+        relationshipType: data.relationshipType,
+        isActive: data.isActive,
+        notes: data.notes || undefined,
+      };
+      
+      await createRelationshipMutation.mutateAsync(relationshipData);
       resetForm();
       setOpen(false);
     } catch (error) {
