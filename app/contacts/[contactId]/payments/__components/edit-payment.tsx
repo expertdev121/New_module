@@ -5,7 +5,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronsUpDown, Edit, Users, Split } from "lucide-react";
+import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,6 +49,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -72,7 +73,6 @@ interface Allocation {
   currency?: string;
   allocatedAmountUsd?: string | null;
   pledgeDescription?: string | null;
-
   receiptNumber?: string | null;
   receiptType?: string | null;
   receiptIssued?: boolean;
@@ -128,14 +128,7 @@ const useSolicitors = (params: { search?: string; status?: "active" | "inactive"
 };
 
 const supportedCurrencies = [
-  "USD",
-  "ILS",
-  "EUR",
-  "JPY",
-  "GBP",
-  "AUD",
-  "CAD",
-  "ZAR",
+  "USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR",
 ] as const;
 
 const paymentMethods = [
@@ -162,10 +155,56 @@ const paymentMethods = [
 ] as const;
 
 const methodDetails = [
-  /* All existing method details here as in your code */
   { value: "achisomoch", label: "Achisomoch" },
   { value: "authorize", label: "Authorize" },
-  // ... include all entries ...
+  { value: "bank_of_america_charitable", label: "Bank of America Charitable" },
+  { value: "banquest", label: "Banquest" },
+  { value: "banquest_cm", label: "Banquest CM" },
+  { value: "benevity", label: "Benevity" },
+  { value: "chai_charitable", label: "Chai Charitable" },
+  { value: "charityvest_inc", label: "Charityvest Inc." },
+  { value: "cjp", label: "CJP" },
+  { value: "donors_fund", label: "Donors' Fund" },
+  { value: "earthport", label: "EarthPort" },
+  { value: "e_transfer", label: "e-transfer" },
+  { value: "facts", label: "FACTS" },
+  { value: "fidelity", label: "Fidelity" },
+  { value: "fjc", label: "FJC" },
+  { value: "foundation", label: "Foundation" },
+  { value: "goldman_sachs", label: "Goldman Sachs" },
+  { value: "htc", label: "HTC" },
+  { value: "jcf", label: "JCF" },
+  { value: "jcf_san_diego", label: "JCF San Diego" },
+  { value: "jgive", label: "Jgive" },
+  { value: "keshet", label: "Keshet" },
+  { value: "masa", label: "MASA" },
+  { value: "masa_old", label: "MASA Old" },
+  { value: "matach", label: "Matach" },
+  { value: "matching_funds", label: "Matching Funds" },
+  { value: "mizrachi_canada", label: "Mizrachi Canada" },
+  { value: "mizrachi_olami", label: "Mizrachi Olami" },
+  { value: "montrose", label: "Montrose" },
+  { value: "morgan_stanley_gift", label: "Morgan Stanley Gift" },
+  { value: "ms", label: "MS" },
+  { value: "mt", label: "MT" },
+  { value: "ojc", label: "OJC" },
+  { value: "paypal", label: "PayPal" },
+  { value: "pelecard", label: "PeleCard (EasyCount)" },
+  { value: "schwab_charitable", label: "Schwab Charitable" },
+  { value: "stripe", label: "Stripe" },
+  { value: "tiaa", label: "TIAA" },
+  { value: "touro", label: "Touro" },
+  { value: "uktoremet", label: "UKToremet (JGive)" },
+  { value: "vanguard_charitable", label: "Vanguard Charitable" },
+  { value: "venmo", label: "Venmo" },
+  { value: "vmm", label: "VMM" },
+  { value: "wise", label: "Wise" },
+  { value: "worldline", label: "Worldline" },
+  { value: "yaadpay", label: "YaadPay" },
+  { value: "yaadpay_cm", label: "YaadPay CM" },
+  { value: "yourcause", label: "YourCause" },
+  { value: "yu", label: "YU" },
+  { value: "zelle", label: "Zelle" },
 ] as const;
 
 const paymentStatuses = [
@@ -225,13 +264,16 @@ const editPaymentSchema = z
           allocatedAmount: z.number().positive("Amount must be positive"),
           notes: z.string().nullable(),
           currency: z.string().optional(),
-
           receiptNumber: z.string().optional().nullable(),
           receiptType: z.enum(receiptTypes.map((t) => t.value) as [string, ...string[]]).optional().nullable(),
           receiptIssued: z.boolean().optional(),
         })
       )
       .optional(),
+    
+    // New fields for installment management
+    autoAdjustAllocations: z.boolean().optional(),
+    redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
   })
   .refine(
     (data) => {
@@ -274,6 +316,9 @@ export default function EditPaymentDialog({
 
   const [internalOpen, setInternalOpen] = useState(false);
   const [showSolicitorSection, setShowSolicitorSection] = useState(!!payment.solicitorId);
+  const [showAmountChangeWarning, setShowAmountChangeWarning] = useState(false);
+  const [autoAdjustAllocations, setAutoAdjustAllocations] = useState(false);
+  const [redistributionMethod, setRedistributionMethod] = useState<"proportional" | "equal" | "custom">("proportional");
 
   const [editableAllocations, setEditableAllocations] = useState<Allocation[]>(
     (payment.allocations || []).map((alloc) => ({
@@ -283,6 +328,8 @@ export default function EditPaymentDialog({
       receiptIssued: alloc.receiptIssued ?? false,
     }))
   );
+
+  const [originalAmount] = useState(parseFloat(payment.amount));
 
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
@@ -323,6 +370,8 @@ export default function EditPaymentDialog({
       pledgeId: payment.pledgeId || null,
       paymentPlanId: payment.paymentPlanId || null,
       isSplitPayment: isSplitPayment,
+      autoAdjustAllocations: false,
+      redistributionMethod: "proportional",
     },
   });
 
@@ -333,8 +382,89 @@ export default function EditPaymentDialog({
   const watchedBonusPercentage = form.watch("bonusPercentage");
   const watchedExchangeRate = form.watch("exchangeRate");
 
-  // Allocation update handlers (notes, amounts, receipts...)
-  // ... as in prior code, full implementations here ...
+  // Auto-adjust allocations when amount changes
+  const redistributeAllocations = useCallback((newAmount: number, method: "proportional" | "equal" | "custom") => {
+    if (!isSplitPayment || editableAllocations.length === 0) return;
+
+    const totalOriginal = editableAllocations.reduce(
+      (sum, alloc) => sum + parseFloat(alloc.allocatedAmount),
+      0
+    );
+
+    if (totalOriginal === 0) return;
+
+    let newAllocations: Allocation[];
+
+    switch (method) {
+      case "proportional":
+        // Maintain proportional distribution
+        newAllocations = editableAllocations.map((alloc) => {
+          const proportion = parseFloat(alloc.allocatedAmount) / totalOriginal;
+          const newAllocationAmount = newAmount * proportion;
+          return {
+            ...alloc,
+            allocatedAmount: newAllocationAmount.toFixed(2),
+          };
+        });
+        break;
+
+      case "equal":
+        // Distribute equally among all allocations
+        const equalAmount = newAmount / editableAllocations.length;
+        newAllocations = editableAllocations.map((alloc) => ({
+          ...alloc,
+          allocatedAmount: equalAmount.toFixed(2),
+        }));
+        break;
+
+      case "custom":
+      default:
+        // Keep existing allocations, user will adjust manually
+        newAllocations = [...editableAllocations];
+        break;
+    }
+
+    // Ensure the total equals the new amount (handle rounding errors)
+    const newTotal = newAllocations.reduce((sum, alloc) => sum + parseFloat(alloc.allocatedAmount), 0);
+    const difference = newAmount - newTotal;
+
+    if (Math.abs(difference) > 0.001 && newAllocations.length > 0) {
+      // Add the difference to the first allocation
+      const firstAllocation = newAllocations[0];
+      const adjustedAmount = parseFloat(firstAllocation.allocatedAmount) + difference;
+      newAllocations[0] = {
+        ...firstAllocation,
+        allocatedAmount: adjustedAmount.toFixed(2),
+      };
+    }
+
+    setEditableAllocations(newAllocations);
+  }, [isSplitPayment, editableAllocations]);
+
+  // Handle auto-adjustment when amount changes
+  useEffect(() => {
+    if (!isSplitPayment || !autoAdjustAllocations || !watchedAmount) return;
+
+    const currentAmount = watchedAmount;
+    const originalTotal = editableAllocations.reduce(
+      (sum, alloc) => sum + parseFloat(alloc.allocatedAmount),
+      0
+    );
+
+    // Only auto-adjust if the amounts don't match
+    if (Math.abs(currentAmount - originalTotal) > 0.01) {
+      redistributeAllocations(currentAmount, redistributionMethod);
+    }
+  }, [watchedAmount, autoAdjustAllocations, redistributionMethod, redistributeAllocations, isSplitPayment]);
+
+  // Show warning when amount changes
+  useEffect(() => {
+    if (isSplitPayment && watchedAmount && Math.abs(watchedAmount - originalAmount) > 0.01) {
+      setShowAmountChangeWarning(true);
+    } else {
+      setShowAmountChangeWarning(false);
+    }
+  }, [watchedAmount, originalAmount, isSplitPayment]);
 
   const getTotalAllocatedAmount = () => {
     return editableAllocations.reduce(
@@ -358,6 +488,15 @@ export default function EditPaymentDialog({
     );
   };
 
+  // Handle manual redistribution
+  const handleRedistribute = () => {
+    if (watchedAmount) {
+      redistributeAllocations(watchedAmount, redistributionMethod);
+      toast.success(`Allocations redistributed using ${redistributionMethod} method`);
+    }
+  };
+
+  // Exchange rate and amount calculations
   useEffect(() => {
     if (watchedCurrency && watchedPaymentDate && exchangeRatesData?.data?.rates) {
       const rate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
@@ -367,11 +506,10 @@ export default function EditPaymentDialog({
 
   useEffect(() => {
     if (watchedAmount && watchedExchangeRate) {
-      const usdAmount = watchedAmount * watchedExchangeRate; // Multiply instead of divide
+      const usdAmount = watchedAmount * watchedExchangeRate;
       form.setValue("amountUsd", Math.round(usdAmount * 100) / 100);
     }
   }, [watchedAmount, watchedExchangeRate, form]);
-
 
   useEffect(() => {
     if (watchedBonusPercentage != null && watchedAmount != null) {
@@ -438,8 +576,13 @@ export default function EditPaymentDialog({
       pledgeId: payment.pledgeId || null,
       paymentPlanId: payment.paymentPlanId || null,
       isSplitPayment: isSplitPayment,
+      autoAdjustAllocations: false,
+      redistributionMethod: "proportional",
     });
     setShowSolicitorSection(!!payment.solicitorId);
+    setAutoAdjustAllocations(false);
+    setRedistributionMethod("proportional");
+    setShowAmountChangeWarning(false);
     setEditableAllocations(
       (payment.allocations || []).map((alloc) => ({
         ...alloc,
@@ -449,25 +592,6 @@ export default function EditPaymentDialog({
       }))
     );
   }, [form, payment, isSplitPayment]);
-
-  // Currency conversion utility for display only
-  const convertAmountBetweenCurrencies = (
-    amount: number,
-    fromCurrency: string,
-    toCurrency: string,
-    exchangeRates: Record<string, string> | undefined
-  ): number => {
-    if (fromCurrency === toCurrency || !exchangeRates) {
-      return Math.round(amount * 100) / 100;
-    }
-    const fromRate = parseFloat(exchangeRates[fromCurrency] || "1");
-    const toRate = parseFloat(exchangeRates[toCurrency] || "1");
-    if (isNaN(fromRate) || isNaN(toRate) || fromRate === 0 || toRate === 0) {
-      return Math.round(amount * 100) / 100;
-    }
-    const amountUsd = amount / fromRate;
-    return Math.round(amountUsd * toRate * 100) / 100;
-  };
 
   const updatePaymentMutation = useUpdatePaymentMutation(isSplitPayment ? payment.id : payment.pledgeId || 0);
 
@@ -485,16 +609,18 @@ export default function EditPaymentDialog({
       }
 
       if (isPaymentPlanPayment) {
-        // For payment plan payments, restrict amount and paymentDate changes
-        const { amount, paymentDate, ...allowedUpdates } = data;
-        if (amount !== parseFloat(payment.amount) || paymentDate !== payment.paymentDate) {
-          toast.error("Cannot modify amount or payment date for payment plan payments");
-          return;
-        }
+        // For payment plan payments, allow amount changes but warn about installment impact
+        const allowedUpdates = { ...data };
+        
         // Remove undefined or empty fields
         const filteredData = Object.fromEntries(
-          Object.entries(allowedUpdates).filter(([_, val]) => !!val || val === false || val === 0)
+          Object.entries(allowedUpdates).filter(([key, val]) => {
+            // Keep essential fields even if they're falsy
+            if (['receiptIssued', 'autoAdjustAllocations'].includes(key)) return true;
+            return val !== undefined && val !== null && val !== '';
+          })
         );
+        
         await updatePaymentMutation.mutateAsync(filteredData as any);
       } else {
         const processedAllocations = editableAllocations.map((alloc) => ({
@@ -507,7 +633,10 @@ export default function EditPaymentDialog({
         }));
 
         const filteredData = Object.fromEntries(
-          Object.entries(data).filter(([_, val]) => !!val || val === false || val === 0)
+          Object.entries(data).filter(([key, val]) => {
+            if (['receiptIssued', 'autoAdjustAllocations'].includes(key)) return true;
+            return val !== undefined && val !== null && val !== '';
+          })
         );
 
         const updateData = {
@@ -544,9 +673,7 @@ export default function EditPaymentDialog({
       contact: solicitor.contact,
     })) || [];
 
-  // Effective pledge info fallback for display
   const effectivePledgeDescription = pledgeData?.pledge?.description || payment.pledgeDescription || "N/A";
-  const effectivePledgeCurrency = pledgeData?.pledge?.currency || "USD";
 
   const formatCurrency = (amount: string | number, currency = "USD") => {
     const numAmount = typeof amount === "string" ? parseFloat(amount) : amount;
@@ -608,8 +735,8 @@ export default function EditPaymentDialog({
                 </span>
               )}
               {isPaymentPlanPayment && (
-                <span className="block mt-1 text-sm text-orange-600 font-medium">
-                  ⚠️ This payment belongs to a payment plan. Amount and payment date cannot be modified.
+                <span className="block mt-1 text-sm text-blue-600 font-medium">
+                  ℹ️ This payment belongs to a payment plan. Changes may affect installment scheduling.
                 </span>
               )}
             </div>
@@ -618,6 +745,59 @@ export default function EditPaymentDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
+            
+            {/* Amount Change Warning for Split Payments */}
+            {showAmountChangeWarning && isSplitPayment && (
+              <Alert className="border-yellow-200 bg-yellow-50">
+                <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-800">
+                  <div className="space-y-2">
+                    <p className="font-medium">Payment amount has changed</p>
+                    <p className="text-sm">
+                      The current allocations total {formatCurrency(getTotalAllocatedAmount(), watchedCurrency || payment.currency)} 
+                      but the payment amount is {formatCurrency(watchedAmount || 0, watchedCurrency || payment.currency)}.
+                    </p>
+                    <div className="flex items-center gap-4 mt-3">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="auto-adjust"
+                          checked={autoAdjustAllocations}
+                          onCheckedChange={setAutoAdjustAllocations}
+                        />
+                        <label htmlFor="auto-adjust" className="text-sm font-medium">
+                          Auto-adjust allocations
+                        </label>
+                      </div>
+                      {autoAdjustAllocations && (
+                        <Select value={redistributionMethod} onValueChange={(value: "proportional" | "equal" | "custom") => setRedistributionMethod(value)}>
+                          <SelectTrigger className="w-48">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="proportional">Proportional</SelectItem>
+                            <SelectItem value="equal">Equal Split</SelectItem>
+                            <SelectItem value="custom">Manual Adjustment</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {!autoAdjustAllocations && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={handleRedistribute}
+                          className="flex items-center gap-1"
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          Redistribute
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Payment Details */}
             <Card>
               <CardHeader>
@@ -649,7 +829,7 @@ export default function EditPaymentDialog({
                         <FormLabel>
                           Total Amount
                           {isPaymentPlanPayment && (
-                            <span className="text-sm text-orange-600 ml-2">(Controlled by Payment Plan)</span>
+                            <span className="text-sm text-blue-600 ml-2">(May affect installments)</span>
                           )}
                         </FormLabel>
                         <FormControl>
@@ -657,14 +837,12 @@ export default function EditPaymentDialog({
                             {...field}
                             type="number"
                             step="0.01"
-                            disabled={isPaymentPlanPayment}
-                            className={isPaymentPlanPayment ? "opacity-60 cursor-not-allowed bg-muted" : ""}
                             onChange={(e) => field.onChange(parseFloat(e.target.value))}
                           />
                         </FormControl>
                         {isPaymentPlanPayment && (
-                          <p className="text-xs text-orange-600">
-                            Amount is controlled by the payment plan and cannot be modified
+                          <p className="text-xs text-blue-600">
+                            Changing amount may require adjusting the payment plan installments
                           </p>
                         )}
                         <FormMessage />
@@ -737,36 +915,6 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Amount in Pledge Currency (only for non-split payments) */}
-                  {/* {!isSplitPayment && (
-                    <FormField
-                      control={form.control}
-                      name="amountInPledgeCurrency"
-                      render={({ field }) => (
-                      
-                        <FormItem>
-                          <FormLabel>Amount (Pledge Currency: {effectivePledgeCurrency})</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              type="number"
-                              step="0.01"
-                              value={convertAmountBetweenCurrencies(
-                                watchedAmount || 0,
-                                watchedCurrency || "USD",
-                                effectivePledgeCurrency,
-                                exchangeRatesData?.data?.rates
-                              )}
-                              readOnly
-                              className="opacity-70"
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  )} */}
-
                   {/* Payment Date */}
                   <FormField
                     control={form.control}
@@ -776,20 +924,15 @@ export default function EditPaymentDialog({
                         <FormLabel>
                           Payment Date
                           {isPaymentPlanPayment && (
-                            <span className="text-sm text-orange-600 ml-2">(Controlled by Payment Plan)</span>
+                            <span className="text-sm text-blue-600 ml-2">(May affect scheduling)</span>
                           )}
                         </FormLabel>
                         <FormControl>
-                          <Input
-                            {...field}
-                            type="date"
-                            disabled={isPaymentPlanPayment}
-                            className={isPaymentPlanPayment ? "opacity-60 cursor-not-allowed bg-muted" : ""}
-                          />
+                          <Input {...field} type="date" />
                         </FormControl>
                         {isPaymentPlanPayment && (
-                          <p className="text-xs text-orange-600">
-                            Payment date is controlled by the payment plan and cannot be modified
+                          <p className="text-xs text-blue-600">
+                            Changing date may affect future installment scheduling
                           </p>
                         )}
                         <FormMessage />
@@ -1142,7 +1285,7 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Account (NEW) */}
+                  {/* Account */}
                   <FormField
                     control={form.control}
                     name="account"
@@ -1157,9 +1300,8 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Check Date and Check Number side-by-side */}
+                  {/* Check Date and Check Number */}
                   <div className="md:col-span-2 grid grid-cols-2 gap-4">
-                    {/* Check Date */}
                     <FormField
                       control={form.control}
                       name="checkDate"
@@ -1173,7 +1315,6 @@ export default function EditPaymentDialog({
                         </FormItem>
                       )}
                     />
-                    {/* Check Number */}
                     <FormField
                       control={form.control}
                       name="checkNumber"
@@ -1401,19 +1542,19 @@ export default function EditPaymentDialog({
             )}
 
             {/* General Notes */}
-            {/* <FormField
+            <FormField
               control={form.control}
               name="notes"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>General Payment Notes</FormLabel>
                   <FormControl>
-                    <Textarea {...field} value={field.value || ""} />
+                    <Textarea {...field} value={field.value || ""} className="min-h-[80px]" placeholder="Add any additional notes about this payment..." />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
-            /> */}
+            />
 
             {/* Form buttons */}
             <div className="flex gap-4 justify-end">

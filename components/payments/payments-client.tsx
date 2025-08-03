@@ -193,6 +193,26 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     );
   };
 
+  // Payment Status Badge Component
+  const PaymentStatusBadge = ({ status }: { status: string }) => {
+    const statusClass = getStatusBadgeColor(status);
+    const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+    
+    return (
+      <Badge variant="outline" className={`${statusClass} font-medium`}>
+        {statusText}
+      </Badge>
+    );
+  };
+
+  // Helper function to format dates with fallback for unscheduled
+  const formatDateWithFallback = (date: string | null | undefined, fallbackText: string = "Unscheduled") => {
+    if (!date || date.trim() === "" || date === "0000-00-00" || date === "1970-01-01") {
+      return fallbackText;
+    }
+    return formatDate(date);
+  };
+
   const [pledgeId] = useQueryState("pledgeId", {
     parse: (value) => {
       if (!value) return null;
@@ -311,19 +331,19 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case "completed":
-        return "bg-green-100 text-green-800";
+        return "bg-green-100 text-green-800 border-green-200";
       case "pending":
-        return "bg-yellow-100 text-yellow-800";
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
       case "processing":
-        return "bg-blue-100 text-blue-800";
+        return "bg-blue-100 text-blue-800 border-blue-200";
       case "failed":
-        return "bg-red-100 text-red-800";
+        return "bg-red-100 text-red-800 border-red-200";
       case "cancelled":
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800 border-gray-200";
       case "refunded":
-        return "bg-orange-100 text-orange-800";
+        return "bg-orange-100 text-orange-800 border-orange-200";
       default:
-        return "bg-gray-100 text-gray-800";
+        return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
 
@@ -464,6 +484,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Type
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
+                    Status
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-900">
                     Scheduled
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
@@ -521,31 +544,15 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                         <TableCell>
                           <PaymentTypeIndicator payment={payment} />
                         </TableCell>
-                        <TableCell className="font-medium">
-                          {formatDate(payment.paymentDate)}
+                        <TableCell>
+                          <PaymentStatusBadge status={payment.paymentStatus} />
                         </TableCell>
                         <TableCell className="font-medium">
-                          {formatDate(payment.receivedDate || "")}
+                          {formatDateWithFallback(payment.paymentDate)}
                         </TableCell>
-                        {/* <TableCell>
-                          <div className="flex flex-col">
-                            <span className="font-medium">
-                              {
-                                formatCurrency(payment.amount, payment.currency)
-                                  .symbol
-                              }
-                              {
-                                formatCurrency(payment.amount, payment.currency)
-                                  .amount
-                              }
-                            </span>
-                            {payment.isSplitPayment && (
-                              <span className="text-xs text-purple-600 font-medium">
-                                Split across {payment.allocationCount} pledges
-                              </span>
-                            )}
-                          </div>
-                        </TableCell> */}
+                        <TableCell className="font-medium">
+                          {formatDateWithFallback(payment.receivedDate, "Not Received")}
+                        </TableCell>
                         <TableCell>
                           <span className="font-medium">
                             ${formatUSDAmount(getAppliedAmountUSD(payment))}
@@ -613,10 +620,16 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                 <div className="space-y-2 text-sm">
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
+                                      Status:
+                                    </span>
+                                    <PaymentStatusBadge status={payment.paymentStatus} />
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600">
                                       Scheduled Date:
                                     </span>
                                     <span className="font-medium">
-                                      {formatDate(payment.paymentDate)}
+                                      {formatDateWithFallback(payment.paymentDate)}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -624,7 +637,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Effective Date:
                                     </span>
                                     <span className="font-medium">
-                                      {formatDate(payment.receivedDate || "")}
+                                      {formatDateWithFallback(payment.receivedDate, "Not Received")}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -682,14 +695,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       {payment.receiptNumber || "N/A"}
                                     </span>
                                   </div>
-                                  {/* <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Receipt Date:
-                                    </span>
-                                    <span className="font-medium">
-                                      { "N/A"}
-                                    </span>
-                                  </div> */}
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Receipt Issued:
@@ -876,7 +881,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                         ).amount
                                       }
                                       <br />
-                                      Date: {formatDate(payment.paymentDate)}
+                                      Date: {formatDateWithFallback(payment.paymentDate)}
                                       <br />
                                       Status: {payment.paymentStatus}
                                       <br />

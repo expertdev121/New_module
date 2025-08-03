@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { payment, pledge, paymentAllocations } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule } from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
 import { eq, desc, or, ilike, and, SQL, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -78,6 +78,7 @@ const updatePaymentSchema = z.object({
   notes: z.string().optional().nullable(),
   pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
+  installmentScheduleId: z.number().positive("Installment schedule ID must be positive").optional().nullable(),
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationUpdateSchema).optional(),
 }).refine((data) => {
@@ -90,6 +91,71 @@ const updatePaymentSchema = z.object({
 }, {
   message: "Total allocation amount must equal the payment amount for split payments",
 });
+
+// Helper function to update payment plan totals
+async function updatePaymentPlanTotals(paymentPlanId: number) {
+  // Get all payments for this payment plan
+  const payments = await db
+    .select({
+      amount: payment.amount,
+      paymentStatus: payment.paymentStatus,
+    })
+    .from(payment)
+    .where(and(
+      eq(payment.paymentPlanId, paymentPlanId),
+      or(
+        eq(payment.paymentStatus, "completed"),
+        eq(payment.paymentStatus, "processing")
+      )
+    ));
+
+  const totalPaid = payments.reduce((sum, p) => sum + parseFloat(p.amount), 0);
+  const installmentsPaid = payments.length;
+
+  // Get the payment plan to calculate remaining amount
+  const paymentPlanResult = await db
+    .select({
+      totalPlannedAmount: paymentPlan.totalPlannedAmount,
+    })
+    .from(paymentPlan)
+    .where(eq(paymentPlan.id, paymentPlanId))
+    .limit(1);
+
+  if (paymentPlanResult.length > 0) {
+    const totalPlanned = parseFloat(paymentPlanResult[0].totalPlannedAmount);
+    const remainingAmount = Math.max(0, totalPlanned - totalPaid);
+
+    await db
+      .update(paymentPlan)
+      .set({
+        totalPaid: totalPaid.toString(),
+        installmentsPaid,
+        remainingAmount: remainingAmount.toString(),
+        updatedAt: new Date(),
+      })
+      .where(eq(paymentPlan.id, paymentPlanId));
+  }
+}
+
+// Helper function to update installment schedule status
+async function updateInstallmentScheduleStatus(installmentScheduleId: number, paymentStatus: string, paidDate?: string | null) {
+  let status: "pending" | "paid" | "overdue" | "cancelled" = "pending";
+  
+  if (paymentStatus === "completed" || paymentStatus === "processing") {
+    status = "paid";
+  } else if (paymentStatus === "cancelled" || paymentStatus === "failed") {
+    status = "cancelled";
+  }
+
+  await db
+    .update(installmentSchedule)
+    .set({
+      status,
+      paidDate: status === "paid" && paidDate ? paidDate : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(installmentSchedule.id, installmentScheduleId));
+}
 
 // --- GET handler ---
 export async function GET(
@@ -333,26 +399,32 @@ export async function PATCH(
           }
         }
 
-        // Update payment excluding allocations and isSplitPayment
+        // Update payment - FIXED: Don't set pledgeId to null for split payments
         const { paymentId: _, allocations: __, isSplitPayment: ___, ...dataToUpdate } = validatedData;
         const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
           ...dataToUpdate,
-          pledgeId: null,
           updatedAt: new Date(),
         };
+        
+        // Convert numeric fields to strings for database
         ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
           (f) => { if (updateData[f] !== undefined && updateData[f] !== null) updateData[f] = updateData[f].toString(); }
         );
+        
         await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
 
         // Update allocation records including receipt fields
         for (const allocation of validatedData.allocations) {
           if (!allocation?.id) continue;
-          const allocationUpdateData: Record<string, string | boolean | null | undefined | Date> = {
+          
+          const allocationUpdateData: Record<string, string | boolean | number | null | undefined | Date> = {
+            pledgeId: allocation.pledgeId, // FIXED: Update pledgeId in allocations
             allocatedAmount: allocation.allocatedAmount.toString(),
             notes: allocation.notes ?? null,
+            installmentScheduleId: allocation.installmentScheduleId ?? null, // FIXED: Update installmentScheduleId
             updatedAt: new Date(),
           };
+          
           if (allocation.currency || validatedData.currency) {
             allocationUpdateData.currency = allocation.currency ?? validatedData.currency;
           }
@@ -365,22 +437,33 @@ export async function PATCH(
           if ("receiptIssued" in allocation) {
             allocationUpdateData.receiptIssued = allocation.receiptIssued ?? false;
           }
+          
           await db
             .update(paymentAllocations)
             .set(allocationUpdateData)
             .where(eq(paymentAllocations.id, allocation.id));
+
+          // FIXED: Update installment schedule if provided
+          if (allocation.installmentScheduleId && validatedData.paymentStatus) {
+            await updateInstallmentScheduleStatus(
+              allocation.installmentScheduleId, 
+              validatedData.paymentStatus,
+              validatedData.receivedDate || validatedData.paymentDate
+            );
+          }
         }
       } else {
         // Update payment only when no allocations updates sent
         const { paymentId: _, allocations: __, isSplitPayment: ___, ...dataToUpdate } = validatedData;
         const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
           ...dataToUpdate,
-          pledgeId: null,
           updatedAt: new Date(),
         };
+        
         ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
           (f) => { if (updateData[f] !== undefined && updateData[f] !== null) updateData[f] = updateData[f].toString(); }
         );
+        
         await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
       }
     } else {
@@ -389,6 +472,7 @@ export async function PATCH(
         .select()
         .from(paymentAllocations)
         .where(eq(paymentAllocations.paymentId, paymentId));
+        
       if (existingAllocations.length > 0) {
         throw new AppError(
           "Cannot update split payment as regular payment",
@@ -399,26 +483,41 @@ export async function PATCH(
           }
         );
       }
+      
+      // FIXED: Allow pledgeId updates for regular payments, but validate
       if (validatedData.pledgeId && validatedData.pledgeId !== pledgeId) {
-        throw new AppError(
-          "Pledge ID mismatch",
-          400,
-          { details: `Cannot change pledge association from ${pledgeId} to ${validatedData.pledgeId} in regular payment update.` }
-        );
+        // Verify the new pledge exists
+        const newPledgeExists = await db
+          .select({ id: pledge.id })
+          .from(pledge)
+          .where(eq(pledge.id, validatedData.pledgeId))
+          .limit(1);
+          
+        if (newPledgeExists.length === 0) {
+          throw new AppError(
+            "Invalid pledge ID",
+            400,
+            { details: `Pledge with ID ${validatedData.pledgeId} does not exist.` }
+          );
+        }
       }
+      
       const { paymentId: _, allocations: __, isSplitPayment: ___, ...dataToUpdate } = validatedData;
       const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
         ...dataToUpdate,
-        pledgeId: null,
+        // FIXED: Set pledgeId properly - use provided pledgeId or keep current one
+        pledgeId: validatedData.pledgeId || currentPayment.pledgeId,
         updatedAt: new Date(),
       };
+      
       ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
         (f) => { if (updateData[f] !== undefined && updateData[f] !== null) updateData[f] = updateData[f].toString(); }
       );
-      await db.update(payment).set(updateData).where(and(eq(payment.id, paymentId), eq(payment.pledgeId, pledgeId)));
+      
+      await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
     }
 
-    // Fetch updated payment
+    // FIXED: Update related records
     const updatedPaymentRows = await db
       .select()
       .from(payment)
@@ -429,6 +528,20 @@ export async function PATCH(
       throw new AppError("Failed to fetch updated payment", 500);
     }
     const updatedPayment = updatedPaymentRows[0];
+
+    // FIXED: Update payment plan totals if paymentPlanId exists
+    if (updatedPayment.paymentPlanId) {
+      await updatePaymentPlanTotals(updatedPayment.paymentPlanId);
+    }
+
+    // FIXED: Update installment schedule status if installmentScheduleId exists
+    if (updatedPayment.installmentScheduleId && validatedData.paymentStatus) {
+      await updateInstallmentScheduleStatus(
+        updatedPayment.installmentScheduleId,
+        validatedData.paymentStatus,
+        validatedData.receivedDate || validatedData.paymentDate
+      );
+    }
 
     // Fetch allocations if split payment
     let allocations: (z.infer<typeof allocationUpdateSchema> & { updatedAt: string | null })[] | null = null;
