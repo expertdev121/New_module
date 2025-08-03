@@ -17,6 +17,7 @@ interface StudentRole {
     | "Asked to Leave";
   year: string;
   track?: string;
+  trackDetail?:string;
   machzor?: string;
   startDate?: string | null;
   endDate?: string | null;
@@ -61,7 +62,7 @@ interface ErrorResponse {
   details?: { field: string; message: string }[];
   timestamp?: string;
 }
-
+  
 // Query parameters schema (matches backend querySchema)
 const querySchema = z.object({
   page: z.number().min(1).default(1),

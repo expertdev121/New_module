@@ -30,7 +30,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import { GraduationCap } from "lucide-react";
 import {
   useContactDetailsQuery,
@@ -93,7 +92,7 @@ const years = Array.from({ length: currentYear - 2000 + 6 }, (_, i) => {
 const programTracks = {
   LH: ["Alef", "Bet", "Gimmel", "Dalet", "Heh"],
   LLC: ["March Draft", "August Draft", "Room & Board", "Other Draft"],
-  Kollel: [],
+  Kollel: ["Alef", "Bet"], // same as ML and Madrich
   Madrich: ["Alef", "Bet"],
   ML: ["Alef", "Bet"],
 };
@@ -141,7 +140,7 @@ const studentRoleSchema = z
     year: z.string().min(1, "Year is required"),
     startDate: z.string().optional(),
     endDate: z.string().optional(),
-    isActive: z.boolean().default(true),
+    isActive: z.boolean().default(true), // Note: still in schema but not used in form
     additionalNotes: z.string().optional(),
   })
   .refine(
@@ -214,7 +213,7 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
       resetForm();
       setOpen(false);
     } catch (error) {
-      console.error("Error creating student role:", error);
+      console.error("Error creating enrollment:", error);
     }
   };
 
@@ -238,13 +237,13 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
         {triggerButton || (
           <Button size="sm" variant="outline" className="border-dashed">
             <GraduationCap className="w-4 h-4 mr-2" />
-            Add Student Role
+            Add Enrollment
           </Button>
         )}
       </DialogTrigger>
       <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Add Student Role</DialogTitle>
+          <DialogTitle>Add Enrollment</DialogTitle>
           <DialogDescription>
             {isLoadingContact ? (
               "Loading contact details..."
@@ -254,7 +253,7 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                   contactData.activeStudentRoles.length > 0 && (
                     <div className="mt-2">
                       <span className="text-sm text-muted-foreground">
-                        Current student roles:{" "}
+                        Current enrollments:{" "}
                         {contactData.activeStudentRoles
                           .map((role) => `${role.program} (${role.year})`)
                           .join(", ")}
@@ -269,67 +268,7 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
         <Form {...form}>
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="program"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Program *</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select program" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {programs.map((program) => (
-                          <SelectItem key={program.value} value={program.value}>
-                            {program.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="track"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Track *</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      value={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select track" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {(programTracks[form.watch("program") || ""] || []).map(
-                          (track) => (
-                            <SelectItem key={track} value={track}>
-                              {track}
-                            </SelectItem>
-                          )
-                        )}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
+              {/* Year */}
               <FormField
                 control={form.control}
                 name="year"
@@ -338,7 +277,7 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                     <FormLabel>Year *</FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      defaultValue={field.value}
+                      value={field.value}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -358,6 +297,69 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                 )}
               />
 
+              {/* Program */}
+              <FormField
+                control={form.control}
+                name="program"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Program *</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select program" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {programs.map((program) => (
+                          <SelectItem key={program.value} value={program.value}>
+                            {program.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Track */}
+              <FormField
+                control={form.control}
+                name="track"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Track *</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select track" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {(programTracks[selectedProgram || ""] || []).map(
+                          (track) => (
+                            <SelectItem key={track} value={track}>
+                              {track}
+                            </SelectItem>
+                          )
+                        )}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Track Detail */}
               <FormField
                 control={form.control}
                 name="trackDetail"
@@ -366,7 +368,7 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                     <FormLabel>Track Detail</FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      defaultValue={field.value}
+                      value={field.value}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -388,6 +390,39 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
+              {/* Start Date */}
+              <FormField
+                control={form.control}
+                name="startDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Start Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* End Date */}
+              <FormField
+                control={form.control}
+                name="endDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>End Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              {/* Status */}
               <FormField
                 control={form.control}
                 name="status"
@@ -396,7 +431,7 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                     <FormLabel>Status *</FormLabel>
                     <Select
                       onValueChange={field.onChange}
-                      defaultValue={field.value}
+                      value={field.value}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -416,86 +451,39 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                 )}
               />
 
-              <FormField
-                control={form.control}
-                name="machzor"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Machzor</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select machzor" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {machzors.map((machzor) => (
-                          <SelectItem key={machzor.value} value={machzor.value}>
-                            {machzor.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="startDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Start Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="endDate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>End Date</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-            </div>
-
-            <FormField
-              control={form.control}
-              name="isActive"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Active Role</FormLabel>
-                    <p className="text-sm text-muted-foreground">
-                      Whether this student role is currently active
-                    </p>
-                  </div>
-                </FormItem>
+              {/* Machzor - visible only when program is LLC */}
+              {selectedProgram === "LLC" && (
+                <FormField
+                  control={form.control}
+                  name="machzor"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Machzor</FormLabel>
+                      <Select
+                        onValueChange={field.onChange}
+                        value={field.value}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select machzor" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {machzors.map((machzor) => (
+                            <SelectItem key={machzor.value} value={machzor.value}>
+                              {machzor.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               )}
-            />
+            </div>
 
+            {/* Additional Notes */}
             <FormField
               control={form.control}
               name="additionalNotes"
@@ -505,7 +493,7 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                   <FormControl>
                     <Textarea
                       {...field}
-                      placeholder="Additional notes about this student role"
+                      placeholder="Additional notes about this enrollment"
                       rows={3}
                     />
                   </FormControl>
@@ -514,11 +502,11 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
               )}
             />
 
+            {/* Enrollment Summary */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
-              <h4 className="font-medium text-blue-900 mb-2">
-                Student Role Summary
-              </h4>
+              <h4 className="font-medium text-blue-900 mb-2">Enrollment Summary</h4>
               <div className="text-sm text-blue-800 space-y-1">
+                <div>Year: {selectedYear}</div>
                 <div>
                   Program:{" "}
                   {selectedProgram
@@ -534,46 +522,37 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                 {selectedTrackDetail && (
                   <div>
                     Track Detail:{" "}
-                    {
-                      trackDetails.find(
-                        (td) => td.value === selectedTrackDetail
-                      )?.label
-                    }
+                    {trackDetails.find((td) => td.value === selectedTrackDetail)
+                      ?.label}
                   </div>
                 )}
-                <div>Year: {selectedYear}</div>
+                {form.watch("startDate") && (
+                  <div>
+                    Start Date:{" "}
+                    {new Date(form.watch("startDate") as any).toLocaleDateString()}
+                  </div>
+                )}
+                {form.watch("endDate") && (
+                  <div>
+                    End Date:{" "}
+                    {new Date(form.watch("endDate") as any).toLocaleDateString()}
+                  </div>
+                )}
                 <div>
                   Status:{" "}
                   {selectedStatus
                     ? statuses.find((s) => s.value === selectedStatus)?.label
                     : "Not selected"}
                 </div>
-                {selectedMachzor && (
+                {selectedProgram === "LLC" && selectedMachzor && (
                   <div>
-                    Machzor:{" "}
-                    {machzors.find((m) => m.value === selectedMachzor)?.label}
-                  </div>
-                )}
-                <div>Active: {form.watch("isActive") ? "Yes" : "No"}</div>
-                {form.watch("startDate") && (
-                  <div>
-                    Start Date:{" "}
-                    {new Date(
-                      form.watch("startDate") as any
-                    ).toLocaleDateString()}
-                  </div>
-                )}
-                {form.watch("endDate") && (
-                  <div>
-                    End Date:{" "}
-                    {new Date(
-                      form.watch("endDate") as any
-                    ).toLocaleDateString()}
+                    Machzor: {machzors.find((m) => m.value === selectedMachzor)?.label}
                   </div>
                 )}
               </div>
             </div>
 
+            {/* Action Buttons */}
             <div className="flex justify-end space-x-2 pt-4 border-t">
               <Button
                 type="button"
@@ -586,14 +565,10 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
               <Button
                 type="button"
                 onClick={form.handleSubmit(onSubmit)}
-                disabled={
-                  createStudentRoleMutation.isPending || isLoadingContact
-                }
+                disabled={createStudentRoleMutation.isPending || isLoadingContact}
                 className="text-white"
               >
-                {createStudentRoleMutation.isPending
-                  ? "Adding..."
-                  : "Add Student Role"}
+                {createStudentRoleMutation.isPending ? "Adding..." : "Add Enrollment"}
               </Button>
             </div>
           </div>

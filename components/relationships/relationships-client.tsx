@@ -1,4 +1,5 @@
 "use client";
+
 import React, { useState } from "react";
 import { useQueryState } from "nuqs";
 import { z } from "zod";
@@ -42,6 +43,8 @@ import {
 import { Dialog, DialogContent, DialogTitle } from "@radix-ui/react-dialog";
 import { DialogHeader } from "../ui/dialog";
 import RelationshipDialog from "../forms/relationships-form";
+
+import { useContactDetailsQuery } from "@/lib/query/relationships/useRelationshipQuery"; // Adjust import to your path
 
 interface RelationshipsTableProps {
   contactId: string | number;
@@ -98,6 +101,20 @@ type Relationship = {
   relatedContactName?: string;
 };
 
+// Helper component: fetch and display contact full name by ID
+function RelatedContactName({ contactId }: { contactId: number }) {
+  const { data, isLoading, error } = useContactDetailsQuery(contactId);
+
+  if (isLoading) return <span>Loading...</span>;
+  if (error || !data?.contact)
+    return <span>ID: {contactId}</span>;
+
+  // Assuming API returns ‘contact’ object with firstName and lastName fields
+  return (
+    <span>{data.contact.firstName} {data.contact.lastName}</span>
+  );
+}
+
 export default function RelationshipsTable({
   contactId,
 }: RelationshipsTableProps) {
@@ -106,7 +123,6 @@ export default function RelationshipsTable({
     null
   );
 
-  // Fixed: Use correct variable name
   const { mutate: deleteRelationship, isPending: isDeleting } =
     useDeleteRelationship();
 
@@ -401,9 +417,12 @@ export default function RelationshipsTable({
                           </Button>
                         </TableCell>
                         <TableCell className="font-medium">
-                          {relationship.displayRelationshipType}
+                          {relationship.relationshipType} {/* or displayRelationshipType if you have */}
                         </TableCell>
-                        <TableCell>{relationship.relatedContactName}</TableCell>
+                        <TableCell>
+                          {/* Show related contact full name by fetching */}
+                          <RelatedContactName contactId={relationship.relatedContactId} />
+                        </TableCell>
                         <TableCell>
                           <span
                             className={`px-2 py-1 rounded-full text-xs ${
@@ -415,9 +434,7 @@ export default function RelationshipsTable({
                             {relationship.isActive ? "Active" : "Inactive"}
                           </span>
                         </TableCell>
-                        <TableCell>
-                          {formatDate(relationship.createdAt)}
-                        </TableCell>
+                        <TableCell>{formatDate(relationship.createdAt)}</TableCell>
                         <TableCell>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
@@ -433,14 +450,10 @@ export default function RelationshipsTable({
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 className="text-red-600"
-                                onClick={() =>
-                                  handleDeleteClick(relationship.id)
-                                }
+                                onClick={() => handleDeleteClick(relationship.id)}
                                 disabled={isDeleting}
                               >
-                                {isDeleting
-                                  ? "Deleting..."
-                                  : "Delete Relationship"}
+                                {isDeleting ? "Deleting..." : "Delete Relationship"}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -456,17 +469,14 @@ export default function RelationshipsTable({
                                 </h4>
                                 <div className="space-y-2 text-sm">
                                   <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Contact ID:
-                                    </span>
+                                    <span className="text-gray-600">Contact Name:</span>
                                     <span className="font-medium">
-                                      {relationship.contactId}
+                                      {/* Fetch main contact name similarly or use passed data */}
+                                      <RelatedContactName contactId={relationship.contactId} />
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Updated At:
-                                    </span>
+                                    <span className="text-gray-600">Updated At:</span>
                                     <span className="font-medium">
                                       {formatDate(relationship.updatedAt)}
                                     </span>
@@ -479,12 +489,9 @@ export default function RelationshipsTable({
                                 </h4>
                                 <div className="space-y-2 text-sm">
                                   <div>
-                                    <span className="text-gray-600">
-                                      Notes:
-                                    </span>
+                                    <span className="text-gray-600">Notes:</span>
                                     <p className="mt-1 text-gray-900">
-                                      {relationship.notes ||
-                                        "No notes available"}
+                                      {relationship.notes || "No notes available"}
                                     </p>
                                   </div>
                                 </div>
@@ -503,8 +510,7 @@ export default function RelationshipsTable({
             <div className="flex items-center justify-between mt-6">
               <div className="text-sm text-gray-600">
                 Showing{" "}
-                {((queryParams?.page ?? 1) - 1) * (queryParams?.limit ?? 10) +
-                  1}{" "}
+                {((queryParams?.page ?? 1) - 1) * (queryParams?.limit ?? 10) + 1}{" "}
                 to{" "}
                 {Math.min(
                   (queryParams?.page ?? 1) * (queryParams?.limit ?? 10),

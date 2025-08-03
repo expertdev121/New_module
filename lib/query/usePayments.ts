@@ -48,9 +48,7 @@ const QueryParamsSchema = z
   .refine((data) => data.pledgeId || data.contactId, {
     message: "Either pledgeId or contactId must be provided",
   });
-
 type QueryParams = z.infer<typeof QueryParamsSchema>;
-
 const fetchPayments = async (params: QueryParams): Promise<ApiResponse> => {
   const validatedParams = QueryParamsSchema.parse(params);
   const queryParams = {
@@ -61,7 +59,6 @@ const fetchPayments = async (params: QueryParams): Promise<ApiResponse> => {
       paymentStatus: validatedParams.paymentStatus,
     }),
   };
-
   try {
     let url: string;
 

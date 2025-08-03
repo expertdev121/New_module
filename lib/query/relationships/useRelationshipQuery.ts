@@ -5,27 +5,60 @@ export interface RelationshipFormData {
   contactId: number;
   relatedContactId: number;
   relationshipType:
-    | "mother"
-    | "father"
-    | "grandmother"
-    | "grandfather"
-    | "sister"
-    | "spouse"
-    | "brother"
-    | "partner"
-    | "step-brother"
-    | "step-sister"
-    | "stepmother"
-    | "stepfather"
-    | "divorced co-parent"
-    | "separated co-parent"
-    | "legal guardian"
-    | "step-parent"
-    | "legal guardian partner"
-    | "grandparent"
-    | "aunt"
-    | "uncle"
-    | "aunt/uncle";
+    | "mother"|
+  "father"|
+  "grandmother"|
+  "grandchild"|
+  "grandfather"|
+  "grandparent"|
+  "parent"|
+  "step-parent"|
+  "stepmother"|
+  "stepfather"|
+  "sister"|
+  "brother"|
+  "step-sister"|
+  "step-brother"|
+  "stepson"|
+  "daughter"|
+  "son"|
+  "aunt"|
+  "uncle"|
+  "aunt/uncle"|
+  "nephew"|
+  "niece"|
+  "grandson"|
+  "granddaughter"|
+  "cousin (m)"|
+  "cousin (f)"|
+  "spouse"|
+  "partner"|
+  "wife"|
+  "husband"|
+  "former husband"|
+  "former wife"|
+  "fiance"|
+  "divorced co-parent"|
+  "separated co-parent"|
+  "legal guardian"|
+  "legal guardian partner"|
+  "friend"|
+  "neighbor"|
+  "relative"|
+  "business"|
+  "owner"|
+  "chevrusa"|
+  "congregant"|
+  "rabbi"|
+  "contact"|
+  "foundation"|
+  "donor"|
+  "fund"|
+  "rebbi contact"|
+  "rebbi contact for"|
+  "employee"|
+  "employer"|
+  "machatunim";
   isActive: boolean;
   notes?: string;
 }

@@ -631,7 +631,7 @@ export default function PaymentPlansTable({
                                         ).amount}
                                       </span>
                                     </div>
-                                    <div className="flex justify-between">
+                                    {/* <div className="flex justify-between">
                                       <span className="text-gray-600">
                                         Total Scheduled (USD):
                                       </span>
@@ -645,7 +645,7 @@ export default function PaymentPlansTable({
                                           "USD"
                                         ).amount}
                                       </span>
-                                    </div>
+                                    </div> */}
                                     {/* <div className="flex justify-between">
                                       <span className="text-gray-600">
                                         Total Scheduled in USD Curr:

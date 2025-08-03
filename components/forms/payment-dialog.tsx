@@ -50,6 +50,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import PledgeDialog from "../forms/pledge-form";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -257,12 +258,12 @@ export default function PaymentFormDialog({
     error: ratesError,
     refetch: refetchRates,
   } = useExchangeRates();
-  const { data: solicitorsData, isLoading: isLoadingSolicitors } =
-    useSolicitors({ status: "active" });
+  const { data: solicitorsData, isLoading: isLoadingSolicitors } = useSolicitors({ status: "active" });
   const createPaymentMutation = useCreatePaymentMutation();
 
   const [open, setOpen] = useState(false);
   const [showSolicitorSection, setShowSolicitorSection] = useState(false);
+  const [pledgeDialogOpen, setPledgeDialogOpen] = useState(false);
 
   const contactId = useContactId() || propContactId;
 
@@ -293,7 +294,6 @@ export default function PaymentFormDialog({
       checkDate: null,
       checkNumber: null,
       paymentStatus: "completed",
-      // Removed receipt fields from common section
       solicitorId: null,
       bonusPercentage: null,
       bonusAmount: null,
@@ -303,30 +303,29 @@ export default function PaymentFormDialog({
       paymentPlanId: null,
       installmentScheduleId: null,
       isSplitPayment: false,
-      // Initialize allocations with receipt fields inside
       allocations: initialPledgeId
         ? [
-          {
-            pledgeId: initialPledgeId,
-            allocatedAmount: 0,
-            installmentScheduleId: null,
-            notes: null,
-            receiptNumber: null,
-            receiptType: null,
-            receiptIssued: false,
-          },
-        ]
+            {
+              pledgeId: initialPledgeId,
+              allocatedAmount: 0,
+              installmentScheduleId: null,
+              notes: null,
+              receiptNumber: null,
+              receiptType: null,
+              receiptIssued: false,
+            },
+          ]
         : [
-          {
-            pledgeId: 0,
-            allocatedAmount: 0,
-            installmentScheduleId: null,
-            notes: null,
-            receiptNumber: null,
-            receiptType: null,
-            receiptIssued: false,
-          },
-        ],
+            {
+              pledgeId: 0,
+              allocatedAmount: 0,
+              installmentScheduleId: null,
+              notes: null,
+              receiptNumber: null,
+              receiptType: null,
+              receiptIssued: false,
+            },
+          ],
     },
   });
 
@@ -370,22 +369,24 @@ export default function PaymentFormDialog({
 
   const getExchangeRate = (currency: string): number => {
     if (currency === "USD") return 1;
-    if (exchangeRatesData?.data?.rates) {
-      const rate = parseFloat(exchangeRatesData.data.rates[currency]);
+    const rates = exchangeRatesData?.data?.rates;
+    if (rates && rates.hasOwnProperty(currency)) {
+      const rate = parseFloat(rates[currency]);
       return isNaN(rate) ? 1 : rate;
     }
+    console.warn(`Missing exchange rate for ${currency}, defaulting to 1`);
     return 1;
   };
 
+  // Set exchange rate automatically on currency change
   useEffect(() => {
     if (watchedCurrency && exchangeRatesData?.data?.rates) {
       const autoRate = getExchangeRate(watchedCurrency);
-      if (autoRate) {
-        form.setValue("exchangeRate", autoRate);
-      }
+      form.setValue("exchangeRate", autoRate, { shouldValidate: true, shouldDirty: true });
     }
   }, [watchedCurrency, exchangeRatesData, form]);
 
+  // Set initial pledge as default values when dialog opens
   useEffect(() => {
     if (initialPledgeId && !form.formState.isDirty) {
       form.setValue("pledgeId", initialPledgeId);
@@ -405,29 +406,33 @@ export default function PaymentFormDialog({
     }
   }, [initialPledgeId, form, pledgesData, watchedIsSplitPayment]);
 
+  // Update amountUsd whenever amount, currency or exchangeRate changes
   useEffect(() => {
-    const updateCalculatedAmounts = () => {
-      const currency = form.getValues("currency");
-      const amount = form.getValues("amount");
-      let currentExchangeRate = form.getValues("exchangeRate");
-      currentExchangeRate = currentExchangeRate && currentExchangeRate > 0 ? currentExchangeRate : 1;
+    const currency = form.getValues("currency");
+    const amount = form.getValues("amount");
+    let currentExchangeRate = form.getValues("exchangeRate");
+    currentExchangeRate = currentExchangeRate && currentExchangeRate > 0 ? currentExchangeRate : 1;
 
-      if (currency && amount) {
-        const rate = currency === "USD" ? 1 : currentExchangeRate;
-        const usdAmount = amount / rate;
-        form.setValue("amountUsd", Math.round(usdAmount * 100) / 100);
-      }
-    };
-
-    updateCalculatedAmounts();
+    if (currency && amount != null) {
+      const rate = currency === "USD" ? 1 : currentExchangeRate;
+      const usdAmount = amount / rate;
+      form.setValue("amountUsd", Math.round(usdAmount * 100) / 100, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
+    }
   }, [watchedCurrency, watchedAmount, watchedExchangeRate, form]);
 
+  // Update bonusAmount when bonusPercentage or amount changes
   useEffect(() => {
     if (watchedBonusPercentage != null && watchedAmount != null) {
       const bonusAmount = (watchedAmount * watchedBonusPercentage) / 100;
-      form.setValue("bonusAmount", Math.round(bonusAmount * 100) / 100);
+      form.setValue("bonusAmount", Math.round(bonusAmount * 100) / 100, {
+        shouldValidate: true,
+        shouldDirty: true,
+      });
     } else {
-      form.setValue("bonusAmount", null);
+      form.setValue("bonusAmount", null, { shouldValidate: true, shouldDirty: true });
     }
   }, [watchedBonusPercentage, watchedAmount, form]);
 
@@ -445,7 +450,6 @@ export default function PaymentFormDialog({
       checkDate: null,
       checkNumber: null,
       paymentStatus: "completed",
-      // Removed receipt fields from common section
       solicitorId: null,
       bonusPercentage: null,
       bonusAmount: null,
@@ -457,27 +461,27 @@ export default function PaymentFormDialog({
       isSplitPayment: false,
       allocations: initialPledgeId
         ? [
-          {
-            pledgeId: initialPledgeId,
-            allocatedAmount: 0,
-            installmentScheduleId: null,
-            notes: null,
-            receiptNumber: null,
-            receiptType: null,
-            receiptIssued: false,
-          },
-        ]
+            {
+              pledgeId: initialPledgeId,
+              allocatedAmount: 0,
+              installmentScheduleId: null,
+              notes: null,
+              receiptNumber: null,
+              receiptType: null,
+              receiptIssued: false,
+            },
+          ]
         : [
-          {
-            pledgeId: 0,
-            allocatedAmount: 0,
-            installmentScheduleId: null,
-            notes: null,
-            receiptNumber: null,
-            receiptType: null,
-            receiptIssued: false,
-          },
-        ],
+            {
+              pledgeId: 0,
+              allocatedAmount: 0,
+              installmentScheduleId: null,
+              notes: null,
+              receiptNumber: null,
+              receiptType: null,
+              receiptIssued: false,
+            },
+          ],
     });
     setShowSolicitorSection(false);
   }, [form, initialPledgeId]);
@@ -515,13 +519,18 @@ export default function PaymentFormDialog({
 
   const onSubmit = async (data: PaymentFormData) => {
     try {
+      // Convert exchangeRate and amounts to numbers explicitly (if strings)
+      const exchangeRateNum = Number(data.exchangeRate);
+      const amountNum = Number(data.amount);
+      const amountUsdNum = Number(data.amountUsd);
+
       console.log("Form submitted with data:", data);
       const isSplit = data.isSplitPayment;
       const commonPaymentFields = {
-        amount: data.amount,
+        amount: amountNum,
         currency: data.currency,
-        amountUsd: data.amountUsd,
-        exchangeRate: data.exchangeRate,
+        amountUsd: amountUsdNum,
+        exchangeRate: exchangeRateNum,
         paymentDate: data.paymentDate,
         receivedDate: data.receivedDate,
         paymentMethod: data.paymentMethod,
@@ -554,17 +563,22 @@ export default function PaymentFormDialog({
               }
               const paymentCurrency = data.currency || "USD";
               const validPaymentCurrency = isValidCurrency(paymentCurrency) ? paymentCurrency : "USD";
-              const allocatedAmountInPledgeCurrency = convertAmountBetweenCurrencies(
-                allocation.allocatedAmount || 0,
-                validPaymentCurrency,
-                targetPledge.currency,
-                exchangeRatesData?.data?.rates
-              );
+
+              const allocatedAmountVal = allocation.allocatedAmount || 0;
+
+              // You may want to also convert and send allocatedAmountInPledgeCurrency if needed by backend,
+              // currently sending allocatedAmount in payment currency per your code
+              // const allocatedAmountInPledgeCurrency = convertAmountBetweenCurrencies(
+              //   allocatedAmountVal,
+              //   validPaymentCurrency,
+              //   targetPledge.currency,
+              //   exchangeRatesData?.data?.rates
+              // );
 
               return {
                 pledgeId: String(allocation.pledgeId),
                 installmentScheduleId: allocation.installmentScheduleId ? String(allocation.installmentScheduleId) : null,
-                amount: allocation.allocatedAmount,
+                amount: allocatedAmountVal,
                 notes: allocation.notes,
                 // Include receipt fields per allocation
                 receiptNumber: allocation.receiptNumber,
@@ -585,7 +599,7 @@ export default function PaymentFormDialog({
         if (data.allocations?.length === 1 && data.allocations[0].installmentScheduleId) {
           singlePaymentPayload.installmentScheduleId = String(data.allocations[0].installmentScheduleId);
         }
-        // For single payments, no receipt fields are included here inside allocations (if not split)
+        // For single payments, allocations are not included
         paymentPayload = singlePaymentPayload;
       }
 
@@ -653,10 +667,6 @@ export default function PaymentFormDialog({
     remove(index);
   };
 
-  const getInstallmentOptionsForAllocation = useCallback((pledgeId: number) => {
-    return [];
-  }, []);
-
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -691,7 +701,6 @@ export default function PaymentFormDialog({
             )}
           </DialogDescription>
         </DialogHeader>
-
         <Form {...form}>
           <form
             onSubmit={(e) => {
@@ -700,14 +709,12 @@ export default function PaymentFormDialog({
             }}
             className="space-y-6"
           >
-            {/* Basic Payment Information */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Payment Details</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Split Payment Toggle */}
                   <div className="flex items-center space-x-2 md:col-span-2">
                     <Switch
                       id="isSplitPayment"
@@ -763,7 +770,7 @@ export default function PaymentFormDialog({
                     </label>
                   </div>
 
-                  {(!watchedIsSplitPayment && showPledgeSelector) && (
+                  {!watchedIsSplitPayment && showPledgeSelector && (
                     <FormField
                       control={form.control}
                       name="pledgeId"
@@ -784,11 +791,11 @@ export default function PaymentFormDialog({
                                 >
                                   {field.value
                                     ? pledgeOptions.find(
-                                      (pledge: any) => pledge.value === field.value
-                                    )?.label
+                                        (pledge: any) => pledge.value === field.value
+                                      )?.label
                                     : isLoadingPledges
-                                      ? "Loading pledges..."
-                                      : "Select pledge"}
+                                    ? "Loading pledges..."
+                                    : "Select pledge"}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -833,7 +840,6 @@ export default function PaymentFormDialog({
                     />
                   )}
 
-                  {/* Amount */}
                   <FormField
                     control={form.control}
                     name="amount"
@@ -854,14 +860,14 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-                  {/* Currency */}
+
                   <FormField
                     control={form.control}
                     name="currency"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Currency</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select a currency" />
@@ -878,7 +884,8 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-                  {/* Exchange Rate */}
+
+                  {/* Exchange Rate - Non-editable input */}
                   <FormField
                     control={form.control}
                     name="exchangeRate"
@@ -888,12 +895,12 @@ export default function PaymentFormDialog({
                           Exchange Rate (1 {watchedCurrency} = {field.value} USD)
                         </FormLabel>
                         <FormControl>
-                          <Input type="number" step="0.0001" {...field} />
+                          <Input type="number" step="0.0001" {...field} disabled />
                         </FormControl>
                       </FormItem>
                     )}
                   />
-                  {/* Amount in USD */}
+
                   <FormField
                     control={form.control}
                     name="amountUsd"
@@ -906,7 +913,7 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-                  {/* Payment Date */}
+
                   <FormField
                     control={form.control}
                     name="paymentDate"
@@ -919,7 +926,6 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-                  {/* Received Date */}
                   <FormField
                     control={form.control}
                     name="receivedDate"
@@ -936,14 +942,12 @@ export default function PaymentFormDialog({
               </CardContent>
             </Card>
 
-            {/* Payment Method & Status Card */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Payment Method & Status</CardTitle>
+                <CardTitle className="text-lg">Payment Method &amp; Status</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Payment Method */}
                   <FormField
                     control={form.control}
                     name="paymentMethod"
@@ -956,10 +960,13 @@ export default function PaymentFormDialog({
                               <Button
                                 variant="outline"
                                 role="combobox"
-                                className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
                               >
                                 {field.value
-                                  ? paymentMethods.find(method => method.value === field.value)?.label
+                                  ? paymentMethods.find((method) => method.value === field.value)?.label
                                   : "Select payment method"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -970,12 +977,12 @@ export default function PaymentFormDialog({
                               <CommandInput placeholder="Search payment methods..." />
                               <CommandEmpty>No payment method found.</CommandEmpty>
                               <CommandGroup>
-                                {paymentMethods.map(method => (
+                                {paymentMethods.map((method) => (
                                   <CommandItem
                                     value={method.label}
                                     key={method.value}
                                     onSelect={() => {
-                                      form.setValue("paymentMethod", method.value);
+                                      form.setValue("paymentMethod", method.value, { shouldValidate: true, shouldDirty: true });
                                     }}
                                   >
                                     <Check
@@ -995,7 +1002,7 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-                  {/* Method Detail */}
+
                   <FormField
                     control={form.control}
                     name="methodDetail"
@@ -1008,10 +1015,13 @@ export default function PaymentFormDialog({
                               <Button
                                 variant="outline"
                                 role="combobox"
-                                className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
                               >
                                 {field.value
-                                  ? methodDetails.find(detail => detail.value === field.value)?.label
+                                  ? methodDetails.find((detail) => detail.value === field.value)?.label
                                   : "Select method detail"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -1025,20 +1035,23 @@ export default function PaymentFormDialog({
                                 <CommandItem
                                   value="None"
                                   onSelect={() => {
-                                    form.setValue("methodDetail", null);
+                                    form.setValue("methodDetail", null, { shouldValidate: true, shouldDirty: true });
                                   }}
                                 >
                                   <Check
-                                    className={cn("mr-2 h-4 w-4", !field.value ? "opacity-100" : "opacity-0")}
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      !field.value ? "opacity-100" : "opacity-0"
+                                    )}
                                   />
                                   None
                                 </CommandItem>
-                                {methodDetails.map(detail => (
+                                {methodDetails.map((detail) => (
                                   <CommandItem
                                     value={detail.value}
                                     key={detail.value}
                                     onSelect={() => {
-                                      form.setValue("methodDetail", detail.value);
+                                      form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
                                     }}
                                   >
                                     <Check
@@ -1058,7 +1071,7 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-                  {/* Account */}
+
                   <FormField
                     control={form.control}
                     name="account"
@@ -1072,7 +1085,7 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
-                  {/* Check Date and Check Number side by side */}
+
                   <div className="flex gap-4 md:col-span-2">
                     <FormField
                       control={form.control}
@@ -1101,14 +1114,14 @@ export default function PaymentFormDialog({
                       )}
                     />
                   </div>
-                  {/* Payment Status */}
+
                   <FormField
                     control={form.control}
                     name="paymentStatus"
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Payment Status</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
                               <SelectValue placeholder="Select status" />
@@ -1128,8 +1141,6 @@ export default function PaymentFormDialog({
                 </div>
               </CardContent>
             </Card>
-
-            {/* Note: The common Receipt Information card is removed to enforce per-allocation receipt data */}
 
             {/* Solicitor Section */}
             <div className="flex items-center space-x-2">
@@ -1182,8 +1193,8 @@ export default function PaymentFormDialog({
                                   {field.value
                                     ? solicitorOptions.find((solicitor: any) => solicitor.value === field.value)?.label
                                     : isLoadingSolicitors
-                                      ? "Loading solicitors..."
-                                      : "Select solicitor"}
+                                    ? "Loading solicitors..."
+                                    : "Select solicitor"}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -1284,7 +1295,7 @@ export default function PaymentFormDialog({
               </Card>
             )}
 
-            {/* Split Payment Allocations Section with receipt fields per allocation */}
+            {/* Split Payment Allocations Section */}
             {watchedIsSplitPayment && (
               <Card>
                 <CardHeader>
@@ -1345,8 +1356,8 @@ export default function PaymentFormDialog({
                                           {field.value
                                             ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
                                             : isLoadingPledges
-                                              ? "Loading pledges..."
-                                              : "Select pledge"}
+                                            ? "Loading pledges..."
+                                            : "Select pledge"}
                                         </span>
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
@@ -1448,9 +1459,7 @@ export default function PaymentFormDialog({
                               <FormItem>
                                 <FormLabel>Receipt Type</FormLabel>
                                 <Select
-                                  onValueChange={(value) =>
-                                    field.onChange(value === "__NONE_SELECTED__" ? null : value)
-                                  }
+                                  onValueChange={(value) => field.onChange(value === "__NONE_SELECTED__" ? null : value)}
                                   value={field.value || ""}
                                 >
                                   <FormControl>
@@ -1520,7 +1529,6 @@ export default function PaymentFormDialog({
                         {(watchedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                     </div>
-
                     {remainingToAllocate !== 0 && (
                       <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
                         <p className="text-sm text-red-600 font-medium">⚠️ Validation Error</p>
@@ -1530,7 +1538,6 @@ export default function PaymentFormDialog({
                         </p>
                       </div>
                     )}
-
                     {remainingToAllocate === 0 && (
                       <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
                         <p className="text-sm text-green-600 font-medium">✓ Allocations Valid</p>
@@ -1579,9 +1586,19 @@ export default function PaymentFormDialog({
               >
                 {createPaymentMutation.isPending ? "Creating Payment..." : "Record Payment"}
               </Button>
+              <Button
+                type="button"
+                onClick={() => setPledgeDialogOpen(true)}
+                disabled={createPaymentMutation.isPending}
+                className="ml-2"
+              >
+                <PlusCircleIcon className="mr-2 h-4 w-4" />
+                Create New Pledge
+              </Button>
             </div>
           </form>
         </Form>
+        <PledgeDialog open={pledgeDialogOpen} onOpenChange={setPledgeDialogOpen} contactId={contactId ?? 0} />
       </DialogContent>
     </Dialog>
   );
