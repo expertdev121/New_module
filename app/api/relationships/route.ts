@@ -4,92 +4,143 @@ import { sql, desc, asc, or, ilike, and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
 import { relationships, contact } from "@/lib/db/schema";
-import { relationshipSchema } from "@/lib/form-schemas/relationships";
 
-
-// --- Types ---
-const validRelationshipEnumValues = [
-  "mother",
-  "father",
-  "grandmother",
-  "grandfather",
-  "grandparent",
-  "grandchild",       // <-- Added for strict typing!
-  "parent",
-  "step-parent",
-  "stepmother",
-  "stepfather",
-  "sister",
-  "brother",
-  "step-sister",
-  "step-brother",
-  "stepson",
-  "daughter",
-  "son",
-  "aunt",
-  "uncle",
-  "aunt/uncle",
-  "nephew",
-  "niece",
-  "grandson",
-  "granddaughter",
-  "cousin (m)",
-  "cousin (f)",
-  "spouse",
-  "partner",
-  "wife",
-  "husband",
-  "former husband",
-  "former wife",
-  "fiance",
-  "divorced co-parent",
-  "separated co-parent",
-  "legal guardian",
-  "legal guardian partner",
-  "friend",
-  "neighbor",
-  "relative",
-  "business",
-  "owner",
-  "chevrusa",
-  "congregant",
-  "rabbi",
-  "contact",
-  "foundation",
-  "donor",
-  "fund",
-  "rebbi contact",
-  "rebbi contact for",
-  "employee",
-  "employer",
-  "machatunim",
+// --- DB enum values ---
+const dbRelationshipEnumValues = [
+  "mother", "father", "grandmother", "grandchild", "grandfather", "grandparent", "parent", "step-parent", "stepmother", "stepfather", "sister", "brother", "step-sister", "step-brother", "stepson", "daughter", "son", "aunt", "uncle", "aunt/uncle", "nephew", "niece", "grandson", "granddaughter", "cousin (m)", "cousin (f)", "spouse", "partner", "wife", "husband", "former husband", "former wife", "fiance", "divorced co-parent", "separated co-parent", "legal guardian", "legal guardian partner", "friend", "neighbor", "relative", "business", "owner", "chevrusa", "congregant", "rabbi", "contact", "foundation", "donor", "fund", "rebbi contact", "rebbi contact for", "employee", "employer", "machatunim",
+  "His Sister", "Her Sister", "Her Brother", "His Brother", "His Aunt", "Her Aunt", "His Uncle", "Her Uncle", "His Parents", "Her Parents", "Her Mother", "His Mother", "His Father", "Her Nephew", "His Nephew", "His Niece", "Her Niece", "His Grandparents", "Her Grandparents", "Her Father", "Their Daughter", "Their Son", "His Daughter", "His Son", "Her Daughter", "Her Son", "His Cousin (M)", "Her Grandfather", "Her Grandmother", "His Grandfather", "His Grandmother", "His Wife", "Her Husband", "Her Former Husband", "His Former Wife", "His Cousin (F)", "Her Cousin (M)", "Her Cousin (F)", "Partner", "Friend", "Neighbor", "Relative", "Business", "Chevrusa", "Congregant", "Contact", "Donor", "Fiance", "Foundation", "Fund", "Her Step Son", "His Step Mother", "Owner", "Rabbi", "Their Granddaughter", "Their Grandson", "Employee", "Employer"
 ] as const;
 
-type ValidRelationshipType = (typeof validRelationshipEnumValues)[number];
+type RelationshipType = typeof dbRelationshipEnumValues[number];
+const [firstRelationshipType, ...restRelationshipTypes] = dbRelationshipEnumValues;
 
-type RelationshipResult = {
-  id: number;
-  contactId: number;
-  relatedContactId: number;
-  relationshipType: string;
-  displayRelationshipType: string;
-  directionalDisplay: string;
-  isActive: boolean;
-  notes: string | null;
-  createdAt: Date | string;
-  updatedAt: Date | string;
-  relatedContactName: string | null;
-  relatedContactGender: string | null;
-  isReverse: boolean;
-  isReciprocal: boolean;
+// --- Reciprocal mapping for expanded and core values ---
+const RECIPROCAL_MAPPING: Record<string, RelationshipType> = {
+  "Her Brother": "His Sister",
+  "His Sister": "Her Brother",
+  "His Brother": "Her Sister",
+  "Her Sister": "His Brother",
+  "His Mother": "Her Son",
+  "Her Mother": "His Son",
+  "His Son": "Her Mother",
+  "Her Son": "His Mother",
+  "His Daughter": "Her Father",
+  "Her Daughter": "His Father",
+  "His Father": "Her Daughter",
+  "Her Father": "His Daughter",
+  "His Wife": "Her Husband",
+  "Her Husband": "His Wife",
+  "His Niece": "Her Aunt",
+  "Her Niece": "His Uncle",
+  "Her Nephew": "His Aunt",
+  "His Nephew": "Her Uncle",
+  "His Aunt": "Her Nephew",
+  "Her Aunt": "His Nephew",
+  "His Uncle": "Her Niece",
+  "Her Uncle": "His Niece",
+  "His Grandparents": "Their Grandson",
+  "Her Grandparents": "Their Grandson",
+  "His Grandfather": "Their Granddaughter",
+  "Her Grandfather": "Their Grandson",
+  "His Grandmother": "Their Grandson",
+  "Her Grandmother": "Their Grandson",
+  "Their Daughter": "His Father",
+  "Their Son": "His Mother",
+  "Her Granddaughter": "His Grandfather",
+  "His Granddaughter": "Her Grandfather",
+  "Their Granddaughter": "His Grandfather",
+  "Their Grandson": "Her Grandmother",
+  // Generic fallbacks for core DB enums:
+  mother: "son",
+  father: "daughter",
+  grandmother: "grandchild",
+  grandfather: "grandchild",
+  grandparent: "grandchild",
+  grandchild: "grandparent",
+  parent: "son",
+  "step-parent": "stepson",
+  stepmother: "stepson",
+  stepfather: "stepson",
+  sister: "brother",
+  brother: "sister",
+  "step-sister": "step-brother",
+  "step-brother": "step-sister",
+  stepson: "stepmother",
+  daughter: "father",
+  son: "mother",
+  aunt: "nephew",
+  uncle: "niece",
+  "aunt/uncle": "niece",
+  nephew: "aunt",
+  niece: "uncle",
+  grandson: "grandmother",
+  granddaughter: "grandfather",
+  "cousin (m)": "cousin (f)",
+  "cousin (f)": "cousin (m)",
+  spouse: "spouse",
+  partner: "partner",
+  wife: "husband",
+  husband: "wife",
+  "former husband": "former wife",
+  "former wife": "former husband",
+  fiance: "fiance",
+  "divorced co-parent": "divorced co-parent",
+  "separated co-parent": "separated co-parent",
+  "legal guardian": "legal guardian partner",
+  "legal guardian partner": "legal guardian",
+  friend: "friend",
+  neighbor: "neighbor",
+  relative: "relative",
+  business: "contact",
+  owner: "business",
+  chevrusa: "chevrusa",
+  congregant: "rabbi",
+  rabbi: "congregant",
+  contact: "contact",
+  foundation: "donor",
+  donor: "foundation",
+  fund: "donor",
+  "rebbi contact": "contact",
+  "rebbi contact for": "contact",
+  employee: "employer",
+  employer: "employee",
+  machatunim: "machatunim",
+  Partner: "Partner",
+  Friend: "Friend",
+  Neighbor: "Neighbor",
+  Relative: "Relative",
+  Business: "Business",
+  Chevrusa: "Chevrusa",
+  Congregant: "Rabbi",
+  Contact: "Contact",
+  Donor: "Foundation",
+  Fiance: "Fiance",
+  Foundation: "Donor",
+  Fund: "Donor",
+  Owner: "Business",
+  Rabbi: "Congregant",
+  Employee: "Employer",
+  Employer: "Employee"
 };
 
+function getReciprocalRelationshipSafe(relationshipType: string): RelationshipType {
+  const reciprocal = RECIPROCAL_MAPPING[relationshipType];
+  if (reciprocal && dbRelationshipEnumValues.includes(reciprocal)) {
+    return reciprocal;
+  }
+  if (dbRelationshipEnumValues.includes(relationshipType as RelationshipType)) {
+    return relationshipType as RelationshipType;
+  }
+  return "contact" as RelationshipType;
+}
 
-// --- Mappings ---
-const DIRECTIONAL_DISPLAY_MAP: Record<
-  string,
-  { forward: string; reverse: string }
-> = {
+async function getContextualReciprocal(relationshipType: string, targetContactId: number): Promise<RelationshipType> {
+  // Reciprocals now fully explicit and gendered above!
+  return getReciprocalRelationshipSafe(relationshipType);
+}
+
+// --- DIRECTIONAL DISPLAY MAP (as before) ---
+const DIRECTIONAL_DISPLAY_MAP: Record<string, { forward: string; reverse: string }> = {
   mother: { forward: "Mother", reverse: "Child" },
   father: { forward: "Father", reverse: "Child" },
   grandmother: { forward: "Grandmother", reverse: "Grandchild" },
@@ -146,141 +197,47 @@ const DIRECTIONAL_DISPLAY_MAP: Record<
   machatunim: { forward: "Machatanim", reverse: "Machatanim" },
 };
 
-const RECIPROCAL_MAPPING: Record<string, ValidRelationshipType> = {
-  mother: "son",
-  father: "son",
-  grandmother: "grandchild",
-  grandfather: "grandchild",
-  grandparent: "grandchild",
-  grandchild: "grandparent",
-  parent: "son",
-  "step-parent": "stepson",
-  stepmother: "stepson",
-  stepfather: "stepson",
-  sister: "sister",
-  brother: "brother",
-  "step-sister": "step-brother",
-  "step-brother": "step-sister",
-  stepson: "stepmother",
-  daughter: "mother",
-  son: "mother",
-  aunt: "nephew",
-  uncle: "nephew",
-  "aunt/uncle": "nephew",
-  nephew: "aunt",
-  niece: "aunt",
-  grandson: "grandmother",
-  granddaughter: "grandmother",
-  "cousin (m)": "cousin (f)",
-  "cousin (f)": "cousin (m)",
-  spouse: "spouse",
-  partner: "partner",
-  wife: "husband",
-  husband: "wife",
-  "former husband": "former wife",
-  "former wife": "former husband",
-  fiance: "fiance",
-  "divorced co-parent": "divorced co-parent",
-  "separated co-parent": "separated co-parent",
-  "legal guardian": "legal guardian partner",
-  "legal guardian partner": "legal guardian",
-  friend: "friend",
-  neighbor: "neighbor",
-  relative: "relative",
-  business: "contact",
-  owner: "business",
-  chevrusa: "chevrusa",
-  congregant: "rabbi",
-  rabbi: "congregant",
-  contact: "contact",
-  foundation: "donor",
-  donor: "foundation",
-  fund: "donor",
-  "rebbi contact": "contact",
-  "rebbi contact for": "contact",
-  employee: "employer",
-  employer: "employee",
-  machatunim: "machatunim",
-};
-
-
-// --- Helpers ---
 function getDirectionalDisplay(relationshipType: string, isReverse: boolean): string {
   const mapping = DIRECTIONAL_DISPLAY_MAP[relationshipType];
   if (!mapping) return relationshipType;
   return isReverse ? mapping.reverse : mapping.forward;
 }
 
-function getReciprocalRelationshipSafe(relationshipType: string): ValidRelationshipType {
-  const reciprocal = RECIPROCAL_MAPPING[relationshipType];
-  if (reciprocal && validRelationshipEnumValues.includes(reciprocal)) {
-    return reciprocal;
-  }
-  if (validRelationshipEnumValues.includes(relationshipType as ValidRelationshipType)) {
-    return relationshipType as ValidRelationshipType;
-  }
-  return "contact";
-}
-
-async function getContextualReciprocal(
-  relationshipType: string,
-  targetContactId: number
-): Promise<ValidRelationshipType> {
-  try {
-    const targetContact = await db
-      .select({ gender: contact.gender })
-      .from(contact)
-      .where(eq(contact.id, targetContactId))
-      .limit(1);
-
-    const gender = targetContact[0]?.gender;
-
-    const contextualMapping: Record<
-      string,
-      { male?: ValidRelationshipType; female?: ValidRelationshipType; default: ValidRelationshipType }
-    > = {
-      mother: { male: "son", female: "daughter", default: "son" },
-      father: { male: "son", female: "daughter", default: "son" },
-      parent: { male: "son", female: "daughter", default: "son" },
-      stepmother: { male: "stepson", female: "daughter", default: "stepson" },
-      stepfather: { male: "stepson", female: "daughter", default: "stepson" },
-      grandmother: { male: "grandson", female: "granddaughter", default: "grandson" },
-      grandfather: { male: "grandson", female: "granddaughter", default: "grandson" },
-      aunt: { male: "nephew", female: "niece", default: "nephew" },
-      uncle: { male: "nephew", female: "niece", default: "nephew" },
-      "aunt/uncle": { male: "nephew", female: "niece", default: "nephew" },
-    };
-
-    const contextual = contextualMapping[relationshipType];
-    if (contextual) {
-      if (gender === "male" && contextual.male) return contextual.male;
-      if (gender === "female" && contextual.female) return contextual.female;
-      return contextual.default;
+// --- Zod Schemas ---
+const relationshipSchema = z
+  .object({
+    contactId: z.coerce.number().positive("Contact ID is required"),
+    relatedContactId: z.number().positive("Related contact must be selected"),
+    relationshipType: z.enum(
+      [firstRelationshipType, ...restRelationshipTypes] as [RelationshipType, ...RelationshipType[]],
+      { required_error: "Relationship type is required" }
+    ),
+    isActive: z.boolean(),
+    notes: z.string().optional(),
+  })
+  .refine(
+    (data) => data.contactId !== data.relatedContactId,
+    {
+      message: "Cannot create relationship with the same contact",
+      path: ["relatedContactId"],
     }
-    return getReciprocalRelationshipSafe(relationshipType);
-  } catch (error) {
-    console.warn("Error getting contextual reciprocal, using fallback:", error);
-    return getReciprocalRelationshipSafe(relationshipType);
-  }
-}
+  );
 
-
-// --- Query Schema ---
 const querySchema = z.object({
   page: z.coerce.number().min(1).default(1),
   limit: z.coerce.number().min(1).max(100).default(10),
   search: z.string().optional(),
   sortBy: z.string().default("updatedAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
-  relationshipType: z.enum(validRelationshipEnumValues).optional(),
+  relationshipType: z.enum([
+      firstRelationshipType, ...restRelationshipTypes
+    ] as [RelationshipType, ...RelationshipType[]]).optional(),
   isActive: z.coerce.boolean().optional(),
   contactId: z.coerce.number().positive().optional(),
   relatedContactId: z.coerce.number().positive().optional(),
   includeReciprocals: z.coerce.boolean().default(true),
 });
 
-
-// --- GET Handler ---
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -294,7 +251,6 @@ export async function GET(request: NextRequest) {
       isActive: searchParams.get("isActive") ?? undefined,
       contactId: searchParams.get("contactId") ?? undefined,
       relatedContactId: searchParams.get("relatedContactId") ?? undefined,
-      // Force includeReciprocals to false to not display reciprocal values
       includeReciprocals: false,
     });
 
@@ -321,7 +277,6 @@ export async function GET(request: NextRequest) {
       isActive,
       contactId,
       relatedContactId,
-      // includeReciprocals removed because forced false above
     } = parsedParams.data;
 
     const offset = (page - 1) * limit;
@@ -330,24 +285,12 @@ export async function GET(request: NextRequest) {
       const conditions = [];
 
       if (search) {
-        conditions.push(
-          or(
-            ilike(relationships.relationshipType, `%${search}%`),
-            ilike(relationships.notes, `%${search}%`)
-          )
-        );
+        conditions.push(or(ilike(relationships.relationshipType, `%${search}%`), ilike(relationships.notes, `%${search}%`)));
       }
-      if (relationshipType)
-        conditions.push(eq(relationships.relationshipType, relationshipType));
-      if (typeof isActive === "boolean")
-        conditions.push(eq(relationships.isActive, isActive));
+      if (relationshipType) conditions.push(eq(relationships.relationshipType, relationshipType));
+      if (typeof isActive === "boolean") conditions.push(eq(relationships.isActive, isActive));
       if (relatedContactId)
-        conditions.push(
-          or(
-            eq(relationships.relatedContactId, relatedContactId),
-            eq(relationships.contactId, relatedContactId)
-          )
-        );
+        conditions.push(or(eq(relationships.relatedContactId, relatedContactId), eq(relationships.contactId, relatedContactId)));
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -364,9 +307,7 @@ export async function GET(request: NextRequest) {
           notes: relationships.notes,
           createdAt: relationships.createdAt,
           updatedAt: relationships.updatedAt,
-          relatedContactName: sql<string>`concat(${contact.firstName}, ' ', ${contact.lastName})`.as(
-            "relatedContactName"
-          ),
+          relatedContactName: sql<string>`concat(${contact.firstName}, ' ', ${contact.lastName})`.as("relatedContactName"),
           relatedContactGender: contact.gender,
           isReverse: sql<boolean>`false`.as("isReverse"),
           isReciprocal: sql<boolean>`false`.as("isReciprocal"),
@@ -382,7 +323,6 @@ export async function GET(request: NextRequest) {
         directionalDisplay: getDirectionalDisplay(rel.relationshipType, false),
       }));
 
-      // Deduplication is unnecessary here (no reverse relations included)
       const uniqueRelations = mappedForwardRelations;
 
       let sortedRelations = uniqueRelations;
@@ -442,22 +382,15 @@ export async function GET(request: NextRequest) {
             sortBy,
             sortOrder,
           },
-          // Omit reciprocal related meta since no reciprocals displayed
         },
         { headers: { "X-Total-Count": totalCount.toString() } }
       );
     }
 
-    // Non-contactId logic unchanged (single direction, so dedupe not needed)
+    // Non-contactId logic unchanged
     const conditions = [];
-
     if (search) {
-      conditions.push(
-        or(
-          ilike(relationships.relationshipType, `%${search}%`),
-          ilike(relationships.notes, `%${search}%`)
-        )
-      );
+      conditions.push(or(ilike(relationships.relationshipType, `%${search}%`), ilike(relationships.notes, `%${search}%`)));
     }
     if (relationshipType) conditions.push(eq(relationships.relationshipType, relationshipType));
     if (typeof isActive === "boolean") conditions.push(eq(relationships.isActive, isActive));
@@ -471,37 +404,23 @@ export async function GET(request: NextRequest) {
         orderByClause = sortOrder === "asc" ? asc(relationships.id) : desc(relationships.id);
         break;
       case "contactId":
-        orderByClause =
-          sortOrder === "asc" ? asc(relationships.contactId) : desc(relationships.contactId);
+        orderByClause = sortOrder === "asc" ? asc(relationships.contactId) : desc(relationships.contactId);
         break;
       case "relatedContactId":
-        orderByClause =
-          sortOrder === "asc"
-            ? asc(relationships.relatedContactId)
-            : desc(relationships.relatedContactId);
+        orderByClause = sortOrder === "asc" ? asc(relationships.relatedContactId) : desc(relationships.relatedContactId);
         break;
       case "relationshipType":
-        orderByClause =
-          sortOrder === "asc"
-            ? asc(relationships.relationshipType)
-            : desc(relationships.relationshipType);
+        orderByClause = sortOrder === "asc" ? asc(relationships.relationshipType) : desc(relationships.relationshipType);
         break;
       case "isActive":
-        orderByClause =
-          sortOrder === "asc" ? asc(relationships.isActive) : desc(relationships.isActive);
+        orderByClause = sortOrder === "asc" ? asc(relationships.isActive) : desc(relationships.isActive);
         break;
       case "createdAt":
-        orderByClause =
-          sortOrder === "asc"
-            ? asc(relationships.createdAt)
-            : desc(relationships.createdAt);
+        orderByClause = sortOrder === "asc" ? asc(relationships.createdAt) : desc(relationships.createdAt);
         break;
       case "updatedAt":
       default:
-        orderByClause =
-          sortOrder === "asc"
-            ? asc(relationships.updatedAt)
-            : desc(relationships.updatedAt);
+        orderByClause = sortOrder === "asc" ? asc(relationships.updatedAt) : desc(relationships.updatedAt);
         break;
     }
 
@@ -517,9 +436,7 @@ export async function GET(request: NextRequest) {
         notes: relationships.notes,
         createdAt: relationships.createdAt,
         updatedAt: relationships.updatedAt,
-        relatedContactName: sql<string>`concat(${contact.firstName}, ' ', ${contact.lastName})`.as(
-          "relatedContactName"
-        ),
+        relatedContactName: sql<string>`concat(${contact.firstName}, ' ', ${contact.lastName})`.as("relatedContactName"),
         relatedContactGender: contact.gender,
         isReverse: sql<boolean>`false`.as("isReverse"),
         isReciprocal: sql<boolean>`false`.as("isReciprocal"),
@@ -531,16 +448,11 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    const countQuery = db
-      .select({
-        count: sql<number>`count(*)`.as("count"),
-      })
-      .from(relationships)
-      .where(whereClause);
+    const countQuery = db.select({ count: sql<number>`count(*)`.as("count") }).from(relationships).where(whereClause);
 
     const [relations, totalCountResult] = await Promise.all([query.execute(), countQuery.execute()]);
 
-    const enhancedRelations = (relations as RelationshipResult[]).map((rel) => ({
+    const enhancedRelations = relations.map((rel) => ({
       ...rel,
       directionalDisplay: getDirectionalDisplay(rel.relationshipType, false),
     }));
@@ -584,15 +496,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-
-// --- POST Handler ---
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validatedData = relationshipSchema.parse(body);
-
-    const relationshipType = validatedData.relationshipType as ValidRelationshipType;
-
+    const relationshipType = validatedData.relationshipType;
     const existingRelationship = await db
       .select()
       .from(relationships)
@@ -610,18 +518,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Duplicate relationship",
-          message: `Active relationship of type '${relationshipType}' already exists between contact ${validatedData.contactId} and related contact ${validatedData.relatedContactId}`,
+          message: `An active relationship of type '${relationshipType}' already exists between contact ${validatedData.contactId} and related contact ${validatedData.relatedContactId}.`,
         },
         { status: 409 }
       );
     }
 
     const [createdRelationship] = await db.insert(relationships).values(validatedData).returning();
-
     const reciprocalType = await getContextualReciprocal(relationshipType, validatedData.contactId);
 
-    const isSelfRelationshipWithSameType =
-      relationshipType === reciprocalType && validatedData.contactId === validatedData.relatedContactId;
+    const isSelfRelationshipWithSameType = relationshipType === reciprocalType && validatedData.contactId === validatedData.relatedContactId;
 
     if (!isSelfRelationshipWithSameType) {
       const existingReciprocal = await db
@@ -645,9 +551,7 @@ export async function POST(request: NextRequest) {
           relatedContactId: validatedData.contactId,
           relationshipType: reciprocalType,
           isActive: validatedData.isActive,
-          notes: validatedData.notes
-            ? `Reciprocal: ${validatedData.notes}`
-            : reciprocalNote,
+          notes: validatedData.notes ? `Reciprocal: ${validatedData.notes}` : reciprocalNote,
         });
       }
     }
@@ -657,6 +561,8 @@ export async function POST(request: NextRequest) {
       directionalDisplay: getDirectionalDisplay(relationshipType, false),
       reciprocalType,
       reciprocalDisplay: getDirectionalDisplay(reciprocalType, false),
+      displayRelationshipType: relationshipType,
+      relationshipType,
     };
 
     return NextResponse.json(
@@ -676,7 +582,7 @@ export async function POST(request: NextRequest) {
         {
           error: "Validation failed",
           details: error.issues.map((issue) => ({
-            field: issue.path.join("."),
+            field: issue.path.join(".") || "(root)",
             message: issue.message,
           })),
         },

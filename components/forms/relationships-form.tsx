@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardContent, CardFooter, CardTitle, CardDescription } from "@/components/ui/card";
-import { Users } from "lucide-react";
+import { Users, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,86 +26,88 @@ interface Contact {
   email?: string | null;
 }
 
-// -- Relationship Types
+// -- Updated Relationship Types with exact DB enum string values
 const relationshipTypes = [
-  { value: "mother", label: "Mother" },
-  { value: "father", label: "Father" },
-  { value: "grandmother", label: "Grandmother" },
-  { value: "grandfather", label: "Grandfather" },
-  { value: "grandparent", label: "Grandparent" },
-  { value: "grandchild", label: "Grandchild" },
-  { value: "grandson", label: "Grandson" },
-  { value: "granddaughter", label: "Granddaughter" },
-  { value: "parent", label: "Parent" },
-  { value: "step-parent", label: "Step-parent" },
-  { value: "stepmother", label: "Stepmother" },
-  { value: "stepfather", label: "Stepfather" },
-  { value: "sister", label: "Sister" },
-  { value: "brother", label: "Brother" },
-  { value: "step-sister", label: "Step-sister" },
-  { value: "step-brother", label: "Step-brother" },
-  { value: "stepson", label: "Stepson" },
-  { value: "daughter", label: "Daughter" },
-  { value: "son", label: "Son" },
-  { value: "aunt", label: "Aunt" },
-  { value: "uncle", label: "Uncle" },
-  { value: "aunt/uncle", label: "Aunt/Uncle" },
-  { value: "nephew", label: "Nephew" },
-  { value: "niece", label: "Niece" },
-  { value: "cousin (m)", label: "Cousin (M)" },
-  { value: "cousin (f)", label: "Cousin (F)" },
-  { value: "spouse", label: "Spouse" },
-  { value: "partner", label: "Partner" },
-  { value: "wife", label: "Wife" },
-  { value: "husband", label: "Husband" },
-  { value: "former husband", label: "Former Husband" },
-  { value: "former wife", label: "Former Wife" },
-  { value: "fiance", label: "Fiancé" },
-  { value: "divorced co-parent", label: "Divorced Co-parent" },
-  { value: "separated co-parent", label: "Separated Co-parent" },
-  { value: "legal guardian", label: "Legal Guardian" },
-  { value: "legal guardian partner", label: "Legal Guardian Partner" },
-  { value: "friend", label: "Friend" },
-  { value: "neighbor", label: "Neighbor" },
-  { value: "relative", label: "Relative" },
-  { value: "business", label: "Business" },
-  { value: "owner", label: "Owner" },
-  { value: "chevrusa", label: "Chevrusa" },
-  { value: "congregant", label: "Congregant" },
-  { value: "rabbi", label: "Rabbi" },
-  { value: "contact", label: "Contact" },
-  { value: "foundation", label: "Foundation" },
-  { value: "donor", label: "Donor" },
-  { value: "fund", label: "Fund" },
-  { value: "rebbi contact", label: "Rebbi Contact" },
-  { value: "rebbi contact for", label: "Rebbi Contact For" },
-  { value: "employee", label: "Employee" },
-  { value: "employer", label: "Employer" },
-  { value: "machatunim", label: "Machatunim" },
+  { value: "His Sister", label: "His Sister" },
+  { value: "Her Sister", label: "Her Sister" },
+  { value: "Her Brother", label: "Her Brother" },
+  { value: "His Brother", label: "His Brother" },
+  { value: "His Aunt", label: "His Aunt" },
+  { value: "Her Aunt", label: "Her Aunt" },
+  { value: "His Uncle", label: "His Uncle" },
+  { value: "Her Uncle", label: "Her Uncle" },
+  { value: "Her Parents", label: "Her Parents" },
+  { value: "Her Mother", label: "Her Mother" },
+  { value: "His Mother", label: "His Mother" },
+  { value: "His Father", label: "His Father" },
+  { value: "His Parents", label: "His Parents" },
+  { value: "Her Nephew", label: "Her Nephew" },
+  { value: "His Nephew", label: "His Nephew" },
+  { value: "His Niece", label: "His Niece" },
+  { value: "Her Niece", label: "Her Niece" },
+  { value: "His Grandparents", label: "His Grandparents" },
+  { value: "Her Grandparents", label: "Her Grandparents" },
+  { value: "Her Father", label: "Her Father" },
+  { value: "Their Daughter", label: "Their Daughter" },
+  { value: "Their Son", label: "Their Son" },
+  { value: "His Daughter", label: "His Daughter" },
+  { value: "His Son", label: "His Son" },
+  { value: "Her Daughter", label: "Her Daughter" },
+  { value: "Her Son", label: "Her Son" },
+  { value: "His Cousin (M)", label: "His Cousin (M)" },
+  { value: "Her Grandfather", label: "Her Grandfather" },
+  { value: "Her Grandmother", label: "Her Grandmother" },
+  { value: "His Grandfather", label: "His Grandfather" },
+  { value: "His Grandmother", label: "His Grandmother" },
+  { value: "His Wife", label: "His Wife" },
+  { value: "Her Former Husband", label: "Her Former Husband" },
+  { value: "His Former Wife", label: "His Former Wife" },
+  { value: "His Cousin (F)", label: "His Cousin (F)" },
+  { value: "Her Cousin (M)", label: "Her Cousin (M)" },
+  { value: "Her Cousin (F)", label: "Her Cousin (F)" },
+  { value: "Partner", label: "Partner" },
+  { value: "Friend", label: "Friend" },
+  { value: "Neighbor", label: "Neighbor" },
+  { value: "Relative", label: "Relative" },
+  { value: "Business", label: "Business" },
+  { value: "Chevrusa", label: "Chevrusa" },
+  { value: "Congregant", label: "Congregant" },
+  { value: "Contact", label: "Contact" },
+  { value: "Donor", label: "Donor" },
+  { value: "Fiance", label: "Fiance" },
+  { value: "Foundation", label: "Foundation" },
+  { value: "Fund", label: "Fund" },
+  { value: "Her Step Son", label: "Her Step Son" },
+  { value: "His Step Mother", label: "His Step Mother" },
+  { value: "Owner", label: "Owner" },
+  { value: "Rabbi", label: "Rabbi" },
+  { value: "Their Granddaughter", label: "Their Granddaughter" },
+  { value: "Their Grandson", label: "Their Grandson" },
+  { value: "Employee", label: "Employee" },
+  { value: "Employer", label: "Employer" },
 ] as const;
 
 // Extract the union type from the relationship types
-type RelationshipType = typeof relationshipTypes[number]['value'];
+type RelationshipType = typeof relationshipTypes[number]["value"];
 
 // Create a tuple type for the enum values
-const relationshipValues = relationshipTypes.map(t => t.value);
+const relationshipValues = relationshipTypes.map((t) => t.value);
 const [firstValue, ...restValues] = relationshipValues;
 
-const relationshipSchema = z.object({
-  contactId: z.coerce.number().positive("Contact ID is required"),
-  relatedContactId: z.number().positive("Related contact must be selected"),
-  relationshipType: z.enum([firstValue, ...restValues] as [RelationshipType, ...RelationshipType[]], { 
-    required_error: "Relationship type is required" 
-  }),
-  isActive: z.boolean(),
-  notes: z.string().optional(),
-}).refine(
-  (data) => data.contactId !== data.relatedContactId,
-  {
+const relationshipSchema = z
+  .object({
+    contactId: z.coerce.number().positive("Contact ID is required"),
+    relatedContactId: z.number().positive("Related contact must be selected"),
+    relationshipType: z.enum([firstValue, ...restValues] as [RelationshipType, ...RelationshipType[]], {
+      required_error: "Relationship type is required",
+    }),
+    isActive: z.boolean(),
+    notes: z.string().optional(),
+  })
+  .refine((data) => data.contactId !== data.relatedContactId, {
     message: "Cannot create relationship with the same contact",
     path: ["relatedContactId"],
-  }
-);
+  });
 
 type RelationshipFormData = z.infer<typeof relationshipSchema>;
 
@@ -113,7 +115,7 @@ type RelationshipFormData = z.infer<typeof relationshipSchema>;
 interface CreateRelationshipInput {
   contactId: number;
   relatedContactId: number;
-  relationshipType: RelationshipType; // Use the proper type instead of string
+  relationshipType: RelationshipType;
   isActive: boolean;
   notes?: string;
 }
@@ -130,22 +132,55 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
   const [open, setOpen] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Fetch main contact details to display
   const { data: contactData, isLoading: isLoadingContact } = useContactDetailsQuery(contactId);
 
   // Fetch contacts for search dropdown, enable only if search string >=2 chars
-  const { data: searchResults, isLoading: isSearching } = useContactSearchQuery(contactSearch, { enabled: contactSearch.length >= 2 });
+  const { data: searchResults, isLoading: isSearching } = useContactSearchQuery(contactSearch, {
+    enabled: contactSearch.length >= 2,
+  });
+
+  // Deduplicate search results based on contact ID
+  const uniqueSearchResults = useMemo(() => {
+    if (!searchResults?.contacts) return [];
+    
+    const uniqueContacts = new Map<number, Contact>();
+    
+    searchResults.contacts.forEach((contact: Contact) => {
+      if (contact.id !== contactId && !uniqueContacts.has(contact.id)) {
+        uniqueContacts.set(contact.id, contact);
+      }
+    });
+    
+    return Array.from(uniqueContacts.values()).slice(0, 8); // Limit to 8 results
+  }, [searchResults?.contacts, contactId]);
 
   const effectiveContactName = contactName || contactData?.contact.firstName || "Unknown Contact";
   const createRelationshipMutation = useCreateRelationshipMutation();
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   const form = useForm<RelationshipFormData>({
     resolver: zodResolver(relationshipSchema),
     defaultValues: {
       contactId,
       relatedContactId: 0,
-      relationshipType: undefined as RelationshipFormData['relationshipType'] | undefined,
+      relationshipType: undefined as RelationshipFormData["relationshipType"] | undefined,
       isActive: true,
       notes: "",
     },
@@ -155,12 +190,13 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
     form.reset({
       contactId,
       relatedContactId: 0,
-      relationshipType: undefined as RelationshipFormData['relationshipType'] | undefined,
+      relationshipType: undefined as RelationshipFormData["relationshipType"] | undefined,
       isActive: true,
       notes: "",
     });
     setContactSearch("");
     setSelectedContact(null);
+    setShowDropdown(false);
   };
 
   const onSubmit = async (data: RelationshipFormData) => {
@@ -172,7 +208,7 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
         isActive: data.isActive,
         notes: data.notes || undefined,
       };
-      
+
       await createRelationshipMutation.mutateAsync(relationshipData);
       resetForm();
       setOpen(false);
@@ -192,10 +228,20 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
     form.setValue("relatedContactId", contact.id);
     setSelectedContact(contact);
     setContactSearch(`${contact.firstName} ${contact.lastName}`);
+    setShowDropdown(false);
+  };
+
+  const handleClearSearch = () => {
+    setSelectedContact(null);
+    form.setValue("relatedContactId", 0);
+    setContactSearch("");
+    setShowDropdown(true);
   };
 
   const selectedRelationshipType = form.watch("relationshipType");
   const selectedRelatedContactId = form.watch("relatedContactId");
+
+  const showSearchResults = contactSearch.length >= 2 && !selectedContact && showDropdown;
 
   return (
     <>
@@ -213,12 +259,15 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
             <CardHeader>
               <CardTitle>Add Relationship</CardTitle>
               <CardDescription>
-                {isLoadingContact ? "Loading contact details..." : (
+                {isLoadingContact ? (
+                  "Loading contact details..."
+                ) : (
                   <>
                     Create a relationship for: <strong>{effectiveContactName}</strong>
                     {contactData?.activeRelationships?.length ? (
                       <div className="mt-2 text-sm text-muted-foreground">
-                        {contactData.activeRelationships.length} active relationship{contactData.activeRelationships.length > 1 ? "s" : ""}
+                        {contactData.activeRelationships.length} active relationship
+                        {contactData.activeRelationships.length > 1 ? "s" : ""}
                       </div>
                     ) : null}
                   </>
@@ -228,56 +277,112 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
             <CardContent>
               <Form {...form}>
                 {/* CONTACT SEARCH */}
-                <div className="mb-6">
+                <div className="mb-6 relative" ref={searchContainerRef}>
                   <FormLabel>Search Related Contact *</FormLabel>
-                  <Input
-                    placeholder="Type name or email to search contacts..."
-                    value={contactSearch}
-                    onChange={(e) => setContactSearch(e.target.value)}
-                  />
-                  {contactSearch.length >= 2 && !selectedContact && (
-                    <div className="max-h-32 overflow-y-auto border rounded-md mt-1 bg-white z-10 relative">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                    <Input
+                      placeholder="Type name or email to search contacts..."
+                      value={contactSearch}
+                      onChange={(e) => {
+                        setContactSearch(e.target.value);
+                        setShowDropdown(true);
+                      }}
+                      onFocus={() => setShowDropdown(true)}
+                      className="pl-10 pr-10"
+                    />
+                    {contactSearch && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearSearch}
+                        className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0 hover:bg-gray-100"
+                      >
+                        <X className="w-3 h-3" />
+                      </Button>
+                    )}
+                  </div>
+                  
+                  {/* SEARCH RESULTS DROPDOWN */}
+                  {showSearchResults && (
+                    <div className="absolute top-full left-0 right-0 z-20 mt-1 bg-white border rounded-md shadow-lg max-h-64 overflow-y-auto">
                       {isSearching ? (
-                        <div className="p-2 text-sm text-muted-foreground">Searching...</div>
-                      ) : searchResults?.contacts && searchResults.contacts.length > 0 ? (
-                        searchResults.contacts
-                          .filter((c: Contact) => c.id !== contactId)
-                          .map((contact: Contact) => (
-                            <button
+                        <div className="p-3 flex items-center justify-center text-sm text-muted-foreground">
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+                          Searching...
+                        </div>
+                      ) : uniqueSearchResults.length > 0 ? (
+                        <>
+                          <div className="p-2 text-xs text-muted-foreground border-b bg-gray-50">
+                            {uniqueSearchResults.length} contact{uniqueSearchResults.length !== 1 ? 's' : ''} found
+                          </div>
+                          {uniqueSearchResults.map((contact: Contact) => (
+                            <div
                               key={contact.id}
-                              type="button"
-                              className="w-full text-left p-2 hover:bg-gray-50 text-sm"
-                              onClick={() => handleContactSelect(contact)}
+                              className="w-full text-left p-3 hover:bg-blue-50 border-b last:border-b-0 transition-colors duration-150 cursor-pointer"
+                              onMouseDown={() => handleContactSelect(contact)}
                             >
-                              {contact.firstName} {contact.lastName} &mdash; {contact.email}
-                            </button>
-                          ))
-                      ) : (
-                        <div className="p-2 text-sm text-muted-foreground">No contacts found</div>
-                      )}
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="font-medium text-sm">
+                                    {contact.firstName} {contact.lastName}
+                                  </div>
+                                  {contact.email && (
+                                    <div className="text-xs text-muted-foreground mt-1">
+                                      {contact.email}
+                                    </div>
+                                  )}
+                                </div>
+                                <div className="text-xs text-blue-600">
+                                  Select
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </>
+                      ) : contactSearch.length >= 2 ? (
+                        <div className="p-3 text-sm text-muted-foreground text-center">
+                          <div className="mb-1">No contacts found</div>
+                          <div className="text-xs">Try searching with a different term</div>
+                        </div>
+                      ) : null}
                     </div>
                   )}
 
                   {/* SELECTED CONTACT CARD */}
                   {selectedContact && (
-                    <div className="mt-2 p-2 rounded border bg-muted flex justify-between items-center gap-2">
-                      <span>
-                        <b>Selected:</b> {selectedContact.firstName} {selectedContact.lastName}
-                        {selectedContact.email && <> (<span className="text-xs">{selectedContact.email}</span>)</>}
-                      </span>
+                    <div className="mt-3 p-3 rounded-lg border-2 border-green-200 bg-green-50 flex justify-between items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                        <div>
+                          <div className="font-medium text-sm">
+                            {selectedContact.firstName} {selectedContact.lastName}
+                          </div>
+                          {selectedContact.email && (
+                            <div className="text-xs text-muted-foreground">
+                              {selectedContact.email}
+                            </div>
+                          )}
+                        </div>
+                      </div>
                       <Button
+                        type="button"
                         variant="ghost"
                         size="sm"
-                        onClick={() => {
-                          setSelectedContact(null);
-                          form.setValue("relatedContactId", 0);
-                          setContactSearch("");
-                        }}
-                        className="px-2 text-lg"
+                        onClick={handleClearSearch}
+                        className="h-8 w-8 p-0 hover:bg-green-200 text-green-700"
                         title="Remove selected contact"
                       >
-                        ×
+                        <X className="w-4 h-4" />
                       </Button>
+                    </div>
+                  )}
+                  
+                  {/* Search hint */}
+                  {contactSearch.length > 0 && contactSearch.length < 2 && (
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      Type at least 2 characters to search
                     </div>
                   )}
                 </div>
@@ -297,7 +402,9 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
                         </FormControl>
                         <SelectContent className="max-h-[300px]">
                           {relationshipTypes.map((type) => (
-                            <SelectItem key={type.value} value={type.value}>{type.label}</SelectItem>
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -341,26 +448,36 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
                 />
 
                 {/* SUMMARY */}
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
-                  <h4 className="font-medium text-blue-900 mb-2">Relationship Summary</h4>
-                  <div className="text-sm text-blue-800 space-y-1">
-                    <div>
-                      <strong>{effectiveContactName}</strong> is the{" "}
-                      <strong>
-                        {selectedRelationshipType
-                          ? relationshipTypes.find((t) => t.value === selectedRelationshipType)?.label.toLowerCase()
-                          : "[relationship type]"}
-                      </strong>{" "}
-                      of{" "}
-                      <strong>
-                        {selectedContact
-                          ? `${selectedContact.firstName} ${selectedContact.lastName}`
-                          : "Unknown Contact"}
-                      </strong>
+                {selectedContact && selectedRelationshipType && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mt-6">
+                    <h4 className="font-medium text-blue-900 mb-2 flex items-center gap-2">
+                      <Users className="w-4 h-4" />
+                      Relationship Summary
+                    </h4>
+                    <div className="text-sm text-blue-800 space-y-1">
+                      <div>
+                        <strong>{effectiveContactName}</strong> is the{" "}
+                        <strong>
+                          {relationshipTypes.find((t) => t.value === selectedRelationshipType)?.label.toLowerCase()}
+                        </strong>{" "}
+                        of{" "}
+                        <strong>
+                          {selectedContact.firstName} {selectedContact.lastName}
+                        </strong>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span>Status:</span>
+                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          form.watch("isActive") 
+                            ? "bg-green-100 text-green-800" 
+                            : "bg-gray-100 text-gray-800"
+                        }`}>
+                          {form.watch("isActive") ? "Active" : "Inactive"}
+                        </span>
+                      </div>
                     </div>
-                    <div>Status: {form.watch("isActive") ? "Active" : "Inactive"}</div>
                   </div>
-                </div>
+                )}
               </Form>
             </CardContent>
             <CardFooter className="flex justify-end space-x-2 pt-4 border-t">
