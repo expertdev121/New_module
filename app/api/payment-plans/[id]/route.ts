@@ -401,8 +401,6 @@ export async function PATCH(
         }
       }
     }
-
-    // Prepare update object for DB
     const dataToUpdate: Partial<PaymentPlan> = {
       updatedAt: new Date(),
       ...(validatedData.planName !== undefined && { planName: validatedData.planName }),

@@ -415,7 +415,7 @@ export default function PaymentFormDialog({
 
     if (currency && amount != null) {
       const rate = currency === "USD" ? 1 : currentExchangeRate;
-      const usdAmount = amount / rate;
+      const usdAmount = amount*rate;
       form.setValue("amountUsd", Math.round(usdAmount * 100) / 100, {
         shouldValidate: true,
         shouldDirty: true,

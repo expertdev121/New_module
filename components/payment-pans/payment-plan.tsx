@@ -142,11 +142,18 @@ export default function PaymentPlansTable({
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
-    return date.toLocaleDateString("en-GB", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
+
+    // Array of 3-letter uppercase month strings
+    const months = [
+      "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+    ];
+
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+
+    return `${day}-${month}-${year}`;
   };
 
   const getStatusColor = (status: PlanStatusType | null) => {
@@ -389,13 +396,13 @@ export default function PaymentPlansTable({
                     const remainingUSD =
                       pledgeUSD && paidUSD
                         ? (
-                            parseFloat(pledgeUSD) - parseFloat(paidUSD)
-                          ).toString()
+                          parseFloat(pledgeUSD) - parseFloat(paidUSD)
+                        ).toString()
                         : getUSDAmount(
-                            plan.remainingAmount,
-                            null,
-                            plan.exchangeRate
-                          );
+                          plan.remainingAmount,
+                          null,
+                          plan.exchangeRate
+                        );
 
                     // Calculate Total Scheduled USD using exchange rate
                     const totalScheduledUSD = convertToUSD(
@@ -799,7 +806,7 @@ export default function PaymentPlansTable({
                   onClick={() => setPage(currentPage + 1)}
                   disabled={data.paymentPlans.length < currentLimit}
                 >
-                  Next  
+                  Next
                 </Button>
               </div>
             </div>
