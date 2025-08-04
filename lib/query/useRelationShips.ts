@@ -7,27 +7,120 @@ interface Relationship {
   contactId: number;
   relatedContactId: number;
   relationshipType:
-    | "mother"
-    | "father"
-    | "grandmother"
-    | "grandfather"
-    | "sister"
-    | "spouse"
-    | "brother"
-    | "partner"
-    | "step-brother"
-    | "step-sister"
-    | "stepmother"
-    | "stepfather"
-    | "divorced co-parent"
-    | "separated co-parent"
-    | "legal guardian"
-    | "step-parent"
-    | "legal guardian partner"
-    | "grandparent"
-    | "aunt"
-    | "uncle"
-    | "aunt/uncle";
+  | "mother"
+  | "father"
+  | "grandmother"
+  | "grandchild"
+  | "grandfather"
+  | "grandparent"
+  | "parent"
+  | "step-parent"
+  | "stepmother"
+  | "stepfather"
+  | "sister"
+  | "brother"
+  | "step-sister"
+  | "step-brother"
+  | "stepson"
+  | "daughter"
+  | "son"
+  | "aunt"
+  | "uncle"
+  | "aunt/uncle"
+  | "nephew"
+  | "niece"
+  | "grandson"
+  | "granddaughter"
+  | "cousin (m)"
+  | "cousin (f)"
+  | "spouse"
+  | "partner"
+  | "wife"
+  | "husband"
+  | "former husband"
+  | "former wife"
+  | "fiance"
+  | "divorced co-parent"
+  | "separated co-parent"
+  | "legal guardian"
+  | "legal guardian partner"
+  | "friend"
+  | "neighbor"
+  | "relative"
+  | "business"
+  | "owner"
+  | "chevrusa"
+  | "congregant"
+  | "rabbi"
+  | "contact"
+  | "foundation"
+  | "donor"
+  | "fund"
+  | "rebbi contact"
+  | "rebbi contact for"
+  | "employee"
+  | "employer"
+  | "machatunim"
+  // Added missing types below:
+  | "His Sister"
+  | "Her Sister"
+  | "Her Brother"
+  | "His Brother"
+  | "His Aunt"
+  | "Her Aunt"
+  | "His Uncle"
+  | "Her Uncle"
+  | "His Parents"
+  | "Her Parents"
+  | "Her Mother"
+  | "His Mother"
+  | "His Father"
+  | "His Parents"
+  | "Her Nephew"
+  | "His Nephew"
+  | "His Niece"
+  | "Her Niece"
+  | "His Grandparents"
+  | "Her Grandparents"
+  | "Her Father"
+  | "Their Daughter"
+  | "Their Son"
+  | "His Daughter"
+  | "His Son"
+  | "Her Daughter"
+  | "Her Son"
+  | "His Cousin (M)"
+  | "Her Grandfather"
+  | "Her Grandmother"
+  | "His Grandfather"
+  | "His Grandmother"
+  | "His Wife"
+  | "Her Husband"
+  | "Her Former Husband"
+  | "His Former Wife"
+  | "His Cousin (F)"
+  | "Her Cousin (M)"
+  | "Her Cousin (F)"
+  | "Partner"
+  | "Friend"
+  | "Neighbor"
+  | "Relative"
+  | "Business"
+  | "Chevrusa"
+  | "Congregant"
+  | "Contact"
+  | "Donor"
+  | "Fiance"
+  | "Foundation"
+  | "Fund"
+  | "Her Step Son"
+  | "His Step Mother"
+  | "Owner"
+  | "Rabbi"
+  | "Their Granddaughter"
+  | "Their Grandson"
+  | "Employee"
+  | "Employer";
   isActive: boolean;
   notes?: string;
   createdAt: string;
@@ -73,32 +166,124 @@ const querySchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
   relationshipType: z
     .enum([
-      "mother",
-      "father",
-      "grandmother",
-      "grandfather",
-      "sister",
-      "spouse",
-      "brother",
-      "partner",
-      "step-brother",
-      "step-sister",
-      "stepmother",
-      "stepfather",
-      "divorced co-parent",
-      "separated co-parent",
-      "legal guardian",
-      "step-parent",
-      "legal guardian partner",
-      "grandparent",
-      "aunt",
-      "uncle",
-      "aunt/uncle",
+   "mother",
+   "father",
+  "grandmother",
+  "grandchild",
+  "grandfather",
+  "grandparent",
+  "parent",
+  "step-parent",
+  "stepmother",
+   "stepfather",
+   "sister",
+   "brother",
+   "step-sister",
+   "step-brother",
+   "stepson",
+   "daughter",
+   "son",
+   "aunt",
+   "uncle",
+   "aunt/uncle",
+   "nephew",
+   "niece",
+   "grandson",
+   "granddaughter",
+   "cousin (m)",
+   "cousin (f)",
+   "spouse",
+   "partner",
+   "wife",
+   "husband",
+   "former husband",
+   "former wife",
+   "fiance",
+   "divorced co-parent",
+   "separated co-parent",
+   "legal guardian",
+   "legal guardian partner",
+   "friend",
+   "neighbor",
+   "relative",
+   "business",
+   "owner",
+   "chevrusa",
+   "congregant",
+   "rabbi",
+   "contact",
+   "foundation",
+   "donor",
+   "fund",
+   "rebbi contact",
+  "rebbi contact for",
+  "employee",
+  "employer",
+  "machatunim",
+      "His Sister",
+  "Her Sister",
+  "Her Brother",
+   "His Brother",
+   "His Aunt",
+   "Her Aunt",
+   "His Uncle",
+   "Her Uncle",
+   "His Parents",
+   "Her Parents",
+   "Her Mother",
+   "His Mother",
+   "His Father",
+   "His Parents",
+   "Her Nephew",
+   "His Nephew",
+   "His Niece",
+   "Her Niece",
+   "His Grandparents",
+   "Her Grandparents",
+   "Her Father",
+   "Their Daughter",
+   "Their Son",
+   "His Daughter",
+   "His Son",
+   "Her Daughter",
+   "Her Son",
+   "His Cousin (M)",
+   "Her Grandfather",
+   "Her Grandmother",
+   "His Grandfather",
+   "His Grandmother",
+   "His Wife",
+   "Her Husband",
+   "Her Former Husband",
+   "His Former Wife",
+   "His Cousin (F)",
+   "Her Cousin (M)",
+   "Her Cousin (F)",
+   "Partner",
+   "Friend",
+   "Neighbor",
+   "Relative",
+   "Business",
+   "Chevrusa",
+   "Congregant",
+   "Contact",
+   "Donor",
+   "Fiance",
+   "Foundation",
+   "Fund",
+  "Her Step Son",
+  "His Step Mother",
+  "Owner",
+  "Rabbi",
+  "Their Granddaughter",
+  "Their Grandson",
+  "Employee",
+  "Employer"
     ])
     .optional(),
   isActive: z.boolean().optional(),
-  contactId: z.number().positive().optional(),
-  relatedContactId: z.number().positive().optional(),
+    contactId: z.number().positive().optional(),
+      relatedContactId: z.number().positive().optional(),
 });
 
 // Schema for updating relationships (partial)
