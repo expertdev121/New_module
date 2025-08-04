@@ -73,8 +73,28 @@ const PaymentStatusEnum = z.enum([
 
 type PaymentStatusType = z.infer<typeof PaymentStatusEnum>;
 
+// *************************
+// ***** DATE FORMATTER ****
+// *************************
+function displayDate_DDMMMYYYY(dateString: string | null | undefined): string {
+  if (!dateString || dateString.trim() === "" || dateString === "0000-00-00" || dateString === "1970-01-01")
+    return "Unscheduled";
+  let d = new Date(dateString);
+  if (isNaN(d.getTime())) {
+    const parts = typeof dateString === "string" ? dateString.split("-") : [];
+    if (parts.length === 3) {
+      d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+    }
+  }
+  if (isNaN(d.getTime())) return "-";
+  const day = d.getDate().toString().padStart(2, "0");
+  const month = d.toLocaleString("en-US", { month: "short" }).toUpperCase();
+  const year = d.getFullYear();
+  return `${day}/${month}/${year}`;
+}
+
 // Define the expected Payment type for EditPaymentDialog
-interface EditPayment extends Omit<ApiPayment, 'allocations'> {
+interface EditPayment extends Omit<ApiPayment, "allocations"> {
   contactId?: number;
   allocations: EditAllocation[];
 }
@@ -104,9 +124,13 @@ interface PaymentsTableProps {
 }
 
 export default function PaymentsTable({ contactId }: PaymentsTableProps) {
-  const [selectedPayment, setSelectedPayment] = useState<EditPayment | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<EditPayment | null>(
+    null
+  );
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
-  const [deletingPaymentId, setDeletingPaymentId] = useState<number | null>(null);
+  const [deletingPaymentId, setDeletingPaymentId] = useState<number | null>(
+    null
+  );
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   // Type conversion function to transform ApiPayment to EditPayment
@@ -114,11 +138,12 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     return {
       ...apiPayment,
       contactId: contactId,
-      allocations: apiPayment.allocations?.map(allocation => ({
-        ...allocation,
-        allocatedAmount: allocation.allocatedAmount.toString(),
-        notes: allocation.notes === undefined ? null : allocation.notes,
-      })) || [],
+      allocations:
+        apiPayment.allocations?.map((allocation) => ({
+          ...allocation,
+          allocatedAmount: allocation.allocatedAmount.toString(),
+          notes: allocation.notes === undefined ? null : allocation.notes,
+        })) || [],
     };
   };
 
@@ -138,7 +163,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   // Split Payment Badge Component
   const SplitPaymentBadge = ({ payment }: { payment: ApiPayment }) => {
     if (!payment.isSplitPayment) return null;
-    
+
     return (
       <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
         <Split className="h-3 w-3 mr-1" />
@@ -150,7 +175,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   // Payment Plan Badge Component
   const PaymentPlanBadge = ({ payment }: { payment: ApiPayment }) => {
     if (!payment.paymentPlanId) return null;
-    
+
     return (
       <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
         <Calendar className="h-3 w-3 mr-1" />
@@ -184,7 +209,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
         </div>
       );
     }
-    
+
     return (
       <div className="flex items-center gap-1 text-green-600">
         <CreditCard className="h-4 w-4" />
@@ -197,7 +222,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   const PaymentStatusBadge = ({ status }: { status: string }) => {
     const statusClass = getStatusBadgeColor(status);
     const statusText = status.charAt(0).toUpperCase() + status.slice(1);
-    
+
     return (
       <Badge variant="outline" className={`${statusClass} font-medium`}>
         {statusText}
@@ -206,11 +231,14 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   };
 
   // Helper function to format dates with fallback for unscheduled
-  const formatDateWithFallback = (date: string | null | undefined, fallbackText: string = "Unscheduled") => {
+  const formatDateWithFallback = (
+    date: string | null | undefined,
+    fallbackText: string = "Unscheduled"
+  ) => {
     if (!date || date.trim() === "" || date === "0000-00-00" || date === "1970-01-01") {
       return fallbackText;
     }
-    return formatDate(date);
+    return displayDate_DDMMMYYYY(date);
   };
 
   const [pledgeId] = useQueryState("pledgeId", {
@@ -235,23 +263,22 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
 
   const [search, setSearch] = useQueryState("search");
 
-  const [paymentStatus, setPaymentStatus] =
-    useQueryState<PaymentStatusType | null>("paymentStatus", {
-      parse: (value) => {
-        if (
-          value === "pending" ||
-          value === "completed" ||
-          value === "failed" ||
-          value === "cancelled" ||
-          value === "refunded" ||
-          value === "processing"
-        ) {
-          return value as PaymentStatusType;
-        }
-        return null;
-      },
-      serialize: (value) => value ?? "",
-    });
+  const [paymentStatus, setPaymentStatus] = useQueryState<PaymentStatusType | null>("paymentStatus", {
+    parse: (value) => {
+      if (
+        value === "pending" ||
+        value === "completed" ||
+        value === "failed" ||
+        value === "cancelled" ||
+        value === "refunded" ||
+        value === "processing"
+      ) {
+        return value as PaymentStatusType;
+      }
+      return null;
+    },
+    serialize: (value) => value ?? "",
+  });
 
   const currentPage = page ?? 1;
   const currentLimit = limit ?? 10;
@@ -352,7 +379,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     if (payment.isSplitPayment && payment.allocations) {
       // For split payments, sum all allocated amounts in USD
       const totalUSD = payment.allocations.reduce((sum, allocation) => {
-        return sum + (parseFloat(allocation.allocatedAmountUsd || "0"));
+        return sum + parseFloat(allocation.allocatedAmountUsd || "0");
       }, 0);
       return totalUSD.toString();
     }
@@ -374,13 +401,13 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   // Helper function to format method detail with proper capitalization
   const formatMethodDetail = (methodDetail: string | null | undefined) => {
     if (!methodDetail) return "N/A";
-    return methodDetail.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+    return methodDetail.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
   // Helper function to format payment method with proper capitalization and fallback
   const formatPaymentMethod = (paymentMethod: string | null | undefined) => {
     if (!paymentMethod || paymentMethod.trim() === "") return "Not Specified";
-    return paymentMethod.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
+    return paymentMethod.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
   };
 
   if (error) {
@@ -414,7 +441,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
           payment={selectedPayment}
         />
       )}
-      
+
       {/* Filters */}
       <Card>
         <CardHeader>
@@ -551,7 +578,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                           {formatDateWithFallback(payment.paymentDate)}
                         </TableCell>
                         <TableCell className="font-medium">
-                          {formatDateWithFallback(payment.receivedDate, "Not Received")}
+                          {formatDateWithFallback(
+                            payment.receivedDate,
+                            "Not Received"
+                          )}
                         </TableCell>
                         <TableCell>
                           <span className="font-medium">
@@ -560,11 +590,22 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                         </TableCell>
                         <TableCell>
                           {(() => {
-                            const appliedAmount = getAppliedAmountPledgeCurrency(payment);
+                            const appliedAmount =
+                              getAppliedAmountPledgeCurrency(payment);
                             return (
                               <span className="font-medium">
-                                {formatCurrency(appliedAmount.amount, appliedAmount.currency).symbol}
-                                {formatCurrency(appliedAmount.amount, appliedAmount.currency).amount}
+                                {
+                                  formatCurrency(
+                                    appliedAmount.amount,
+                                    appliedAmount.currency
+                                  ).symbol
+                                }
+                                {
+                                  formatCurrency(
+                                    appliedAmount.amount,
+                                    appliedAmount.currency
+                                  ).amount
+                                }
                               </span>
                             );
                           })()}
@@ -637,7 +678,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Effective Date:
                                     </span>
                                     <span className="font-medium">
-                                      {formatDateWithFallback(payment.receivedDate, "Not Received")}
+                                      {formatDateWithFallback(
+                                        payment.receivedDate,
+                                        "Not Received"
+                                      )}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -645,8 +689,18 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Amount (Plg Currency):
                                     </span>
                                     <span className="font-medium">
-                                      {formatCurrency(payment.amount, payment.currency).symbol}
-                                      {formatCurrency(payment.amount, payment.currency).amount}
+                                      {
+                                        formatCurrency(
+                                          payment.amount,
+                                          payment.currency
+                                        ).symbol
+                                      }
+                                      {
+                                        formatCurrency(
+                                          payment.amount,
+                                          payment.currency
+                                        ).amount
+                                      }
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -659,7 +713,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                 </div>
                               </div>
-
                               {/* Column 2: Receipt/Method Information */}
                               <div className="space-y-3">
                                 <div className="space-y-2 text-sm">
@@ -699,11 +752,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                     <span className="text-gray-600">
                                       Receipt Issued:
                                     </span>
-                                    <span
-                                      className={`font-medium ${payment.receiptIssued
+                                    <span className={`font-medium ${payment.receiptIssued
                                         ? "text-green-600"
                                         : "text-red-600"
-                                        }`}
+                                      }`}
                                     >
                                       {payment.receiptIssued ? "Yes" : "No"}
                                     </span>
@@ -749,12 +801,11 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                 </div>
                               </div>
                             </div>
-
                             {/* Split Payment Allocations - FIXED SECTION */}
                             {payment.isSplitPayment && payment.allocations && payment.allocations.length > 0 && (
                               <div className="mt-6 pt-4 border-t">
                                 <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                  <Users className="h-4 w-4" />  
+                                  <Users className="h-4 w-4" />
                                   Payment Allocations ({payment.allocations.length})
                                 </h4>
                                 <div className="space-y-3">
@@ -779,7 +830,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                         </div>
                                         <div>
                                           <div className="space-y-1">
-                                            <div className="flex justify-between">     
+                                            <div className="flex justify-between">
                                               <span className="text-sm text-gray-600">Amount:</span>
                                               <span className="text-sm font-medium">
                                                 {formatCurrency(allocation.allocatedAmount.toString(), allocation.currency).symbol}
@@ -834,11 +885,16 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                     className="text-red-600 hover:text-red-700 hover:bg-red-50 bg-transparent"
                                   >
                                     {deletingPaymentId === payment.id ? (
-                                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      <>
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        Deleting...
+                                      </>
                                     ) : (
-                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      <>
+                                        <Trash2 className="h-4 w-4 mr-2" />
+                                        Delete Payment
+                                      </>
                                     )}
-                                    Delete Payment
                                   </Button>
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
@@ -850,8 +906,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Are you sure you want to delete this payment? This action cannot be undone.
                                       {payment.isSplitPayment && (
                                         <>
-                                          <br /><br />
-                                          <strong className="text-red-600">Warning:</strong> This is a split payment 
+                                          <br />
+                                          <br />
+                                          <strong className="text-red-600">Warning:</strong> This is a split payment
                                           affecting {payment.allocationCount} pledges. All allocations will be removed.
                                         </>
                                       )}
@@ -868,24 +925,18 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                         </>
                                       )}
                                       Amount:{" "}
-                                      {
-                                        formatCurrency(
-                                          payment.amount,
-                                          payment.currency
-                                        ).symbol
-                                      }
-                                      {
-                                        formatCurrency(
-                                          payment.amount,
-                                          payment.currency
-                                        ).amount
-                                      }
+                                      {formatCurrency(payment.amount, payment.currency).symbol}
+                                      {formatCurrency(payment.amount, payment.currency).amount}
                                       <br />
                                       Date: {formatDateWithFallback(payment.paymentDate)}
                                       <br />
                                       Status: {payment.paymentStatus}
                                       <br />
-                                      Type: {payment.isSplitPayment ? "Split Payment" : payment.paymentPlanId ? "Planned Payment" : "Direct Payment"}
+                                      Type: {payment.isSplitPayment
+                                        ? "Split Payment"
+                                        : payment.paymentPlanId
+                                          ? "Planned Payment"
+                                          : "Direct Payment"}
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -897,9 +948,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                         handleDeletePayment(payment)
                                       }
                                       className="bg-red-600 hover:bg-red-700"
-                                      disabled={
-                                        deletingPaymentId === payment.id
-                                      }
+                                      disabled={deletingPaymentId === payment.id}
                                     >
                                       {deletingPaymentId === payment.id ? (
                                         <>
@@ -913,7 +962,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
-
                               <LinkButton
                                 variant="secondary"
                                 href={`/contacts/${contactId}/payment-plans`}
@@ -974,4 +1022,4 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
       </Card>
     </div>
   );
-} 
+}

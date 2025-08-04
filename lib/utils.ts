@@ -31,12 +31,19 @@ export function useDebounce<T>(value: T, delay: number): T {
   return debouncedValue;
 }
 
-export const formatDate = (dateString: string) => {
-  if (!dateString) return "N/A";
-  const date = new Date(dateString);
-  return date.toLocaleDateString("en-GB", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-};
+export const formatDate = (dateString: string | null) => {
+    if (!dateString) return "N/A";
+    const date = new Date(dateString);
+
+    // Array of 3-letter uppercase month strings
+    const months = [
+      "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+      "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
+    ];
+
+    const day = date.getDate().toString().padStart(2, "0");
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+
+    return `${day}-${month}-${year}`;
+  };

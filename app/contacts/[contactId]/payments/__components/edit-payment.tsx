@@ -2,10 +2,10 @@
 "use client";
 
 import React, { useEffect, useState, useCallback } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, RefreshCw } from "lucide-react";
+import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, RefreshCw, Plus, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -55,6 +55,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useUpdatePaymentMutation } from "@/lib/query/payments/usePaymentQuery";
 import { usePledgeDetailsQuery } from "@/lib/query/payment-plans/usePaymentPlanQuery";
+import { usePledgesQuery } from "@/lib/query/usePledgeData";
+import useContactId from "@/hooks/use-contact-id";
 
 interface Solicitor {
   id: number;
@@ -62,6 +64,18 @@ interface Solicitor {
   lastName: string;
   commissionRate: number;
   contact: any;
+}
+
+interface Pledge {
+  id: number;
+  description: string | null;
+  currency: string;
+  balance: string;
+  originalAmount: string;
+  remainingBalance?: number;
+  contact?: {
+    fullName: string;
+  };
 }
 
 interface Allocation {
@@ -270,7 +284,7 @@ const editPaymentSchema = z
         })
       )
       .optional(),
-    
+
     // New fields for installment management
     autoAdjustAllocations: z.boolean().optional(),
     redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
@@ -301,7 +315,7 @@ interface EditPaymentDialogProps {
 
 export default function EditPaymentDialog({
   payment,
-  contactId,
+  contactId: propContactId,
   trigger,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
@@ -314,20 +328,24 @@ export default function EditPaymentDialog({
 
   const { data: solicitorsData } = useSolicitors({ status: "active" });
 
+  const contactId = useContactId() || propContactId || payment.contactId;
+
+  const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
+    {
+      contactId: contactId as number,
+      page: 1,
+      limit: 100,
+      status: undefined,
+    },
+    { enabled: !!contactId }
+  );
+
   const [internalOpen, setInternalOpen] = useState(false);
   const [showSolicitorSection, setShowSolicitorSection] = useState(!!payment.solicitorId);
   const [showAmountChangeWarning, setShowAmountChangeWarning] = useState(false);
   const [autoAdjustAllocations, setAutoAdjustAllocations] = useState(false);
   const [redistributionMethod, setRedistributionMethod] = useState<"proportional" | "equal" | "custom">("proportional");
-
-  const [editableAllocations, setEditableAllocations] = useState<Allocation[]>(
-    (payment.allocations || []).map((alloc) => ({
-      ...alloc,
-      receiptNumber: alloc.receiptNumber || null,
-      receiptType: alloc.receiptType || null,
-      receiptIssued: alloc.receiptIssued ?? false,
-    }))
-  );
+  const [canConvertToSplit, setCanConvertToSplit] = useState(false);
 
   const [originalAmount] = useState(parseFloat(payment.amount));
 
@@ -372,7 +390,34 @@ export default function EditPaymentDialog({
       isSplitPayment: isSplitPayment,
       autoAdjustAllocations: false,
       redistributionMethod: "proportional",
+      allocations: isSplitPayment && payment.allocations
+        ? payment.allocations.map(alloc => ({
+          id: alloc.id,
+          pledgeId: alloc.pledgeId,
+          allocatedAmount: parseFloat(alloc.allocatedAmount),
+          notes: alloc.notes,
+          currency: alloc.currency || payment.currency,
+          receiptNumber: alloc.receiptNumber || null,
+          receiptType: alloc.receiptType || null,
+          receiptIssued: alloc.receiptIssued ?? false,
+        }))
+        : payment.pledgeId
+          ? [{
+            pledgeId: payment.pledgeId,
+            allocatedAmount: parseFloat(payment.amount),
+            notes: null,
+            currency: payment.currency,
+            receiptNumber: payment.receiptNumber || null,
+            receiptType: payment.receiptType || null,
+            receiptIssued: payment.receiptIssued ?? false,
+          }]
+          : [],
     },
+  });
+
+  const { fields, append, remove, replace } = useFieldArray({
+    control: form.control,
+    name: "allocations",
   });
 
   const watchedCurrency = form.watch("currency");
@@ -381,111 +426,113 @@ export default function EditPaymentDialog({
   const watchedSolicitorId = form.watch("solicitorId");
   const watchedBonusPercentage = form.watch("bonusPercentage");
   const watchedExchangeRate = form.watch("exchangeRate");
+  const watchedIsSplitPayment = form.watch("isSplitPayment");
+  const watchedAllocations = form.watch("allocations");
+
+  const totalAllocatedAmount = (watchedAllocations || []).reduce(
+    (sum, alloc) => sum + (alloc.allocatedAmount || 0),
+    0
+  );
+  const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
+
+  // Check if payment can be converted to split
+  useEffect(() => {
+    setCanConvertToSplit(!isPaymentPlanPayment && !isSplitPayment && !!payment.pledgeId);
+  }, [isPaymentPlanPayment, isSplitPayment, payment.pledgeId]);
 
   // Auto-adjust allocations when amount changes
   const redistributeAllocations = useCallback((newAmount: number, method: "proportional" | "equal" | "custom") => {
-    if (!isSplitPayment || editableAllocations.length === 0) return;
+    if (!watchedIsSplitPayment || !watchedAllocations || watchedAllocations.length === 0) return;
 
-    const totalOriginal = editableAllocations.reduce(
-      (sum, alloc) => sum + parseFloat(alloc.allocatedAmount),
+    const totalOriginal = watchedAllocations.reduce(
+      (sum, alloc) => sum + (alloc.allocatedAmount || 0),
       0
     );
 
     if (totalOriginal === 0) return;
 
-    let newAllocations: Allocation[];
+    let newAllocations: any[];
 
     switch (method) {
       case "proportional":
         // Maintain proportional distribution
-        newAllocations = editableAllocations.map((alloc) => {
-          const proportion = parseFloat(alloc.allocatedAmount) / totalOriginal;
+        newAllocations = watchedAllocations.map((alloc) => {
+          const proportion = (alloc.allocatedAmount || 0) / totalOriginal;
           const newAllocationAmount = newAmount * proportion;
           return {
             ...alloc,
-            allocatedAmount: newAllocationAmount.toFixed(2),
+            allocatedAmount: newAllocationAmount,
           };
         });
         break;
 
       case "equal":
         // Distribute equally among all allocations
-        const equalAmount = newAmount / editableAllocations.length;
-        newAllocations = editableAllocations.map((alloc) => ({
+        const equalAmount = newAmount / watchedAllocations.length;
+        newAllocations = watchedAllocations.map((alloc) => ({
           ...alloc,
-          allocatedAmount: equalAmount.toFixed(2),
+          allocatedAmount: equalAmount,
         }));
         break;
 
       case "custom":
       default:
         // Keep existing allocations, user will adjust manually
-        newAllocations = [...editableAllocations];
+        newAllocations = [...watchedAllocations];
         break;
     }
 
     // Ensure the total equals the new amount (handle rounding errors)
-    const newTotal = newAllocations.reduce((sum, alloc) => sum + parseFloat(alloc.allocatedAmount), 0);
+    const newTotal = newAllocations.reduce((sum, alloc) => sum + (alloc.allocatedAmount || 0), 0);
     const difference = newAmount - newTotal;
 
     if (Math.abs(difference) > 0.001 && newAllocations.length > 0) {
       // Add the difference to the first allocation
       const firstAllocation = newAllocations[0];
-      const adjustedAmount = parseFloat(firstAllocation.allocatedAmount) + difference;
+      const adjustedAmount = (firstAllocation.allocatedAmount || 0) + difference;
       newAllocations[0] = {
         ...firstAllocation,
-        allocatedAmount: adjustedAmount.toFixed(2),
+        allocatedAmount: adjustedAmount,
       };
     }
 
-    setEditableAllocations(newAllocations);
-  }, [isSplitPayment, editableAllocations]);
+    replace(newAllocations);
+  }, [watchedIsSplitPayment, watchedAllocations, replace]);
 
   // Handle auto-adjustment when amount changes
   useEffect(() => {
-    if (!isSplitPayment || !autoAdjustAllocations || !watchedAmount) return;
+    if (!watchedIsSplitPayment || !autoAdjustAllocations || !watchedAmount) return;
 
     const currentAmount = watchedAmount;
-    const originalTotal = editableAllocations.reduce(
-      (sum, alloc) => sum + parseFloat(alloc.allocatedAmount),
-      0
-    );
+    const originalTotal = totalAllocatedAmount;
 
     // Only auto-adjust if the amounts don't match
     if (Math.abs(currentAmount - originalTotal) > 0.01) {
       redistributeAllocations(currentAmount, redistributionMethod);
     }
-  }, [watchedAmount, autoAdjustAllocations, redistributionMethod, redistributeAllocations, isSplitPayment]);
+  }, [watchedAmount, autoAdjustAllocations, redistributionMethod, redistributeAllocations, watchedIsSplitPayment, totalAllocatedAmount]);
 
   // Show warning when amount changes
   useEffect(() => {
-    if (isSplitPayment && watchedAmount && Math.abs(watchedAmount - originalAmount) > 0.01) {
+    if (watchedIsSplitPayment && watchedAmount && Math.abs(watchedAmount - originalAmount) > 0.01) {
       setShowAmountChangeWarning(true);
     } else {
       setShowAmountChangeWarning(false);
     }
-  }, [watchedAmount, originalAmount, isSplitPayment]);
-
-  const getTotalAllocatedAmount = () => {
-    return editableAllocations.reduce(
-      (total, allocation) => total + parseFloat(allocation.allocatedAmount),
-      0
-    );
-  };
+  }, [watchedAmount, originalAmount, watchedIsSplitPayment]);
 
   const areAllocationsValid = () => {
-    if (!isSplitPayment || !editableAllocations.length) return true;
-    const totalAllocated = getTotalAllocatedAmount();
+    if (!watchedIsSplitPayment || !watchedAllocations || watchedAllocations.length === 0) return true;
     const paymentAmount = watchedAmount || parseFloat(payment.amount);
-    return Math.abs(totalAllocated - paymentAmount) < 0.01;
+    return Math.abs(totalAllocatedAmount - paymentAmount) < 0.01;
   };
 
   const areAllocationCurrenciesValid = () => {
-    if (!isSplitPayment) return true;
+    if (!watchedIsSplitPayment) return true;
     const paymentCurrency = watchedCurrency || payment.currency;
-    return editableAllocations.every(
+    return watchedAllocations?.every(
       (allocation) => (allocation.currency || payment.currency) === paymentCurrency
-    );
+    ) ?? true;
   };
 
   // Handle manual redistribution
@@ -494,6 +541,72 @@ export default function EditPaymentDialog({
       redistributeAllocations(watchedAmount, redistributionMethod);
       toast.success(`Allocations redistributed using ${redistributionMethod} method`);
     }
+  };
+
+  // Handle split payment toggle
+  const handleSplitPaymentToggle = (checked: boolean) => {
+    form.setValue("isSplitPayment", checked);
+
+    if (checked) {
+      // Converting to split payment
+      if (payment.pledgeId) {
+        // Start with current payment as first allocation
+        const currentAllocation = {
+          pledgeId: payment.pledgeId,
+          allocatedAmount: parseFloat(payment.amount),
+          notes: null,
+          currency: payment.currency,
+          receiptNumber: payment.receiptNumber || null,
+          receiptType: payment.receiptType || null,
+          receiptIssued: payment.receiptIssued ?? false,
+        };
+        replace([currentAllocation]);
+      } else {
+        // No existing pledge, start with empty allocation
+        replace([{
+          pledgeId: 0,
+          allocatedAmount: 0,
+          notes: null,
+          currency: payment.currency,
+          receiptNumber: null,
+          receiptType: null,
+          receiptIssued: false,
+        }]);
+      }
+      // Clear single payment fields
+      form.setValue("pledgeId", null);
+      form.setValue("receiptNumber", null);
+      form.setValue("receiptType", null);
+      form.setValue("receiptIssued", false);
+    } else {
+      // Converting back to single payment
+      if (watchedAllocations && watchedAllocations.length > 0) {
+        const firstAllocation = watchedAllocations[0];
+        form.setValue("pledgeId", firstAllocation.pledgeId);
+        form.setValue("receiptNumber", firstAllocation.receiptNumber);
+        form.setValue("receiptType", firstAllocation.receiptType);
+        form.setValue("receiptIssued", firstAllocation.receiptIssued ?? false);
+      }
+      replace([]);
+    }
+  };
+
+  // Add new allocation
+  const addAllocation = () => {
+    append({
+      pledgeId: 0,
+      allocatedAmount: 0,
+      notes: null,
+      currency: watchedCurrency || payment.currency,
+      receiptNumber: null,
+      receiptType: null,
+      receiptIssued: false,
+    });
+  };
+
+  // Remove allocation
+  const removeAllocation = (index: number) => {
+    remove(index);
   };
 
   // Exchange rate and amount calculations
@@ -524,27 +637,25 @@ export default function EditPaymentDialog({
     setShowSolicitorSection(!!watchedSolicitorId);
   }, [watchedSolicitorId]);
 
+  // Update allocation currencies when payment currency changes
   useEffect(() => {
-    setEditableAllocations(
-      (payment.allocations || []).map((alloc) => ({
-        ...alloc,
-        receiptNumber: alloc.receiptNumber || null,
-        receiptType: alloc.receiptType || null,
-        receiptIssued: alloc.receiptIssued ?? false,
-      }))
-    );
-  }, [payment.allocations]);
-
-  useEffect(() => {
-    if (isSplitPayment && watchedCurrency && editableAllocations.length > 0) {
-      setEditableAllocations((prev) =>
-        prev.map((allocation) => ({
+    if (
+      watchedIsSplitPayment &&
+      watchedCurrency &&
+      watchedAllocations &&
+      watchedAllocations.length > 0
+    ) {
+      const needsUpdate = watchedAllocations.some(a => a.currency !== watchedCurrency);
+      if (needsUpdate) {
+        const updatedAllocations = watchedAllocations.map(allocation => ({
           ...allocation,
           currency: watchedCurrency,
-        }))
-      );
+        }));
+        replace(updatedAllocations);
+      }
     }
-  }, [watchedCurrency, isSplitPayment]);
+  }, [watchedCurrency, watchedIsSplitPayment, watchedAllocations, replace]);
+
 
   // Reset form and allocations on close
   const resetForm = useCallback(() => {
@@ -583,21 +694,38 @@ export default function EditPaymentDialog({
     setAutoAdjustAllocations(false);
     setRedistributionMethod("proportional");
     setShowAmountChangeWarning(false);
-    setEditableAllocations(
-      (payment.allocations || []).map((alloc) => ({
-        ...alloc,
+
+    // Reset allocations
+    const initialAllocations = isSplitPayment && payment.allocations
+      ? payment.allocations.map(alloc => ({
+        id: alloc.id,
+        pledgeId: alloc.pledgeId,
+        allocatedAmount: parseFloat(alloc.allocatedAmount),
+        notes: alloc.notes,
+        currency: alloc.currency || payment.currency,
         receiptNumber: alloc.receiptNumber || null,
         receiptType: alloc.receiptType || null,
         receiptIssued: alloc.receiptIssued ?? false,
       }))
-    );
-  }, [form, payment, isSplitPayment]);
+      : payment.pledgeId
+        ? [{
+          pledgeId: payment.pledgeId,
+          allocatedAmount: parseFloat(payment.amount),
+          notes: null,
+          currency: payment.currency,
+          receiptNumber: payment.receiptNumber || null,
+          receiptType: payment.receiptType || null,
+          receiptIssued: payment.receiptIssued ?? false,
+        }]
+        : [];
+    replace(initialAllocations);
+  }, [form, payment, isSplitPayment, replace]);
 
-  const updatePaymentMutation = useUpdatePaymentMutation(isSplitPayment ? payment.id : payment.pledgeId || 0);
+  const updatePaymentMutation = useUpdatePaymentMutation(watchedIsSplitPayment ? payment.id : payment.pledgeId || 0);
 
   const onSubmit = async (data: EditPaymentFormData) => {
     try {
-      if (isSplitPayment) {
+      if (watchedIsSplitPayment) {
         if (!areAllocationsValid()) {
           toast.error("Total allocated amount must equal payment amount");
           return;
@@ -611,37 +739,39 @@ export default function EditPaymentDialog({
       if (isPaymentPlanPayment) {
         // For payment plan payments, allow amount changes but warn about installment impact
         const allowedUpdates = { ...data };
-        
+
         // Remove undefined or empty fields
         const filteredData = Object.fromEntries(
           Object.entries(allowedUpdates).filter(([key, val]) => {
             // Keep essential fields even if they're falsy
-            if (['receiptIssued', 'autoAdjustAllocations'].includes(key)) return true;
+            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment'].includes(key)) return true;
             return val !== undefined && val !== null && val !== '';
           })
         );
-        
+
         await updatePaymentMutation.mutateAsync(filteredData as any);
       } else {
-        const processedAllocations = editableAllocations.map((alloc) => ({
-          ...alloc,
-          allocatedAmount: parseFloat(alloc.allocatedAmount),
-          currency: watchedCurrency || payment.currency,
-          receiptNumber: alloc.receiptNumber || null,
-          receiptType: alloc.receiptType || null,
-          receiptIssued: alloc.receiptIssued || false,
-        }));
+        const processedAllocations = watchedIsSplitPayment && watchedAllocations
+          ? watchedAllocations.map((alloc) => ({
+            ...alloc,
+            allocatedAmount: alloc.allocatedAmount || 0,
+            currency: watchedCurrency || payment.currency,
+            receiptNumber: alloc.receiptNumber || null,
+            receiptType: alloc.receiptType || null,
+            receiptIssued: alloc.receiptIssued || false,
+          }))
+          : undefined;
 
         const filteredData = Object.fromEntries(
           Object.entries(data).filter(([key, val]) => {
-            if (['receiptIssued', 'autoAdjustAllocations'].includes(key)) return true;
+            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment'].includes(key)) return true;
             return val !== undefined && val !== null && val !== '';
           })
         );
 
         const updateData = {
           ...filteredData,
-          ...(isSplitPayment && { allocations: processedAllocations }),
+          ...(watchedIsSplitPayment && processedAllocations && { allocations: processedAllocations }),
         };
 
         await updatePaymentMutation.mutateAsync(updateData as any);
@@ -673,6 +803,16 @@ export default function EditPaymentDialog({
       contact: solicitor.contact,
     })) || [];
 
+  const pledgeOptions =
+    pledgesData?.pledges?.map((pledge: Pledge) => ({
+      label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
+      value: pledge.id,
+      balance: parseFloat(pledge.balance),
+      currency: pledge.currency,
+      description: pledge.description || "No description",
+      originalAmount: parseFloat(pledge.originalAmount),
+    })) || [];
+
   const effectivePledgeDescription = pledgeData?.pledge?.description || payment.pledgeDescription || "N/A";
 
   const formatCurrency = (amount: string | number, currency = "USD") => {
@@ -688,7 +828,7 @@ export default function EditPaymentDialog({
           <DialogTitle className="flex items-center gap-2">
             <Edit className="h-5 w-5" />
             Edit Payment
-            {isSplitPayment && (
+            {watchedIsSplitPayment && (
               <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
                 <Split className="h-3 w-3 mr-1" />
                 Split Payment
@@ -697,25 +837,29 @@ export default function EditPaymentDialog({
           </DialogTitle>
           <DialogDescription>
             <div>
-              {isSplitPayment ? (
+              {watchedIsSplitPayment ? (
                 <>
-                  Edit split payment affecting {payment.allocations?.length || 0} pledges
+                  Edit split payment affecting {watchedAllocations?.length || 0} pledges
                   <span className="block mt-1 text-sm text-muted-foreground">
                     Total Amount: {payment.currency} {parseFloat(payment.amount).toLocaleString()}
                   </span>
-                  {payment.allocations && payment.allocations.length > 0 && (
+                  {watchedAllocations && watchedAllocations.length > 0 && (
                     <div className="mt-2 p-2 bg-purple-50 rounded-md">
                       <span className="text-xs font-medium text-purple-700">Current Allocations:</span>
                       <div className="mt-1 space-y-1">
-                        {payment.allocations.map((alloc, index) => (
-                          <div key={alloc.id || index} className="flex justify-between text-xs text-purple-600">
+                        {watchedAllocations.slice(0, 3).map((alloc, index) => (
+                          <div key={alloc.pledgeId || index} className="flex justify-between text-xs text-purple-600">
                             <span>
                               Pledge #{alloc.pledgeId}
-                              {alloc.pledgeDescription && ` (${alloc.pledgeDescription})`}
                             </span>
-                            <span>{formatCurrency(alloc.allocatedAmount, alloc.currency || payment.currency)}</span>
+                            <span>{formatCurrency(alloc.allocatedAmount || 0, alloc.currency || payment.currency)}</span>
                           </div>
                         ))}
+                        {watchedAllocations.length > 3 && (
+                          <div className="text-xs text-purple-600">
+                            ... and {watchedAllocations.length - 3} more
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -745,20 +889,20 @@ export default function EditPaymentDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
-            
+
             {/* Amount Change Warning for Split Payments */}
-            {showAmountChangeWarning && isSplitPayment && (
+            {showAmountChangeWarning && watchedIsSplitPayment && (
               <Alert className="border-yellow-200 bg-yellow-50">
                 <AlertTriangle className="h-4 w-4 text-yellow-600" />
                 <AlertDescription className="text-yellow-800">
                   <div className="space-y-2">
                     <p className="font-medium">Payment amount has changed</p>
                     <p className="text-sm">
-                      The current allocations total {formatCurrency(getTotalAllocatedAmount(), watchedCurrency || payment.currency)} 
+                      The current allocations total {formatCurrency(totalAllocatedAmount, watchedCurrency || payment.currency)}
                       but the payment amount is {formatCurrency(watchedAmount || 0, watchedCurrency || payment.currency)}.
                     </p>
                     <div className="flex items-center gap-4 mt-3">
-                      <div className="flex items-center space-x-2">
+                      {/* <div className="flex items-center space-x-2">
                         <Switch
                           id="auto-adjust"
                           checked={autoAdjustAllocations}
@@ -767,8 +911,8 @@ export default function EditPaymentDialog({
                         <label htmlFor="auto-adjust" className="text-sm font-medium">
                           Auto-adjust allocations
                         </label>
-                      </div>
-                      {autoAdjustAllocations && (
+                      </div> */}
+                      {/* {autoAdjustAllocations && (
                         <Select value={redistributionMethod} onValueChange={(value: "proportional" | "equal" | "custom") => setRedistributionMethod(value)}>
                           <SelectTrigger className="w-48">
                             <SelectValue />
@@ -779,7 +923,7 @@ export default function EditPaymentDialog({
                             <SelectItem value="custom">Manual Adjustment</SelectItem>
                           </SelectContent>
                         </Select>
-                      )}
+                      )} */}
                       {!autoAdjustAllocations && (
                         <Button
                           type="button"
@@ -819,6 +963,22 @@ export default function EditPaymentDialog({
                       </FormItem>
                     )}
                   />
+
+                  {/* Split Payment Toggle */}
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="isSplitPayment"
+                      checked={watchedIsSplitPayment}
+                      onCheckedChange={handleSplitPaymentToggle}
+                      disabled={isPaymentPlanPayment || (isSplitPayment && !canConvertToSplit)}
+                    />
+                    <label
+                      htmlFor="isSplitPayment"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Split Payment Across Multiple Pledges
+                    </label>
+                  </div>
 
                   {/* Amount */}
                   <FormField
@@ -959,14 +1119,14 @@ export default function EditPaymentDialog({
             </Card>
 
             {/* Payment Allocations for Split Payments */}
-            {isSplitPayment && (
+            {watchedIsSplitPayment && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Users className="h-5 w-5" />
                     Payment Allocations
                     <Badge variant="secondary" className="ml-2">
-                      {editableAllocations.length || 0} allocation{editableAllocations.length !== 1 ? "s" : ""}
+                      {fields.length || 0} allocation{fields.length !== 1 ? "s" : ""}
                     </Badge>
                   </CardTitle>
                   <DialogDescription>
@@ -974,110 +1134,208 @@ export default function EditPaymentDialog({
                   </DialogDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {editableAllocations.length > 0 ? (
-                    editableAllocations.map((allocation, index) => (
-                      <div key={allocation.id || index} className="border rounded-lg p-4 bg-gray-50">
+                  {fields.length > 0 ? (
+                    fields.map((field, index) => (
+                      <div key={field.id} className="border rounded-lg p-4 bg-gray-50">
                         <div className="flex items-center justify-between mb-3">
                           <h4 className="font-medium">Allocation #{index + 1}</h4>
-                          <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                            {formatCurrency(allocation.allocatedAmount, watchedCurrency || payment.currency)}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="bg-blue-50 text-blue-700">
+                              {formatCurrency(watchedAllocations?.[index]?.allocatedAmount || 0, watchedCurrency || payment.currency)}
+                            </Badge>
+                            {fields.length > 1 && (
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeAllocation(index)}
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-800"
+                              >
+                                <X className="h-4 w-4" />
+                              </Button>
+                            )}
+                          </div>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Pledge ID</label>
-                            <Input value={`#${allocation.pledgeId}`} readOnly className="opacity-70 bg-white" />
-                          </div>
-                          <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Pledge Description</label>
-                            <Input
-                              value={allocation.pledgeDescription || "No description"}
-                              readOnly
-                              className="opacity-70 bg-white"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Allocated Amount *</label>
-                            <Input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={allocation.allocatedAmount}
-                              onChange={(e) => {
-                                const newAmount = parseFloat(e.target.value) || 0;
-                                setEditableAllocations((prev) =>
-                                  prev.map((alloc, i) =>
-                                    i === index ? { ...alloc, allocatedAmount: newAmount.toString() } : alloc
-                                  )
-                                );
-                              }}
-                              className="bg-white"
-                              placeholder="Enter allocated amount"
-                            />
-                          </div>
+                          {/* Pledge Selection */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.pledgeId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Pledge *</FormLabel>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <FormControl>
+                                      <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className={cn(
+                                          "w-full justify-between",
+                                          (!field.value || field.value === 0) && "text-muted-foreground"
+                                        )}
+                                        disabled={isLoadingPledges}
+                                      >
+                                        <span className="block truncate">
+                                          {field.value
+                                            ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
+                                            : isLoadingPledges
+                                              ? "Loading pledges..."
+                                              : "Select pledge"}
+                                        </span>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                      </Button>
+                                    </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[400px] p-0">
+                                    <Command>
+                                      <CommandInput placeholder="Search pledges..." />
+                                      <CommandList>
+                                        <CommandEmpty>No pledge found.</CommandEmpty>
+                                        <CommandGroup>
+                                          {pledgeOptions.map((pledge) => (
+                                            <CommandItem
+                                              value={pledge.label}
+                                              key={pledge.value}
+                                              onSelect={() => {
+                                                field.onChange(pledge.value);
+                                              }}
+                                            >
+                                              {pledge.label}
+                                              <Check
+                                                className={cn(
+                                                  "ml-auto h-4 w-4",
+                                                  pledge.value === field.value ? "opacity-100" : "opacity-0"
+                                                )}
+                                              />
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Allocated Amount */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.allocatedAmount`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Allocated Amount *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    {...field}
+                                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                    placeholder="Enter allocated amount"
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Currency Display */}
                           <div>
                             <label className="text-sm font-medium text-gray-700 mb-1 block">Currency</label>
                             <Input value={watchedCurrency || payment.currency} readOnly className="opacity-70 bg-white" />
                           </div>
+
+                          {/* Allocation Notes */}
                           <div className="md:col-span-2">
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Allocation Notes</label>
-                            <Textarea
-                              value={allocation.notes || ""}
-                              onChange={(e) => {
-                                setEditableAllocations((prev) =>
-                                  prev.map((alloc, i) => (i === index ? { ...alloc, notes: e.target.value } : alloc))
-                                );
-                              }}
-                              className="bg-white resize-none"
-                              rows={2}
-                              placeholder="Enter allocation notes..."
+                            <FormField
+                              control={form.control}
+                              name={`allocations.${index}.notes`}
+                              render={({ field }) => (
+                                <FormItem>
+                                  <FormLabel>Allocation Notes</FormLabel>
+                                  <FormControl>
+                                    <Textarea
+                                      {...field}
+                                      value={field.value || ""}
+                                      className="bg-white resize-none"
+                                      rows={2}
+                                      placeholder="Enter allocation notes..."
+                                    />
+                                  </FormControl>
+                                  <FormMessage />
+                                </FormItem>
+                              )}
                             />
                           </div>
-                          <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Receipt Number</label>
-                            <Input
-                              type="text"
-                              value={allocation.receiptNumber || ""}
-                              onChange={(e) => {
-                                setEditableAllocations((prev) =>
-                                  prev.map((alloc, i) => (i === index ? { ...alloc, receiptNumber: e.target.value } : alloc))
-                                );
-                              }}
-                            />
-                          </div>
-                          <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Receipt Type</label>
-                            <Select
-                              value={allocation.receiptType || ""}
-                              onValueChange={(val) => {
-                                setEditableAllocations((prev) =>
-                                  prev.map((alloc, i) => (i === index ? { ...alloc, receiptType: val } : alloc))
-                                );
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a receipt type" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {receiptTypes.map((type) => (
-                                  <SelectItem key={type.value} value={type.value}>
-                                    {type.label}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex items-center space-x-2 mt-2">
-                            <Switch
-                              checked={allocation.receiptIssued || false}
-                              onCheckedChange={(checked) => {
-                                setEditableAllocations((prev) =>
-                                  prev.map((alloc, i) => (i === index ? { ...alloc, receiptIssued: checked } : alloc))
-                                );
-                              }}
-                            />
-                            <label className="text-sm font-medium">Receipt Issued</label>
-                          </div>
+
+                          {/* Receipt Number */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptNumber`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Number</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="text"
+                                    {...field}
+                                    value={field.value || ""}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Receipt Type */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptType`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Type</FormLabel>
+                                <Select
+                                  value={field.value || ""}
+                                  onValueChange={(val) => field.onChange(val === "__NONE_SELECTED__" ? null : val)}
+                                >
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select a receipt type" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="__NONE_SELECTED__">None</SelectItem>
+                                    {receiptTypes.map((type) => (
+                                      <SelectItem key={type.value} value={type.value}>
+                                        {type.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Receipt Issued */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptIssued`}
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm md:col-span-2">
+                                <div className="space-y-0.5">
+                                  <FormLabel className="text-base">Receipt Issued</FormLabel>
+                                  <DialogDescription>Has a receipt been issued for this allocation?</DialogDescription>
+                                </div>
+                                <FormControl>
+                                  <Switch checked={field.value || false} onCheckedChange={field.onChange} />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
                         </div>
                       </div>
                     ))
@@ -1088,6 +1346,18 @@ export default function EditPaymentDialog({
                     </div>
                   )}
 
+                  {/* Add Allocation Button */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addAllocation}
+                    className="flex items-center gap-2"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Add Allocation
+                  </Button>
+
                   {/* Allocation Validation and Summary */}
                   <div className="border-t pt-4 mt-4">
                     <div className="flex justify-between items-center font-medium">
@@ -1095,7 +1365,7 @@ export default function EditPaymentDialog({
                       <span
                         className={cn("text-lg", areAllocationsValid() ? "text-green-600" : "text-red-600")}
                       >
-                        {watchedCurrency || payment.currency} {getTotalAllocatedAmount().toLocaleString()}
+                        {watchedCurrency || payment.currency} {totalAllocatedAmount.toLocaleString()}
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-sm text-gray-600 mt-1">
@@ -1109,7 +1379,7 @@ export default function EditPaymentDialog({
                       <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
                         <p className="text-sm text-red-600 font-medium">⚠️ Validation Error</p>
                         <p className="text-xs text-red-600 mt-1">
-                          Total allocated amount ({getTotalAllocatedAmount().toFixed(2)}) must equal payment amount (
+                          Total allocated amount ({totalAllocatedAmount.toFixed(2)}) must equal payment amount (
                           {(watchedAmount || parseFloat(payment.amount)).toFixed(2)})
                         </p>
                       </div>
@@ -1334,7 +1604,7 @@ export default function EditPaymentDialog({
             </Card>
 
             {/* Receipt Information (if NOT split payment) */}
-            {!isSplitPayment && (
+            {!watchedIsSplitPayment && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg">Receipt Information</CardTitle>
@@ -1563,7 +1833,7 @@ export default function EditPaymentDialog({
               </Button>
               <Button
                 type="submit"
-                disabled={updatePaymentMutation.isPending || (isSplitPayment && (!areAllocationsValid() || !areAllocationCurrenciesValid()))}
+                disabled={updatePaymentMutation.isPending || (watchedIsSplitPayment && (!areAllocationsValid() || !areAllocationCurrenciesValid()))}
               >
                 {updatePaymentMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>

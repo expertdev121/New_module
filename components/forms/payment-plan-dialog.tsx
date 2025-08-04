@@ -17,6 +17,7 @@ import {
   Calculator,
   TrendingUp,
   CalendarIcon,
+  RefreshCw,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -286,20 +287,17 @@ const convertAmount = (
   exchangeRates: Record<string, string> | undefined
 ): number => {
   if (!exchangeRates || fromCurrency === toCurrency) return amount;
-
   // Convert to USD first if not already USD
   let usdAmount = amount;
   if (fromCurrency !== "USD") {
     const fromRate = Number.parseFloat(exchangeRates[fromCurrency] || "1");
     usdAmount = amount * fromRate;
   }
-
   // Convert from USD to target currency
   if (toCurrency !== "USD") {
     const toRate = Number.parseFloat(exchangeRates[toCurrency] || "1");
     return usdAmount / toRate;
   }
-
   return usdAmount;
 };
 
@@ -727,7 +725,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     trigger,
     onSuccess,
     onClose,
-    enablePledgeSelectorInEdit = true, // NEW: Default to false for backward compatibility
+    enablePledgeSelectorInEdit = true,
   } = props;
 
   const [open, setOpen] = useState(false);
@@ -740,6 +738,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const [installmentsModified, setInstallmentsModified] = useState(false);
   const [submitError, setSubmitError] = useState<string>("");
   const previousCurrencyRef = useRef<string | undefined>(null);
+  const previousTotalAmountRef = useRef<number | undefined>(null);
   const isFormInitializedRef = useRef(false);
 
   // Dropdown state management variables
@@ -858,6 +857,63 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const watchedTotalPlannedAmount = form.watch("totalPlannedAmount");
   const watchedInstallmentAmount = form.watch("installmentAmount");
   const watchedCurrency = form.watch("currency");
+  const watchedDistributionType = form.watch("distributionType");
+
+  const regenerateInstallments = () => {
+    const currentData = form.getValues();
+
+    if (!currentData.startDate || !currentData.frequency || currentData.numberOfInstallments <= 0 || currentData.totalPlannedAmount <= 0) {
+      return;
+    }
+
+    const newInstallments = generatePreviewInstallments(
+      currentData.startDate,
+      currentData.frequency,
+      currentData.numberOfInstallments,
+      currentData.totalPlannedAmount,
+      currentData.currency || "USD" // Provide fallback to "USD" if currency is undefined
+    ).map(inst => ({
+      date: inst.date,
+      amount: inst.amount,
+      notes: "",
+      isPaid: false,
+      paidDate: undefined,
+      paidAmount: undefined,
+    }));
+
+    form.setValue("customInstallments", newInstallments);
+
+    if (isEditMode) {
+      setInstallmentsModified(true);
+    }
+  };
+
+  // NEW: Watch for changes that should trigger installment regeneration
+  useEffect(() => {
+    if (!isFormInitializedRef.current) return;
+
+    // Only auto-regenerate if we have custom installments (edit mode or custom distribution)
+    const hasCustomInstallments = form.watch("customInstallments") && form.watch("customInstallments")!.length > 0;
+
+    if (isEditMode && hasCustomInstallments) {
+      // Check if critical parameters changed
+      const currentTotalAmount = watchedTotalPlannedAmount;
+      const currentCurrency = watchedCurrency;
+
+      const totalAmountChanged = previousTotalAmountRef.current !== undefined &&
+        Math.abs((previousTotalAmountRef.current || 0) - currentTotalAmount) > 0.01;
+
+      const currencyChanged = previousCurrencyRef.current !== undefined &&
+        previousCurrencyRef.current !== currentCurrency;
+
+      if (totalAmountChanged || currencyChanged) {
+        // Show option to regenerate installments
+        regenerateInstallments();
+      }
+
+      previousTotalAmountRef.current = currentTotalAmount;
+    }
+  }, [watchedTotalPlannedAmount, watchedCurrency, isEditMode, form]);
 
   // Auto-generate installments for fixed plans in edit mode
   useEffect(() => {
@@ -884,9 +940,11 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     }
   }, [existingPlan, isEditMode, form, isFormInitializedRef.current]);
 
+  // Enhanced currency conversion effect
   useEffect(() => {
     if (isEditMode && !isFormInitializedRef.current) {
       previousCurrencyRef.current = watchedCurrency;
+      previousTotalAmountRef.current = watchedTotalPlannedAmount;
       return;
     }
 
@@ -898,6 +956,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       previousCurrencyRef.current === watchedCurrency
     ) {
       previousCurrencyRef.current = watchedCurrency;
+      previousTotalAmountRef.current = watchedTotalPlannedAmount;
       return;
     }
 
@@ -912,6 +971,25 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       const roundedAmount = roundToPrecision(convertedAmount, 2);
       form.setValue("totalPlannedAmount", roundedAmount);
 
+      // Update custom installments with currency conversion
+      const customInstallments = form.getValues("customInstallments");
+      if (customInstallments && customInstallments.length > 0) {
+        const convertedInstallments = customInstallments.map(inst => ({
+          ...inst,
+          amount: roundToPrecision(convertAmount(
+            inst.amount,
+            previousCurrencyRef.current!,
+            watchedCurrency,
+            exchangeRates
+          ), 2)
+        }));
+        form.setValue("customInstallments", convertedInstallments);
+
+        if (isEditMode) {
+          setInstallmentsModified(true);
+        }
+      }
+
       if (!manualInstallment) {
         const installments = form.getValues("numberOfInstallments");
         if (installments > 0) {
@@ -922,6 +1000,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     }
 
     previousCurrencyRef.current = watchedCurrency;
+    previousTotalAmountRef.current = watchedTotalPlannedAmount;
   }, [watchedCurrency, exchangeRates, form, manualInstallment, isEditMode]);
 
   useEffect(() => {
@@ -953,6 +1032,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
 
       form.reset(planData);
       previousCurrencyRef.current = existingPlan.currency;
+      previousTotalAmountRef.current = Number.parseFloat(existingPlan.totalPlannedAmount?.toString() || "0");
       isFormInitializedRef.current = true;
     }
   }, [existingPlan, isEditMode, form]);
@@ -961,13 +1041,14 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   useEffect(() => {
     if (selectedPledgeId) {
       form.setValue("pledgeId", selectedPledgeId);
-      
+
       // If in edit mode and pledge selector is enabled, update form with new pledge data
       if (isEditMode && enablePledgeSelectorInEdit && pledgeData?.pledge) {
         const newDefaultAmount = pledgeData.pledge.remainingBalance || pledgeData.pledge.originalAmount;
         form.setValue("totalPlannedAmount", newDefaultAmount);
         form.setValue("currency", pledgeData.pledge.currency as any);
         previousCurrencyRef.current = pledgeData.pledge.currency;
+        previousTotalAmountRef.current = newDefaultAmount;
       }
     }
   }, [selectedPledgeId, form, isEditMode, enablePledgeSelectorInEdit, pledgeData]);
@@ -979,6 +1060,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       form.setValue("totalPlannedAmount", newDefaultAmount);
       form.setValue("currency", pledgeData.pledge.currency as any);
       previousCurrencyRef.current = pledgeData.pledge.currency;
+      previousTotalAmountRef.current = newDefaultAmount;
       isFormInitializedRef.current = true;
     }
   }, [pledgeData, form, isEditMode]);
@@ -996,13 +1078,14 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       effectivePledgeCurrency
     ) {
       previousCurrencyRef.current = effectivePledgeCurrency;
+      previousTotalAmountRef.current = defaultAmount;
       isFormInitializedRef.current = true;
     }
-  }, [isEditMode, effectivePledgeCurrency]);
+  }, [isEditMode, effectivePledgeCurrency, defaultAmount]);
 
   // Enhanced automatic calculation for fixed distribution
   useEffect(() => {
-    if (!manualInstallment && form.watch("distributionType") !== "custom") {
+    if (!manualInstallment && watchedDistributionType !== "custom") {
       const totalAmount = watchedTotalPlannedAmount;
       const installments = watchedNumberOfInstallments;
 
@@ -1029,6 +1112,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     watchedNumberOfInstallments,
     form,
     manualInstallment,
+    watchedDistributionType
   ]);
 
   useEffect(() => {
@@ -1088,6 +1172,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     setSubmitError("");
     isFormInitializedRef.current = false;
     previousCurrencyRef.current = undefined;
+    previousTotalAmountRef.current = undefined;
 
     // Reset dropdown states
     setPaymentMethodOpen(false);
@@ -1120,6 +1205,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
 
       form.reset(originalPlanData);
       previousCurrencyRef.current = existingPlan.currency;
+      previousTotalAmountRef.current = Number.parseFloat(existingPlan.totalPlannedAmount?.toString() || "0");
       isFormInitializedRef.current = true;
       setIsEditing(false);
     } else {
@@ -1147,6 +1233,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       });
 
       previousCurrencyRef.current = effectivePledgeCurrency;
+      previousTotalAmountRef.current = newDefaultAmount;
       setTimeout(() => {
         isFormInitializedRef.current = true;
       }, 100);
@@ -1251,12 +1338,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       setSubmitError("");
       isFormInitializedRef.current = false;
       previousCurrencyRef.current = undefined;
-      
+      previousTotalAmountRef.current = undefined;
+
       // Reset dropdown states
       setPaymentMethodOpen(false);
       setMethodDetailOpen(false);
       setPledgeSelectorOpen(false);
-      
+
       onClose?.();
     } else {
       setIsEditing(true);
@@ -1406,86 +1494,87 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
                 {/* UPDATED: Pledge Selection Card - Now shows in edit mode too when enabled */}
-               {shouldShowPledgeSelector && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-lg">
-                      Pledge Selection
-                    </CardTitle>
-                    <CardDescription>
-                      {isEditMode
-                        ? "Change the pledge for this payment plan"
-                        : "Choose the pledge for this payment plan"}
-                      <br />
-                   
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <FormField
-                      control={form.control}
-                      name="pledgeId"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-col">
-                          <FormLabel>Select Pledge *</FormLabel>
-                          <Popover open={pledgeSelectorOpen} onOpenChange={setPledgeSelectorOpen}>
-                            <PopoverTrigger asChild>
-                              <FormControl>
-                                <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  aria-expanded={pledgeSelectorOpen}
-                                  className={cn(
-                                    "w-full justify-between",
-                                    !field.value && "text-muted-foreground"
-                                  )}
-                                  disabled={isLoadingPledges}
-                                >
-                                  {field.value
-                                    ? pledgeOptions.find((p) => p.value === field.value)?.label
-                                    : isLoadingPledges
-                                    ? "Loading pledges..."
-                                    : "Select pledge"}
-                                  <ChevronsUpDown className="opacity-50 ml-2" />
-                                </Button>
-                              </FormControl>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-full p-0" align="start">
-                              <Command>
-                                <CommandInput placeholder="Search pledges..." className="h-9" />
-                                <CommandList>
-                                  <CommandEmpty>No pledge found.</CommandEmpty>
-                                  <CommandGroup>
-                                    {pledgeOptions.map((pledge) => (
-                                      <CommandItem
-                                        key={pledge.value}
-                                        value={pledge.value.toString()}
-                                        onSelect={() => {
-                                          setSelectedPledgeId(pledge.value);
-                                          form.setValue("pledgeId", pledge.value);
-                                          setPledgeSelectorOpen(false);
-                                        }}
-                                      >
-                                        {pledge.label}
-                                        <Check
-                                          className={cn(
-                                            "ml-auto",
-                                            pledge.value === field.value ? "opacity-100" : "opacity-0"
-                                          )}
-                                        />
-                                      </CommandItem>
-                                    ))}
-                                  </CommandGroup>
-                                </CommandList>
-                              </Command>
-                            </PopoverContent>
-                          </Popover>
-                          <FormMessage className="text-sm text-red-600 mt-1" />
-                        </FormItem>
-                      )}
-                    />
-                  </CardContent>
-                </Card>
-              )}
+                {shouldShowPledgeSelector && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">
+                        Pledge Selection
+                      </CardTitle>
+                      <CardDescription>
+                        {isEditMode
+                          ? "Change the pledge for this payment plan"
+                          : "Choose the pledge for this payment plan"}
+                        <br />
+
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <FormField
+                        control={form.control}
+                        name="pledgeId"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-col">
+                            <FormLabel>Select Pledge *</FormLabel>
+                            <Popover open={pledgeSelectorOpen} onOpenChange={setPledgeSelectorOpen}>
+                              <PopoverTrigger asChild>
+                                <FormControl>
+                                  <Button
+                                    variant="outline"
+                                    role="combobox"
+                                    aria-expanded={pledgeSelectorOpen}
+                                    className={cn(
+                                      "w-full justify-between",
+                                      !field.value && "text-muted-foreground"
+                                    )}
+                                    disabled={isLoadingPledges}
+                                  >
+                                    {field.value
+                                      ? pledgeOptions.find((p) => p.value === field.value)?.label
+                                      : isLoadingPledges
+                                        ? "Loading pledges..."
+                                        : "Select pledge"}
+                                    <ChevronsUpDown className="opacity-50 ml-2" />
+                                  </Button>
+                                </FormControl>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-full p-0" align="start">
+                                <Command>
+                                  <CommandInput placeholder="Search pledges..." className="h-9" />
+                                  <CommandList>
+                                    <CommandEmpty>No pledge found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {pledgeOptions.map((pledge) => (
+                                        <CommandItem
+                                          key={pledge.value}
+                                          value={pledge.value.toString()}
+                                          onSelect={() => {
+                                            setSelectedPledgeId(pledge.value);
+                                            form.setValue("pledgeId", pledge.value);
+                                            setPledgeSelectorOpen(false);
+                                          }}
+                                        >
+                                          {pledge.label}
+                                          <Check
+                                            className={cn(
+                                              "ml-auto",
+                                              pledge.value === field.value ? "opacity-100" : "opacity-0"
+                                            )}
+                                          />
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                            <FormMessage className="text-sm text-red-600 mt-1" />
+                          </FormItem>
+                        )}
+                      />
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Basic Plan Information Card */}
                 <Card>
                   <CardHeader>
@@ -1793,11 +1882,26 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                     {(form.watch("distributionType") === "custom" || isEditMode) && (
                       <Card className="border-dashed">
                         <CardHeader className="pb-2">
-                          <CardTitle className="text-base">
-                            {isEditMode && form.watch("distributionType") === "fixed"
-                              ? "Edit Installments (will convert to custom plan)"
-                              : "Custom Installments"}
-                          </CardTitle>
+                          <div className="flex items-center justify-between">
+                            <CardTitle className="text-base">
+                              {isEditMode && form.watch("distributionType") === "fixed"
+                                ? "Edit Installments (will convert to custom plan)"
+                                : "Custom Installments"}
+                            </CardTitle>
+                            {/* NEW: Add regenerate button for easy installment refresh */}
+                            {isEditMode && form.watch("customInstallments") && form.watch("customInstallments")!.length > 0 && (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={regenerateInstallments}
+                                className="ml-2"
+                              >
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Regenerate
+                              </Button>
+                            )}
+                          </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
                           {/* Show warning for fixed plans being converted */}
@@ -1808,6 +1912,20 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                   <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
                                   <span className="text-sm text-amber-700">
                                     Modifying installments will convert this fixed plan to a custom plan upon saving.
+                                  </span>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          )}
+
+                          {/* NEW: Show info when installments are auto-updated */}
+                          {isEditMode && installmentsModified && (
+                            <Card className="border-blue-200 bg-blue-50">
+                              <CardContent className="p-3">
+                                <div className="flex items-center">
+                                  <RefreshCw className="w-4 h-4 text-blue-600 mr-2" />
+                                  <span className="text-sm text-blue-700">
+                                    Installments have been automatically updated to match the new amount and currency.
                                   </span>
                                 </div>
                               </CardContent>
@@ -2148,25 +2266,6 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                         </FormItem>
                       )}
                     />
-
-                    {/* <FormField
-                      control={form.control}
-                      name="internalNotes"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Internal Notes</FormLabel>
-                          <FormControl>
-                            <Textarea
-                              {...field}
-                              value={field.value || ""}
-                              placeholder="Internal notes (not visible to donor)"
-                              rows={2}
-                            />
-                          </FormControl>
-                          <FormMessage className="text-sm text-red-600 mt-1" />
-                        </FormItem>
-                      )}
-                    /> */}
                   </CardContent>
                 </Card>
 
