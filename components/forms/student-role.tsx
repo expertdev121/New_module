@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -92,10 +92,13 @@ const years = Array.from({ length: currentYear - 2000 + 6 }, (_, i) => {
 const programTracks = {
   LH: ["Alef", "Bet", "Gimmel", "Dalet", "Heh"],
   LLC: ["March Draft", "August Draft", "Room & Board", "Other Draft"],
-  Kollel: ["Alef", "Bet"], // same as ML and Madrich
-  Madrich: ["Alef", "Bet"],
+  Kollel: [], // No tracks for Kollel
+  Madrich: [], // No tracks for Madrich
   ML: ["Alef", "Bet"],
 };
+
+// Programs that don't require tracks
+const programsWithoutTracks = ["Kollel", "Madrich"];
 
 const studentRoleSchema = z
   .object({
@@ -103,8 +106,8 @@ const studentRoleSchema = z
     program: z.enum(["LH", "LLC", "ML", "Kollel", "Madrich"], {
       required_error: "Program is required",
     }),
-    track: z.enum(
-      [
+    track: z
+      .enum([
         "Alef",
         "Bet",
         "Gimmel",
@@ -114,11 +117,8 @@ const studentRoleSchema = z
         "August Draft",
         "Room & Board",
         "Other Draft",
-      ],
-      {
-        required_error: "Track is required",
-      }
-    ),
+      ])
+      .optional(), // Track is now optional
     trackDetail: z
       .enum(["Full Year", "Fall", "Spring", "Until Pesach"])
       .optional(),
@@ -143,6 +143,19 @@ const studentRoleSchema = z
     isActive: z.boolean().default(true), // Note: still in schema but not used in form
     additionalNotes: z.string().optional(),
   })
+  .refine(
+    (data) => {
+      // Track is required for programs that have tracks
+      if (!programsWithoutTracks.includes(data.program) && !data.track) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Track is required for this program",
+      path: ["track"],
+    }
+  )
   .refine(
     (data) => {
       if (data.startDate && data.endDate) {
@@ -180,8 +193,8 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
       contactId,
       program: undefined,
       track: undefined,
-      trackDetail: undefined,
-      status: "Student" as const,
+      trackDetail: "Full Year" as const, // Default track detail
+      status: "Student" as const, // Default status
       machzor: undefined,
       year: `${currentYear}-${currentYear + 1}`,
       startDate: "",
@@ -191,12 +204,30 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
     },
   });
 
+  // Function to get default track based on program
+  const getDefaultTrack = (program: string) => {
+    switch (program) {
+      case "LH":
+      case "ML":
+        return "Alef";
+      case "LLC":
+        return "March Draft";
+      default:
+        return undefined;
+    }
+  };
+
+  // Function to get default track detail based on track
+  const getDefaultTrackDetail = (track: string) => {
+    return track === "Bet" ? "Until Pesach" : "Full Year";
+  };
+
   const resetForm = () => {
     form.reset({
       contactId,
       program: undefined,
       track: undefined,
-      trackDetail: undefined,
+      trackDetail: "Full Year" as const,
       status: "Student" as const,
       machzor: undefined,
       year: `${currentYear}-${currentYear + 1}`,
@@ -209,7 +240,13 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
 
   const onSubmit = async (data: StudentRoleFormData) => {
     try {
-      await createStudentRoleMutation.mutateAsync(data);
+      // Filter out undefined track for programs that don't require it
+      const submitData = {
+        ...data,
+        ...(data.track === undefined ? {} : { track: data.track })
+      };
+      
+      await createStudentRoleMutation.mutateAsync(submitData as any);
       resetForm();
       setOpen(false);
     } catch (error) {
@@ -230,6 +267,33 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
   const selectedStatus = form.watch("status");
   const selectedMachzor = form.watch("machzor");
   const selectedYear = form.watch("year");
+
+  // Handle program change to set default track
+  useEffect(() => {
+    if (selectedProgram) {
+      const defaultTrack = getDefaultTrack(selectedProgram);
+      if (defaultTrack) {
+        form.setValue("track", defaultTrack as any);
+        // Set default track detail based on the default track
+        const defaultTrackDetail = getDefaultTrackDetail(defaultTrack);
+        form.setValue("trackDetail", defaultTrackDetail as any);
+      } else {
+        // Clear track for programs without tracks
+        form.setValue("track", undefined);
+      }
+    }
+  }, [selectedProgram, form]);
+
+  // Handle track change to set default track detail
+  useEffect(() => {
+    if (selectedTrack) {
+      const defaultTrackDetail = getDefaultTrackDetail(selectedTrack);
+      form.setValue("trackDetail", defaultTrackDetail as any);
+    }
+  }, [selectedTrack, form]);
+
+  const programRequiresTrack = selectedProgram && !programsWithoutTracks.includes(selectedProgram);
+  const availableTracks = programTracks[selectedProgram || ""] || [];
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -328,30 +392,37 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
             </div>
 
             <div className="grid grid-cols-2 gap-4">
-              {/* Track */}
+              {/* Track - conditional rendering and requirements */}
               <FormField
                 control={form.control}
                 name="track"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Track *</FormLabel>
+                    <FormLabel>
+                      Track {programRequiresTrack && "*"}
+                    </FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       value={field.value}
+                      disabled={!programRequiresTrack}
                     >
                       <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select track" />
+                        <SelectTrigger className={!programRequiresTrack ? "text-muted-foreground bg-muted" : ""}>
+                          <SelectValue 
+                            placeholder={
+                              !programRequiresTrack 
+                                ? "Not applicable" 
+                                : "Select track"
+                            } 
+                          />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {(programTracks[selectedProgram || ""] || []).map(
-                          (track) => (
-                            <SelectItem key={track} value={track}>
-                              {track}
-                            </SelectItem>
-                          )
-                        )}
+                        {availableTracks.map((track) => (
+                          <SelectItem key={track} value={track}>
+                            {track}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -379,6 +450,37 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                         {trackDetails.map((detail) => (
                           <SelectItem key={detail.value} value={detail.value}>
                             {detail.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Status - moved before dates */}
+            <div className="grid grid-cols-1 gap-4">
+              <FormField
+                control={form.control}
+                name="status"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Status *</FormLabel>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {statuses.map((status) => (
+                          <SelectItem key={status.value} value={status.value}>
+                            {status.label}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -421,38 +523,9 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              {/* Status */}
-              <FormField
-                control={form.control}
-                name="status"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Status *</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      value={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select status" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {statuses.map((status) => (
-                          <SelectItem key={status.value} value={status.value}>
-                            {status.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Machzor - visible only when program is LLC */}
-              {selectedProgram === "LLC" && (
+            {/* Machzor - visible only when program is LLC */}
+            {selectedProgram === "LLC" && (
+              <div className="grid grid-cols-1 gap-4">
                 <FormField
                   control={form.control}
                   name="machzor"
@@ -480,8 +553,8 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                     </FormItem>
                   )}
                 />
-              )}
-            </div>
+              </div>
+            )}
 
             {/* Additional Notes */}
             <FormField
@@ -513,12 +586,14 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                     ? programs.find((p) => p.value === selectedProgram)?.label
                     : "Not selected"}
                 </div>
-                <div>
-                  Track:{" "}
-                  {selectedTrack
-                    ? tracks.find((t) => t.value === selectedTrack)?.label
-                    : "Not selected"}
-                </div>
+                {programRequiresTrack && (
+                  <div>
+                    Track:{" "}
+                    {selectedTrack
+                      ? tracks.find((t) => t.value === selectedTrack)?.label
+                      : "Not selected"}
+                  </div>
+                )}
                 {selectedTrackDetail && (
                   <div>
                     Track Detail:{" "}
@@ -526,6 +601,12 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                       ?.label}
                   </div>
                 )}
+                <div>
+                  Status:{" "}
+                  {selectedStatus
+                    ? statuses.find((s) => s.value === selectedStatus)?.label
+                    : "Not selected"}
+                </div>
                 {form.watch("startDate") && (
                   <div>
                     Start Date:{" "}
@@ -538,12 +619,6 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                     {new Date(form.watch("endDate") as any).toLocaleDateString()}
                   </div>
                 )}
-                <div>
-                  Status:{" "}
-                  {selectedStatus
-                    ? statuses.find((s) => s.value === selectedStatus)?.label
-                    : "Not selected"}
-                </div>
                 {selectedProgram === "LLC" && selectedMachzor && (
                   <div>
                     Machzor: {machzors.find((m) => m.value === selectedMachzor)?.label}
