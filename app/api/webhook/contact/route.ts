@@ -27,8 +27,8 @@ const webhookQuerySchema = z.object({
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().min(1, "Last name is required"),
   full_name: z.string().optional(),
-  email: z.string().email("Invalid email format").optional(),
-  phone: z.string().optional(),
+  email: z.string().email("Invalid email format").optional().or(z.literal("")), // Allow empty string
+  phone: z.string().optional().or(z.literal("")), // Allow empty string for phone too
   tags: z.string().optional(),
   country: z.string().optional(),
   date_created: z.string().optional(),
@@ -40,7 +40,7 @@ const webhookQuerySchema = z.object({
   contact: z.string().optional(),
   attributionSource: z.string().optional(),
   customData: z.string().optional(),
-}).catchall(z.string().optional()); // ✅ Changed from z.any() to z.string().optional()
+}).catchall(z.string().optional());
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
 
       console.log('Extracted from query params:', { firstName, lastName, email, phone, address });
 
-      // Validate required fields
+      // Validate required fields - only first_name and last_name are required now
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -102,19 +102,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (!email && !phone) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: 'Either email or phone is required',
-            code: 'MISSING_CONTACT_INFO',
-            received: { email, phone }
-          },
-          { status: 400 }
-        );
-      }
-
-      // Check for duplicates
+      // Check for duplicates only if we have email or phone
       const whereConditions = [];
       if (email) whereConditions.push(eq(contact.email, email));
       if (phone) whereConditions.push(eq(contact.phone, phone));
@@ -175,7 +163,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Fallback: try to parse request body if no query params
-    let body: Record<string, string> = {}; // ✅ Changed from any to string
+    let body: Record<string, string> = {};
     let parseMethod = 'none';
 
     const cloneForm = request.clone();
@@ -196,7 +184,7 @@ export async function POST(request: NextRequest) {
       // Try JSON
       try {
         const json = await cloneJson.json();
-        if (json && typeof json === 'object' && !Array.isArray(json)) { // ✅ Better type checking
+        if (json && typeof json === 'object' && !Array.isArray(json)) {
           // Convert JSON object to string values for consistency
           body = Object.fromEntries(
             Object.entries(json).map(([key, value]) => [key, String(value)])
@@ -283,7 +271,7 @@ export async function POST(request: NextRequest) {
       const phone = normalizePhone(bodyData.phone);
       const address = bodyData.full_address?.trim() || null;
 
-      // Validate required fields
+      // Validate required fields - only first_name and last_name are required now
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -296,19 +284,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      if (!email && !phone) {
-        return NextResponse.json(
-          {
-            success: false,
-            message: 'Either email or phone is required',
-            code: 'MISSING_CONTACT_INFO',
-            received: { email, phone }
-          },
-          { status: 400 }
-        );
-      }
-
-      // Check for duplicates
+      // Check for duplicates only if we have email or phone
       const whereConditions = [];
       if (email) whereConditions.push(eq(contact.email, email));
       if (phone) whereConditions.push(eq(contact.phone, phone));
@@ -399,7 +375,7 @@ export async function GET() {
       success: true,
       message: 'Webhook endpoint is active',
       methods: ['POST'],
-      note: 'Accepts data via URL query parameters or request body',
+      note: 'Accepts data via URL query parameters or request body. Only first_name and last_name are required.',
       example: '/api/webhook/contact?first_name=John&last_name=Doe&email=john@test.com'
     },
     { status: 200 }
