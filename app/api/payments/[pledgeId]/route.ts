@@ -152,6 +152,119 @@ async function updateInstallmentScheduleStatus(installmentScheduleId: number, pa
     .where(eq(installmentSchedule.id, installmentScheduleId));
 }
 
+async function updatePledgeTotals(pledgeId: number) {
+  // Get all completed/processing payments for this pledge
+  const payments = await db
+    .select({
+      amount: payment.amount,
+      amountUsd: payment.amountUsd,
+      amountInPledgeCurrency: payment.amountInPledgeCurrency,
+      paymentStatus: payment.paymentStatus,
+      currency: payment.currency,
+    })
+    .from(payment)
+    .where(and(
+      eq(payment.pledgeId, pledgeId),
+      or(
+        eq(payment.paymentStatus, "completed"),
+        eq(payment.paymentStatus, "processing")
+      )
+    ));
+
+  // Also get payments from allocations (for split payments)
+  const allocatedPayments = await db
+    .select({
+      allocatedAmount: paymentAllocations.allocatedAmount,
+      allocatedAmountUsd: paymentAllocations.allocatedAmountUsd,
+      currency: paymentAllocations.currency,
+      paymentStatus: payment.paymentStatus,
+    })
+    .from(paymentAllocations)
+    .innerJoin(payment, eq(paymentAllocations.paymentId, payment.id))
+    .where(and(
+      eq(paymentAllocations.pledgeId, pledgeId),
+      or(
+        eq(payment.paymentStatus, "completed"),
+        eq(payment.paymentStatus, "processing")
+      )
+    ));
+
+  // Get the current pledge to check currency and original amounts
+  const pledgeResult = await db
+    .select({
+      originalAmount: pledge.originalAmount,
+      originalAmountUsd: pledge.originalAmountUsd,
+      currency: pledge.currency,
+      exchangeRate: pledge.exchangeRate,
+    })
+    .from(pledge)
+    .where(eq(pledge.id, pledgeId))
+    .limit(1);
+
+  if (pledgeResult.length === 0) {
+    throw new AppError("Pledge not found", 404);
+  }
+
+  const currentPledge = pledgeResult[0];
+  
+  // Calculate totals from direct payments (non-split payments)
+  const directPaymentTotal = payments.reduce((sum, p) => {
+    return sum + parseFloat(p.amount || "0");
+  }, 0);
+
+  const directPaymentTotalUsd = payments.reduce((sum, p) => {
+    if (p.amountUsd) {
+      return sum + parseFloat(p.amountUsd);
+    } else if (p.amountInPledgeCurrency && currentPledge.exchangeRate) {
+      return sum + (parseFloat(p.amountInPledgeCurrency) * parseFloat(currentPledge.exchangeRate));
+    } else if (p.currency === 'USD') {
+      return sum + parseFloat(p.amount || "0");
+    } else if (currentPledge.exchangeRate) {
+      return sum + (parseFloat(p.amount || "0") * parseFloat(currentPledge.exchangeRate));
+    }
+    return sum;
+  }, 0);
+
+  // Calculate totals from allocated payments (split payments)
+  const allocatedTotal = allocatedPayments.reduce((sum, a) => {
+    return sum + parseFloat(a.allocatedAmount || "0");
+  }, 0);
+
+  const allocatedTotalUsd = allocatedPayments.reduce((sum, a) => {
+    if (a.allocatedAmountUsd) {
+      return sum + parseFloat(a.allocatedAmountUsd);
+    } else if (a.currency === 'USD') {
+      return sum + parseFloat(a.allocatedAmount || "0");
+    } else if (currentPledge.exchangeRate) {
+      return sum + (parseFloat(a.allocatedAmount || "0") * parseFloat(currentPledge.exchangeRate));
+    }
+    return sum;
+  }, 0);
+
+  // Combine both totals
+  const totalPaid = directPaymentTotal + allocatedTotal;
+  const totalPaidUsd = directPaymentTotalUsd + allocatedTotalUsd;
+
+  // Calculate remaining balance
+  const originalAmount = parseFloat(currentPledge.originalAmount);
+  const balance = Math.max(0, originalAmount - totalPaid);
+  
+  const originalAmountUsd = currentPledge.originalAmountUsd ? parseFloat(currentPledge.originalAmountUsd) : null;
+  const balanceUsd = originalAmountUsd ? Math.max(0, originalAmountUsd - totalPaidUsd) : null;
+
+  // Update the pledge
+  await db
+    .update(pledge)
+    .set({
+      totalPaid: totalPaid.toString(),
+      balance: balance.toString(),
+      totalPaidUsd: totalPaidUsd > 0 ? totalPaidUsd.toString() : null,
+      balanceUsd: balanceUsd !== null ? balanceUsd.toString() : null,
+      updatedAt: new Date(),
+    })
+    .where(eq(pledge.id, pledgeId));
+}
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -642,6 +755,26 @@ export async function PATCH(
       );
     }
 
+    // Update pledge totals for the main pledge
+    if (updatedPayment.pledgeId) {
+      await updatePledgeTotals(updatedPayment.pledgeId);
+    }
+
+    // Update pledge totals for any allocated pledges (in case of split payments)
+    if (validatedData.isSplitPayment && validatedData.allocations) {
+      const uniquePledgeIds = [...new Set(validatedData.allocations.map(a => a.pledgeId))];
+      for (const pledgeId of uniquePledgeIds) {
+        if (pledgeId !== updatedPayment.pledgeId) {
+          await updatePledgeTotals(pledgeId);
+        }
+      }
+    }
+
+    // If the payment was moved from one pledge to another, update the old pledge too
+    if (validatedData.pledgeId && validatedData.pledgeId !== currentPayment.pledgeId && currentPayment.pledgeId) {
+      await updatePledgeTotals(currentPayment.pledgeId);
+    }
+
     let allocations: (z.infer<typeof allocationUpdateSchema> & { updatedAt: string | null })[] | null = null;
     if (validatedData.isSplitPayment) {
       const rawAllocations = await db
@@ -688,4 +821,3 @@ export async function PATCH(
     return ErrorHandler.handle(err);
   }
 }
-
