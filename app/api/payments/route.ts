@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { payment, pledge, paymentAllocations } from "@/lib/db/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { z } from "zod";
+import { ErrorHandler } from "@/lib/error-handler";
 
 class AppError extends Error {
   statusCode: number;
@@ -174,7 +175,6 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    // Validate input
     try {
       validatedData = paymentSchema.parse(body);
     } catch (zodErr) {
@@ -182,7 +182,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json(
           {
             error: "Validation failed",
-            details: zodErr.issues.map(issue => ({
+            details: zodErr.issues.map((issue) => ({
               field: issue.path.join("."),
               message: issue.message,
             })),
@@ -193,12 +193,10 @@ export async function POST(request: NextRequest) {
       throw zodErr;
     }
 
-    // Normalize dates, handle nulls properly
     const paymentDate = validatedData.paymentDate;
     const receivedDate = validatedData.receivedDate || paymentDate;
     const checkDate = validatedData.checkDate || null;
 
-    // Common payment data
     const commonPaymentData = {
       currency: validatedData.currency,
       exchangeRate: Number(validatedData.exchangeRate.toFixed(4)).toString(),
@@ -215,19 +213,19 @@ export async function POST(request: NextRequest) {
       receiptType: validatedData.receiptType || null,
       receiptIssued: validatedData.receiptIssued ?? false,
       solicitorId: validatedData.solicitorId || null,
-      bonusPercentage:
-        validatedData.bonusPercentage !== null && validatedData.bonusPercentage !== undefined
-          ? Number(validatedData.bonusPercentage.toFixed(2)).toString()
-          : null,
-      bonusAmount:
-        validatedData.bonusAmount !== null && validatedData.bonusAmount !== undefined
-          ? Number(validatedData.bonusAmount.toFixed(2)).toString()
-          : null,
+      bonusPercentage: validatedData.bonusPercentage != null
+        ? Number(validatedData.bonusPercentage.toFixed(2)).toString()
+        : null,
+      bonusAmount: validatedData.bonusAmount != null
+        ? Number(validatedData.bonusAmount.toFixed(2)).toString()
+        : null,
       bonusRuleId: validatedData.bonusRuleId || null,
       notes: validatedData.notes || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
     };
 
-    // Split payment path
+    // --- Split payment flow ---
     if (validatedData.allocations && validatedData.allocations.length > 0) {
       const pledgeIds = validatedData.allocations.map((alloc) => alloc.pledgeId);
       const existingPledges = await db
@@ -241,47 +239,68 @@ export async function POST(request: NextRequest) {
         throw new AppError(`Pledges not found: ${missingIds.join(", ")}`, 404);
       }
 
-      const amountUsd = validatedData.amount / validatedData.exchangeRate;
+      // Validate total allocated amounts equal payment amount
+      const totalAllocated = validatedData.allocations.reduce((sum, alloc) => sum + alloc.amount, 0);
+      if (Math.abs(totalAllocated - validatedData.amount) > 0.01) {
+        throw new AppError(
+          "Invalid allocation amounts",
+          400,
+          {
+            details: `Total allocated amount (${totalAllocated.toFixed(2)}) must equal payment amount (${validatedData.amount.toFixed(2)}).`,
+            totalAllocated,
+            paymentAmount: validatedData.amount,
+            difference: Math.abs(totalAllocated - validatedData.amount),
+          }
+        );
+      }
 
+      // Validate each allocation amount is positive
+      for (const allocation of validatedData.allocations) {
+        if (!allocation.amount || allocation.amount <= 0) {
+          throw new AppError(
+            "Invalid allocation amount",
+            400,
+            { details: `Allocated amount must be positive. Found: ${allocation.amount || 0} for pledge ${allocation.pledgeId}` }
+          );
+        }
+      }
+
+      // Insert split payment record
+      const amountUsd = validatedData.amount * validatedData.exchangeRate; // Fixed multiplication as in PATCH
       const splitPaymentData = {
         ...commonPaymentData,
         pledgeId: null,
-        amount: Number(validatedData.amount.toFixed(2)).toString(),
-        amountUsd: Number(amountUsd.toFixed(2)).toString(),
+        amount: validatedData.amount.toFixed(2).toString(),
+        amountUsd: amountUsd.toFixed(2).toString(),
         amountInPledgeCurrency: null,
       };
+      const [createdPayment] = await db.insert(payment).values(splitPaymentData).returning();
 
-      const paymentResult = await db.insert(payment).values(splitPaymentData).returning();
+      if (!createdPayment) throw new AppError("Failed to create payment", 500);
 
-      if (paymentResult.length === 0) {
-        throw new AppError("Failed to create payment", 500);
-      }
-
-      const createdPayment = paymentResult[0];
-
-      const allocationPromises = validatedData.allocations.map(async (allocation) => {
-        const allocationAmountUsd = allocation.amount / validatedData.exchangeRate;
+      // Insert allocations
+      const createdAllocations = [];
+      for (const allocation of validatedData.allocations) {
+        const allocationAmountUsd = allocation.amount * validatedData.exchangeRate;
         const allocationData = {
           paymentId: createdPayment.id,
           pledgeId: allocation.pledgeId,
           installmentScheduleId: allocation.installmentScheduleId || null,
-          allocatedAmount: Number(allocation.amount.toFixed(2)).toString(),
+          allocatedAmount: allocation.amount.toFixed(2).toString(),
           currency: validatedData.currency,
-          allocatedAmountUsd: Number(allocationAmountUsd.toFixed(2)).toString(),
+          allocatedAmountUsd: allocationAmountUsd.toFixed(2).toString(),
           notes: allocation.notes || null,
           receiptNumber: allocation.receiptNumber || null,
           receiptType: allocation.receiptType || null,
           receiptIssued: allocation.receiptIssued ?? false,
+          createdAt: new Date(),
+          updatedAt: new Date(),
         };
-
-        const allocationResult = await db.insert(paymentAllocations).values(allocationData).returning();
+        const [allocResult] = await db.insert(paymentAllocations).values(allocationData).returning();
+        createdAllocations.push(allocResult);
 
         await updatePledgeTotals(allocation.pledgeId);
-
-        return allocationResult[0];
-      });
-
-      const createdAllocations = await Promise.all(allocationPromises);
+      }
 
       return NextResponse.json(
         {
@@ -293,7 +312,7 @@ export async function POST(request: NextRequest) {
         { status: 201 }
       );
     }
-    // Single payment path
+    // --- Single payment flow ---
     else if (validatedData.pledgeId) {
       const currentPledge = await db
         .select()
@@ -306,59 +325,46 @@ export async function POST(request: NextRequest) {
       }
 
       const pledgeData = currentPledge[0];
-      const amountUsd = validatedData.amount / validatedData.exchangeRate;
+      const amountUsd = validatedData.amount * validatedData.exchangeRate; // Fixed multiplication as in PATCH
       const pledgeExchangeRate = parseFloat(pledgeData.exchangeRate || "1");
+
       const amountInPledgeCurrency =
         validatedData.currency === pledgeData.currency
           ? validatedData.amount
-          : amountUsd * pledgeExchangeRate;
+          : amountUsd / pledgeExchangeRate;
 
       const newPaymentData = {
         ...commonPaymentData,
         pledgeId: validatedData.pledgeId,
-        amount: Number(validatedData.amount.toFixed(2)).toString(),
-        amountUsd: Number(amountUsd.toFixed(2)).toString(),
-        amountInPledgeCurrency: Number(amountInPledgeCurrency.toFixed(2)).toString(),
+        amount: validatedData.amount.toFixed(2).toString(),
+        amountUsd: amountUsd.toFixed(2).toString(),
+        amountInPledgeCurrency: amountInPledgeCurrency.toFixed(2).toString(),
       };
 
-      const paymentResult = await db.insert(payment).values(newPaymentData).returning();
+      const [createdPayment] = await db.insert(payment).values(newPaymentData).returning();
 
-      if (paymentResult.length === 0) {
-        throw new AppError("Failed to create payment", 500);
-      }
+      if (!createdPayment) throw new AppError("Failed to create payment", 500);
 
       await updatePledgeTotals(validatedData.pledgeId);
 
       return NextResponse.json(
         {
           message: "Payment created successfully",
-          payment: paymentResult[0],
+          payment: createdPayment,
         },
         { status: 201 }
       );
-    } else {
-      throw new AppError("Either pledgeId or allocations array is required", 400);
     }
+
+    throw new AppError("Either pledgeId or allocations array is required", 400);
   } catch (err: unknown) {
     if (err instanceof AppError) {
       return NextResponse.json(
         { error: err.message, ...(err.details ? { details: err.details } : {}) },
         { status: err.statusCode }
       );
-    } else if (err instanceof z.ZodError) {
-      return NextResponse.json(
-        { error: "Validation failed", details: err.issues },
-        { status: 400 }
-      );
     }
-    return NextResponse.json(
-      {
-        error: "Internal Server Error",
-        message: err instanceof Error ? err.message : "Unknown error",
-        timestamp: new Date().toISOString(),
-      },
-      { status: 500 }
-    );
+    return ErrorHandler.handle(err);
   }
 }
 
