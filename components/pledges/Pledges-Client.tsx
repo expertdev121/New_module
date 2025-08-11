@@ -219,12 +219,13 @@ export default function PledgesTable() {
   };
 
   const formatCurrency = (amount: string, currency: string) => {
+    const rounded = Math.round(Number.parseFloat(amount) || 0); // Round first
     const formatted = new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(Number.parseFloat(amount));
+    }).format(rounded);
 
     const currencySymbol = formatted.replace(/[\d,.\s]/g, "");
     const numericAmount = formatted.replace(/[^\d,.\s]/g, "").trim();
@@ -234,7 +235,8 @@ export default function PledgesTable() {
 
   const formatUSDAmount = (amount: string | null | undefined) => {
     if (!amount) return "N/A";
-    return `$${Number.parseFloat(amount).toLocaleString()}`;
+    const rounded = Math.round(Number.parseFloat(amount) || 0); // Round before formatting
+    return `$${rounded.toLocaleString()}`;
   };
 
   const handleDeletePledge = (pledgeId: number, pledgeDescription: string) => {
@@ -296,9 +298,9 @@ export default function PledgesTable() {
   const calculateExchangeRate = (originalAmount: string, originalAmountUsd: string | null | undefined): number => {
     const amount = Number.parseFloat(originalAmount);
     const amountUsd = Number.parseFloat(originalAmountUsd || "0");
-    
+
     if (amount === 0 || !amountUsd) return 1;
-    
+
     // Exchange rate = USD amount / original amount
     return amountUsd / amount;
   };
@@ -312,7 +314,7 @@ export default function PledgesTable() {
   const getInstallmentInfo = (pledge: PledgeApiResponse) => {
     // If we have scheduled amount, we can infer there's a payment plan
     const hasScheduled = Number.parseFloat(pledge.scheduledAmount || "0") > 0;
-    
+
     if (!hasScheduled) {
       return {
         first: "No Plan",
@@ -322,11 +324,11 @@ export default function PledgesTable() {
 
     // If payment plan data exists, use it
     if (pledge.paymentPlan) {
-      const firstDate = pledge.paymentPlan.installmentSchedule?.[0]?.installmentDate || 
-                      pledge.paymentPlan.startDate;
-      const lastDate = pledge.paymentPlan.installmentSchedule?.slice(-1)[0]?.installmentDate || 
-                     pledge.paymentPlan.endDate;
-      
+      const firstDate = pledge.paymentPlan.installmentSchedule?.[0]?.installmentDate ||
+        pledge.paymentPlan.startDate;
+      const lastDate = pledge.paymentPlan.installmentSchedule?.slice(-1)[0]?.installmentDate ||
+        pledge.paymentPlan.endDate;
+
       return {
         first: firstDate ? formatDate(firstDate) : "TBD",
         last: lastDate ? formatDate(lastDate) : "TBD"
@@ -410,8 +412,8 @@ export default function PledgesTable() {
                 <SelectItem value="unpaid">$ Unpaid</SelectItem>
               </SelectContent>
             </Select>
-            <PledgeDialog 
-              contactId={contactId as number} 
+            <PledgeDialog
+              contactId={contactId as number}
               onPledgeCreated={handlePledgeCreated}
             />
           </div>
@@ -722,8 +724,7 @@ export default function PledgesTable() {
                                       <span className="text-gray-600">
                                         Has Payment Plan:
                                       </span>
-                                      <span className={`font-medium ${
-                                        getPaymentPlanStatus(pledge.scheduledAmount) === "Yes"
+                                      <span className={`font-medium ${getPaymentPlanStatus(pledge.scheduledAmount) === "Yes"
                                           ? "text-green-600"
                                           : "text-gray-500"
                                         }`}>
@@ -771,8 +772,8 @@ export default function PledgesTable() {
 
                                 <div className="flex gap-2">
                                   <PaymentPlanDialog pledgeId={pledge.id} />
-                                  <Button 
-                                    variant="outline" 
+                                  <Button
+                                    variant="outline"
                                     size="sm"
                                     onClick={() => handleEditClick(pledgeData)}
                                   >

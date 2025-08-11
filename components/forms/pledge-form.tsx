@@ -76,6 +76,11 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
+// Helper function to round amounts to 2 decimal places
+const roundToTwoDecimals = (value: number): number => {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+};
+
 const pledgeSchema = z.object({
   contactId: z.number().positive("Contact ID is required"),
   categoryId: z.number().positive("Please select a category").optional(),
@@ -169,9 +174,9 @@ export default function PledgeDialog({
         contactId: pledgeData.contactId || contactId,
         categoryId: pledgeData.categoryId,
         currency: pledgeData.currency as (typeof supportedCurrencies)[number],
-        exchangeRate: Math.max(pledgeData.exchangeRate || 1, 0.0001),
-        originalAmount: Math.max(pledgeData.originalAmount || 1, 0.01),
-        originalAmountUsd: Math.max(pledgeData.originalAmountUsd || 1, 0.01),
+        exchangeRate: roundToTwoDecimals(Math.max(pledgeData.exchangeRate || 1, 0.0001)),
+        originalAmount: roundToTwoDecimals(Math.max(pledgeData.originalAmount || 1, 0.01)),
+        originalAmountUsd: roundToTwoDecimals(Math.max(pledgeData.originalAmountUsd || 1, 0.01)),
         description: pledgeData.description || "",
         pledgeDate: pledgeData.pledgeDate,
         exchangeRateDate: pledgeData.pledgeDate,
@@ -253,9 +258,15 @@ export default function PledgeDialog({
     const exchangeRate = form.getValues("exchangeRate");
     if (watchedOriginalAmount && exchangeRate) {
       const usdAmount = watchedOriginalAmount * exchangeRate;
-      form.setValue("originalAmountUsd", Math.round(usdAmount * 100) / 100, {
-        shouldValidate: true,
-      });
+      // Round to 2 decimal places before setting
+      const roundedUsdAmount = roundToTwoDecimals(usdAmount);
+      // Only update if the value actually changed to avoid unnecessary re-renders
+      const currentUsdAmount = form.getValues("originalAmountUsd");
+      if (Math.abs(currentUsdAmount - roundedUsdAmount) > 0.001) {
+        form.setValue("originalAmountUsd", roundedUsdAmount, {
+          shouldValidate: true,
+        });
+      }
     }
   }, [watchedOriginalAmount, form.watch("exchangeRate"), form]);
 
@@ -291,15 +302,20 @@ export default function PledgeDialog({
         return;
       }
 
+      // Round all amounts before submission
+      const roundedOriginalAmount = roundToTwoDecimals(data.originalAmount);
+      const roundedOriginalAmountUsd = roundToTwoDecimals(data.originalAmountUsd);
+      const roundedExchangeRate = roundToTwoDecimals(data.exchangeRate);
+
       const submissionData = {
         contactId: data.contactId,
         categoryId: data.categoryId,
         pledgeDate: data.pledgeDate,
         description: data.description,
-        originalAmount: data.originalAmount,
+        originalAmount: roundedOriginalAmount,
         currency: data.currency,
-        originalAmountUsd: data.originalAmountUsd,
-        exchangeRate: data.exchangeRate,
+        originalAmountUsd: roundedOriginalAmountUsd,
+        exchangeRate: roundedExchangeRate,
         campaignCode: data.campaignCode || undefined,
         notes: data.notes,
       };
@@ -350,6 +366,17 @@ export default function PledgeDialog({
     if (!newOpen && !isEditMode) {
       resetForm();
     }
+  };
+
+  // Handle amount input changes with rounding on blur
+  const handleAmountChange = (field: any, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    field.onChange(numValue);
+  };
+
+  const handleAmountBlur = (field: any, value: number) => {
+    const roundedValue = roundToTwoDecimals(value);
+    field.onChange(roundedValue);
   };
 
   const isSubmitting =
@@ -655,11 +682,13 @@ export default function PledgeDialog({
                         <FormControl>
                           <Input
                             type="number"
-                            step="0.0001"
+                            step="0.01"
                             {...field}
                             onChange={(e) => {
-                              const value = parseFloat(e.target.value) || 0;
-                              field.onChange(value);
+                              handleAmountChange(field, e.target.value);
+                            }}
+                            onBlur={(e) => {
+                              handleAmountBlur(field, parseFloat(e.target.value) || 0);
                             }}
                             readOnly={isEditMode}
                             className={cn(
@@ -693,8 +722,10 @@ export default function PledgeDialog({
                             step="0.01"
                             {...field}
                             onChange={(e) => {
-                              const value = parseFloat(e.target.value) || 0;
-                              field.onChange(value);
+                              handleAmountChange(field, e.target.value);
+                            }}
+                            onBlur={(e) => {
+                              handleAmountBlur(field, parseFloat(e.target.value) || 0);
                             }}
                             className={cn(
                               form.formState.errors.originalAmount && "border-red-500"
@@ -715,9 +746,9 @@ export default function PledgeDialog({
                         <FormLabel>Pledge Amount (USD)</FormLabel>
                         <FormControl>
                           <Input
-                            type="number"
-                            step="0.01"
+                            type="text"
                             {...field}
+                            value={`${(field.value || 0).toFixed(2)}`}
                             readOnly
                             className={cn(
                               "bg-gray-50",
@@ -816,4 +847,3 @@ export default function PledgeDialog({
     </>
   );
 }
-  
