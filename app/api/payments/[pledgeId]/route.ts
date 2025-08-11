@@ -394,6 +394,80 @@ export async function GET(
   }
 }
 
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ pledgeId: string }> }
+) {
+  try {
+    const { pledgeId } = await params;
+    const paymentId = parseInt(pledgeId);
+
+    if (isNaN(paymentId) || paymentId <= 0) {
+      return NextResponse.json({ error: "Invalid payment ID" }, { status: 400 });
+    }
+
+    // Get payment before deleting
+    const existingPayment = await db
+      .select()
+      .from(payment)
+      .where(eq(payment.id, paymentId))
+      .limit(1);
+
+    if (existingPayment.length === 0) {
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+    }
+
+    const currentPayment = existingPayment[0];
+
+    // Get allocations if it’s a split payment
+    const existingAllocations = await db
+      .select()
+      .from(paymentAllocations)
+      .where(eq(paymentAllocations.paymentId, paymentId));
+
+    // Delete payment
+    await db.delete(payment).where(eq(payment.id, paymentId));
+
+    // Update related pledge totals
+    if (existingAllocations.length > 0) {
+      // Split payment: update each unique pledge in allocations
+      const uniquePledgeIds = [
+        ...new Set(existingAllocations.map(a => a.pledgeId))
+      ];
+      for (const pledgeId of uniquePledgeIds) {
+        await updatePledgeTotals(pledgeId);
+      }
+    } else if (currentPayment.pledgeId) {
+      // Regular payment: update its single pledge
+      await updatePledgeTotals(currentPayment.pledgeId);
+    }
+
+    // Update payment plan totals if applicable
+    if (currentPayment.paymentPlanId) {
+      await updatePaymentPlanTotals(currentPayment.paymentPlanId);
+    }
+
+    // Update installment schedule status if applicable
+    if (currentPayment.installmentScheduleId) {
+      await updateInstallmentScheduleStatus(
+        currentPayment.installmentScheduleId,
+        "pending", // Because deleting means it's unpaid now
+        null
+      );
+    }
+
+    return NextResponse.json({
+      message: "Payment deleted successfully"
+    });
+
+  } catch (error) {
+    console.error("Error deleting payment:", error);
+    return ErrorHandler.handle(error);
+  }
+}
+
+
+
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ pledgeId: string }> }
@@ -821,3 +895,4 @@ export async function PATCH(
     return ErrorHandler.handle(err);
   }
 }
+
