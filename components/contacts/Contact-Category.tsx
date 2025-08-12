@@ -31,7 +31,7 @@ export default function ContactCategoriesCard({
   const categoryOrder = ["Donations", "Tuition", "Miscellaneous"];
 
   const createEmptyCategory = (name: string): ExtendedCategory => ({
-    categoryId: name.toLowerCase() as unknown as Category['categoryId'],
+    categoryId: name.toLowerCase() as unknown as Category["categoryId"],
     categoryName: name,
     categoryDescription: "",
     totalPledgedUsd: 0,
@@ -41,69 +41,61 @@ export default function ContactCategoriesCard({
     scheduledUsd: 0,
   });
 
-  const formatCurrency = (amount: string | number, currency: string = "USD") => {
-    const numericAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-    const formatted = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(numericAmount);
-
-    const currencySymbol = formatted.replace(/[\d,.\s]/g, "");
-    const numericPart = formatted.replace(/[^\d,.\s]/g, "").trim();
-
-    return { symbol: currencySymbol, amount: numericPart };
-  };
-
   const getScheduledAmount = (category: ExtendedCategory) => {
-    // Handle all possible types and convert to number
     let scheduled = category.scheduledUsd;
 
-    // Convert to number regardless of input type
-    if (typeof scheduled === 'string') {
+    if (typeof scheduled === "string") {
       scheduled = parseFloat(scheduled);
     } else if (scheduled === null || scheduled === undefined) {
       scheduled = 0;
     }
 
-    // Final safety check - ensure it's a valid number
-    const validScheduled = (typeof scheduled === 'number' && !isNaN(scheduled)) ? scheduled : 0;
+    const validScheduled =
+      typeof scheduled === "number" && !isNaN(scheduled) ? scheduled : 0;
 
-    console.log(`💰 Scheduled amount for ${category.categoryName}: $${validScheduled.toFixed(2)} (from backend)`);
-    console.log(`🔍 Original scheduledUsd:`, category.scheduledUsd, 'Type:', typeof category.scheduledUsd);
-
-    return validScheduled.toFixed(2);
+    console.log(
+      `💰 Scheduled amount for ${category.categoryName}: $${validScheduled} (from backend)`
+    );
+    return Math.round(validScheduled).toLocaleString("en-US");
   };
 
-  const calculateUnscheduled = (balance: string | number, scheduled: string | number) => {
-    // Handle balance conversion
+  const calculateUnscheduled = (
+    balance: string | number,
+    scheduled: string | number
+  ) => {
     let balanceNum = balance;
-    if (typeof balanceNum === 'string') {
+    if (typeof balanceNum === "string") {
       balanceNum = parseFloat(balanceNum);
     }
-    const validBalance = (typeof balanceNum === 'number' && !isNaN(balanceNum)) ? balanceNum : 0;
+    const validBalance =
+      typeof balanceNum === "number" && !isNaN(balanceNum) ? balanceNum : 0;
 
-    // Handle scheduled conversion
     let scheduledNum = scheduled;
-    if (typeof scheduledNum === 'string') {
+    if (typeof scheduledNum === "string") {
       scheduledNum = parseFloat(scheduledNum);
     }
-    const validScheduled = (typeof scheduledNum === 'number' && !isNaN(scheduledNum)) ? scheduledNum : 0;
+    const validScheduled =
+      typeof scheduledNum === "number" && !isNaN(scheduledNum)
+        ? scheduledNum
+        : 0;
 
-    // Ensure unscheduled is never negative - use Math.max to set minimum to 0
-    const unscheduled = Math.max(0, validBalance - validScheduled).toFixed(2);
+    const unscheduled = Math.max(0, validBalance - validScheduled);
 
-    console.log(`📊 Unscheduled calculation: Balance($${validBalance}) - Scheduled($${validScheduled}) = $${unscheduled}`);
-    return unscheduled;
+    console.log(
+      `📊 Unscheduled calculation: Balance($${validBalance}) - Scheduled($${validScheduled}) = $${unscheduled}`
+    );
+    return Math.round(unscheduled).toLocaleString("en-US");
   };
 
   const categoryMap = new Map<string, ExtendedCategory>();
   categories.forEach((cat) => {
-    // Map "Donation" to "Donations" if it exists
-    const categoryName = cat.categoryName === "Donation" ? "Donations" : cat.categoryName;
+    const categoryName =
+      cat.categoryName === "Donation" ? "Donations" : cat.categoryName;
     const updatedCategory = { ...cat, categoryName };
-    categoryMap.set(categoryName.toLowerCase(), updatedCategory as ExtendedCategory);
+    categoryMap.set(
+      categoryName.toLowerCase(),
+      updatedCategory as ExtendedCategory
+    );
   });
 
   const sortedCategories = categoryOrder.map((categoryName) => {
@@ -111,8 +103,10 @@ export default function ContactCategoriesCard({
     return existing || createEmptyCategory(categoryName);
   });
 
-  // Debug log to see the data structure from backend
-  console.log('\n🔍 Categories with scheduled amounts from backend:', sortedCategories);
+  console.log(
+    "\n🔍 Categories with scheduled amounts from backend:",
+    sortedCategories
+  );
 
   return (
     <Card className="w-full lg:col-span-2">
@@ -131,19 +125,20 @@ export default function ContactCategoriesCard({
               <TableHead className="font-bold text-right">Paid</TableHead>
               <TableHead className="font-bold text-right">Balance</TableHead>
               <TableHead className="font-bold text-right">Pledges</TableHead>
-              <TableHead className="font-bold text-right italic">Scheduled</TableHead>
-              <TableHead className="font-bold text-right italic">Unscheduled</TableHead>
+              <TableHead className="font-bold text-right italic">
+                Scheduled
+              </TableHead>
+              <TableHead className="font-bold text-right italic">
+                Unscheduled
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {sortedCategories.map((category) => {
-              // Debug log for each category
-              console.log(`🔍 Category ${category.categoryName} scheduledUsd:`, category.scheduledUsd, typeof category.scheduledUsd);
-
               const scheduledAmount = getScheduledAmount(category);
               const unscheduledAmount = calculateUnscheduled(
                 category.currentBalanceUsd,
-                scheduledAmount
+                category.scheduledUsd || 0
               );
 
               return (
@@ -157,25 +152,37 @@ export default function ContactCategoriesCard({
                     </Link>
                   </TableCell>
                   <TableCell className="text-right">
-                    $ {typeof category.totalPledgedUsd === 'number' ? category.totalPledgedUsd.toFixed(2) : category.totalPledgedUsd}
+                    ${Math.round(
+                      typeof category.totalPledgedUsd === "number"
+                        ? category.totalPledgedUsd
+                        : parseFloat(category.totalPledgedUsd) || 0
+                    ).toLocaleString("en-US")}
                   </TableCell>
                   <TableCell className="text-right">
-                    $ {typeof category.totalPaidUsd === 'number' ? category.totalPaidUsd.toFixed(2) : category.totalPaidUsd}
+                    ${Math.round(
+                      typeof category.totalPaidUsd === "number"
+                        ? category.totalPaidUsd
+                        : parseFloat(category.totalPaidUsd) || 0
+                    ).toLocaleString("en-US")}
                   </TableCell>
                   <TableCell className="text-right">
-                    $ {typeof category.currentBalanceUsd === 'number' ? category.currentBalanceUsd.toFixed(2) : category.currentBalanceUsd}
+                    ${Math.round(
+                      typeof category.currentBalanceUsd === "number"
+                        ? category.currentBalanceUsd
+                        : parseFloat(category.currentBalanceUsd) || 0
+                    ).toLocaleString("en-US")}
                   </TableCell>
                   <TableCell className="text-right">
                     {category.pledgeCount}
                   </TableCell>
                   <TableCell className="text-center">
                     <div className="flex justify-evenly italic text-blue-600">
-                      $ {scheduledAmount}
+                      ${scheduledAmount}
                     </div>
                   </TableCell>
                   <TableCell className="text-center">
                     <div className="flex justify-evenly italic text-red-600">
-                      $ {unscheduledAmount}
+                      ${unscheduledAmount}
                     </div>
                   </TableCell>
                 </TableRow>
