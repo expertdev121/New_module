@@ -70,6 +70,38 @@ export async function GET(request: NextRequest) {
     const { page, limit, search, sortBy, sortOrder } = parsedParams.data;
     const offset = (page - 1) * limit;
 
+    // ✅ Aggregate pledge totals per contact
+    const pledgeSummary = db
+      .select({
+        contactId: pledge.contactId,
+        totalPledgedUsd: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`.as("totalPledgedUsd"),
+        totalPaidUsd: sql<number>`COALESCE(SUM(${pledge.totalPaidUsd}), 0)`.as("totalPaidUsd"),
+        currentBalanceUsd: sql<number>`COALESCE(SUM(${pledge.balanceUsd}), 0)`.as("currentBalanceUsd"),
+      })
+      .from(pledge)
+      .groupBy(pledge.contactId)
+      .as("pledgeSummary");
+
+    // ✅ Aggregate last payment date per contact
+    const lastPaymentSummary = db
+      .select({
+        contactId: pledge.contactId,
+        lastPaymentDate: sql<Date>`MAX(${payment.paymentDate})`.as("lastPaymentDate"),
+      })
+      .from(pledge)
+      .leftJoin(payment, eq(pledge.id, payment.pledgeId))
+      .groupBy(pledge.contactId)
+      .as("lastPaymentSummary");
+
+    const whereClause = search
+      ? or(
+          ilike(contact.firstName, `%${search}%`),
+          ilike(contact.lastName, `%${search}%`),
+          ilike(contact.email, `%${search}%`),
+          like(contact.phone, `%${search}%`)
+        )
+      : undefined;
+
     const selectedFields = {
       id: contact.id,
       firstName: contact.firstName,
@@ -81,40 +113,22 @@ export async function GET(request: NextRequest) {
       address: contact.address,
       createdAt: contact.createdAt,
       updatedAt: contact.updatedAt,
-      totalPledgedUsd:
-        sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`.as(
-          "totalPledgedUsd"
-        ),
-      totalPaidUsd: sql<number>`COALESCE(SUM(${pledge.totalPaidUsd}), 0)`.as(
-        "totalPaidUsd"
-      ),
-      currentBalanceUsd: sql<number>`COALESCE(SUM(${pledge.balanceUsd}), 0)`.as(
-        "currentBalanceUsd"
-      ),
+      totalPledgedUsd: pledgeSummary.totalPledgedUsd,
+      totalPaidUsd: pledgeSummary.totalPaidUsd,
+      currentBalanceUsd: pledgeSummary.currentBalanceUsd,
       studentProgram: studentRoles.program,
       studentStatus: studentRoles.status,
       roleName: contactRoles.roleName,
-      lastPaymentDate: sql<Date>`MAX(${payment.paymentDate})`.as(
-        "lastPaymentDate"
-      ),
+      lastPaymentDate: lastPaymentSummary.lastPaymentDate,
     };
-
-    const whereClause = search
-      ? or(
-          ilike(contact.firstName, `%${search}%`),
-          ilike(contact.lastName, `%${search}%`),
-          ilike(contact.email, `%${search}%`),
-          like(contact.phone, `%${search}%`)
-        )
-      : undefined;
 
     const query = db
       .select(selectedFields)
       .from(contact)
-      .leftJoin(pledge, eq(contact.id, pledge.contactId))
+      .leftJoin(pledgeSummary, eq(contact.id, pledgeSummary.contactId))
+      .leftJoin(lastPaymentSummary, eq(contact.id, lastPaymentSummary.contactId))
       .leftJoin(studentRoles, eq(contact.id, studentRoles.contactId))
       .leftJoin(contactRoles, eq(contact.id, contactRoles.contactId))
-      .leftJoin(payment, eq(pledge.id, payment.pledgeId))
       .where(whereClause)
       .groupBy(
         contact.id,
@@ -129,10 +143,14 @@ export async function GET(request: NextRequest) {
         contact.updatedAt,
         studentRoles.program,
         studentRoles.status,
-        contactRoles.roleName
+        contactRoles.roleName,
+        pledgeSummary.totalPledgedUsd,
+        pledgeSummary.totalPaidUsd,
+        pledgeSummary.currentBalanceUsd,
+        lastPaymentSummary.lastPaymentDate
       );
 
-    let orderByField: Column | SQL;
+    let orderByField: SQL<unknown> | Column<ColumnBaseConfig<ColumnDataType, string>, object, object>;
     switch (sortBy) {
       case "updatedAt":
         orderByField = selectedFields.updatedAt;
@@ -144,9 +162,8 @@ export async function GET(request: NextRequest) {
         orderByField = selectedFields.lastName;
         break;
       case "totalPledgedUsd":
-        orderByField = selectedFields.totalPledgedUsd as unknown as
-          | SQL<unknown>
-          | Column<ColumnBaseConfig<ColumnDataType, string>, object, object>;
+        // ✅ Wrap in sql to make Drizzle happy with Aliased<number>
+        orderByField = sql`${pledgeSummary.totalPledgedUsd}`;
         break;
       default:
         orderByField = selectedFields.updatedAt;
@@ -172,7 +189,7 @@ export async function GET(request: NextRequest) {
     const totalCount = Number(totalCountResult[0]?.count || 0);
     const totalPages = Math.ceil(totalCount / limit);
 
-    const response = {
+    return NextResponse.json({
       contacts: contacts as ContactResponse[],
       pagination: {
         page,
@@ -182,9 +199,7 @@ export async function GET(request: NextRequest) {
         hasNextPage: page < totalPages,
         hasPreviousPage: page > 1,
       },
-    };
-
-    return NextResponse.json(response);
+    });
   } catch (error) {
     console.error("Error fetching contacts:", error);
     return NextResponse.json(
