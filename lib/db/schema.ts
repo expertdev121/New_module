@@ -101,7 +101,6 @@ export const relationshipEnum = pgEnum("relationship", [
    "Her Mother",
    "His Mother",
    "His Father",
-   "His Parents",
    "Her Nephew",
    "His Nephew",
    "His Niece",
@@ -477,6 +476,33 @@ export const paymentPlan = pgTable(
 
 export type PaymentPlan = typeof paymentPlan.$inferSelect;
 export type NewPaymentPlan = typeof paymentPlan.$inferInsert;
+
+export const exchangeRate = pgTable(
+  "exchange_rate",
+  {
+    id: serial("id").primaryKey(),
+    baseCurrency: currencyEnum("base_currency").notNull().default("USD"),
+    targetCurrency: currencyEnum("target_currency").notNull(),
+    rate: numeric("rate", { precision: 18, scale: 6 }).notNull(),
+    date: date("date").notNull(),
+
+    createdAt: date("created_at").defaultNow().notNull(),
+    updatedAt: date("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueRate: uniqueIndex("exchange_rate_unique_idx").on(
+      table.baseCurrency,
+      table.targetCurrency,
+      table.date
+    ),
+    baseCurrencyIdx: index("exchange_rate_base_currency_idx").on(table.baseCurrency),
+    targetCurrencyIdx: index("exchange_rate_target_currency_idx").on(table.targetCurrency),
+    dateIdx: index("exchange_rate_date_idx").on(table.date),
+  })
+);
+
+export type ExchangeRate = typeof exchangeRate.$inferSelect;
+export type NewExchangeRate = typeof exchangeRate.$inferInsert;
 
 // NEW TABLES FOR SOLICITOR SYSTEM
 // Solicitor table - links to existing contact
