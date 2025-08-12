@@ -5,7 +5,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, RefreshCw, Plus, X } from "lucide-react";
+import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, Plus, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -423,6 +423,7 @@ export default function EditPaymentDialog({
   const watchedCurrency = form.watch("currency");
   const watchedAmount = form.watch("amount");
   const watchedPaymentDate = form.watch("paymentDate");
+  const watchedReceivedDate = form.watch("receivedDate");
   const watchedSolicitorId = form.watch("solicitorId");
   const watchedBonusPercentage = form.watch("bonusPercentage");
   const watchedExchangeRate = form.watch("exchangeRate");
@@ -609,13 +610,45 @@ export default function EditPaymentDialog({
     remove(index);
   };
 
-  // Exchange rate and amount calculations
+  // Enhanced exchange rate and date validation effect - UPDATED to use received date and allow future payment dates
   useEffect(() => {
-    if (watchedCurrency && watchedPaymentDate && exchangeRatesData?.data?.rates) {
+    // Use received date if available, otherwise fall back to payment date
+    const effectiveDate = watchedReceivedDate || watchedPaymentDate;
+    
+    if (!effectiveDate) return;
+    
+    const selectedDate = new Date(effectiveDate);
+    const today = new Date();
+    
+    // Reset time to compare dates only
+    selectedDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    
+    // REMOVED: Payment date future validation - payment dates can now be in the future
+    // Clear any existing payment date errors since future dates are now allowed
+    form.clearErrors("paymentDate");
+
+    // Auto-refresh exchange rate when currency and effective date are available
+    if (watchedCurrency && exchangeRatesData?.data?.rates) {
       const rate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
       form.setValue("exchangeRate", rate);
+      
+      // Show appropriate toast based on which date is being used
+      if (watchedReceivedDate) {
+        if (selectedDate > today) {
+          toast.info(`Using today's exchange rate (received date is in future)`);
+        } else {
+          toast.success(`Exchange rate updated based on received date`);
+        }
+      } else if (watchedPaymentDate) {
+        if (selectedDate > today) {
+          toast.info(`Using today's exchange rate (payment date is in future)`);
+        } else {
+          toast.info(`Exchange rate updated based on payment date (no received date set)`);
+        }
+      }
     }
-  }, [watchedCurrency, watchedPaymentDate, exchangeRatesData, form]);
+  }, [watchedCurrency, watchedPaymentDate, watchedReceivedDate, exchangeRatesData, form]);
 
   useEffect(() => {
     if (watchedAmount && watchedExchangeRate) {
@@ -655,7 +688,6 @@ export default function EditPaymentDialog({
       }
     }
   }, [watchedCurrency, watchedIsSplitPayment, watchedAllocations, replace]);
-
 
   // Reset form and allocations on close
   const resetForm = useCallback(() => {
@@ -902,28 +934,6 @@ export default function EditPaymentDialog({
                       but the payment amount is {formatCurrency(watchedAmount || 0, watchedCurrency || payment.currency)}.
                     </p>
                     <div className="flex items-center gap-4 mt-3">
-                      {/* <div className="flex items-center space-x-2">
-                        <Switch
-                          id="auto-adjust"
-                          checked={autoAdjustAllocations}
-                          onCheckedChange={setAutoAdjustAllocations}
-                        />
-                        <label htmlFor="auto-adjust" className="text-sm font-medium">
-                          Auto-adjust allocations
-                        </label>
-                      </div> */}
-                      {/* {autoAdjustAllocations && (
-                        <Select value={redistributionMethod} onValueChange={(value: "proportional" | "equal" | "custom") => setRedistributionMethod(value)}>
-                          <SelectTrigger className="w-48">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="proportional">Proportional</SelectItem>
-                            <SelectItem value="equal">Equal Split</SelectItem>
-                            <SelectItem value="custom">Manual Adjustment</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      )} */}
                       {!autoAdjustAllocations && (
                         <Button
                           type="button"
@@ -932,7 +942,6 @@ export default function EditPaymentDialog({
                           onClick={handleRedistribute}
                           className="flex items-center gap-1"
                         >
-                          <RefreshCw className="h-3 w-3" />
                           Redistribute
                         </Button>
                       )}
@@ -1036,13 +1045,24 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Exchange Rate */}
+                  {/* Exchange Rate - UPDATED: Shows which date is being used and removed refresh button */}
                   <FormField
                     control={form.control}
                     name="exchangeRate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Exchange Rate (to USD)</FormLabel>
+                        <FormLabel>
+                          Exchange Rate (to USD)
+                          {watchedReceivedDate ? (
+                            <span className="text-sm text-blue-600 ml-2">
+                              (Based on received date: {new Date(watchedReceivedDate).toLocaleDateString()})
+                            </span>
+                          ) : watchedPaymentDate ? (
+                            <span className="text-sm text-orange-600 ml-2">
+                              (Based on payment date - no received date set)
+                            </span>
+                          ) : null}
+                        </FormLabel>
                         <FormControl>
                           <Input
                             {...field}
@@ -1075,7 +1095,7 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Payment Date */}
+                  {/* Payment Date - UPDATED: Removed max attribute to allow future dates */}
                   <FormField
                     control={form.control}
                     name="paymentDate"
@@ -1088,13 +1108,22 @@ export default function EditPaymentDialog({
                           )}
                         </FormLabel>
                         <FormControl>
-                          <Input {...field} type="date" />
+                          <Input 
+                            {...field} 
+                            type="date" 
+                            // REMOVED: max attribute to allow future dates
+                          />
                         </FormControl>
                         {isPaymentPlanPayment && (
                           <p className="text-xs text-blue-600">
                             Changing date may affect future installment scheduling
                           </p>
                         )}
+                        {/* {watchedPaymentDate && new Date(watchedPaymentDate) > new Date() && (
+                          <p className="text-xs text-blue-600">
+                            Future payment date - exchange rate based on current rates
+                          </p>
+                        )} */}
                         <FormMessage />
                       </FormItem>
                     )}
