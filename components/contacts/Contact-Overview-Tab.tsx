@@ -1,7 +1,6 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 import { Progress } from "@/components/ui/progress";
 import { User, MapPin, Grid2x2 } from "lucide-react";
 import { Contact, ContactRole, StudentRole } from "@/lib/db/schema";
@@ -33,7 +32,8 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   const paymentPercentage =
     financialSummary.totalPledgedUsd > 0
       ? Math.round(
-          (financialSummary.totalPaidUsd / financialSummary.totalPledgedUsd) *
+          (financialSummary.totalPaidUsd /
+            financialSummary.totalPledgedUsd) *
             100
         )
       : 0;
@@ -84,6 +84,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
         </CardContent>
       </Card>
 
+      {/* General Overview Card */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -108,13 +109,17 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 Total Pledged
               </dt>
               <dd className="text-right font-medium">
-                ${financialSummary.totalPledgedUsd.toLocaleString("en-US")}
+                ${Math.round(financialSummary.totalPledgedUsd).toLocaleString(
+                  "en-US"
+                )}
               </dd>
             </div>
             <div className="grid grid-cols-2 gap-1 py-2">
               <dt className="text-muted-foreground font-medium">Total Paid</dt>
               <dd className="text-right font-medium">
-                ${financialSummary.totalPaidUsd.toLocaleString("en-US")}
+                ${Math.round(financialSummary.totalPaidUsd).toLocaleString(
+                  "en-US"
+                )}
               </dd>
             </div>
             <div className="grid grid-cols-2 gap-1 py-2">
@@ -122,13 +127,16 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 Current Balance
               </dt>
               <dd className="text-right font-bold">
-                ${financialSummary.currentBalanceUsd.toLocaleString("en-US")}
+                ${Math.round(financialSummary.currentBalanceUsd).toLocaleString(
+                  "en-US"
+                )}
               </dd>
             </div>
           </dl>
         </CardContent>
       </Card>
 
+      {/* Categories Section */}
       <div className="lg:col-span-2">
         <ContactCategoriesCard categories={categories} />
       </div>
