@@ -2,6 +2,7 @@
   "name": "levhatora",
   "version": "0.1.0",
   "private": true,
+   "type": "module",
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",
@@ -10,7 +11,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:pull": "drizzle-kit pull"
+    "db:pull": "drizzle-kit pull",
+    "seed": "tsx scripts/seed-category-items.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.0",

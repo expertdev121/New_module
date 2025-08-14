@@ -377,6 +377,27 @@ export const category = pgTable("category", {
 export type Category = typeof category.$inferSelect;
 export type NewCategory = typeof category.$inferInsert;
 
+export const categoryItem = pgTable("category_item", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  categoryId: integer("category_id")
+    .notNull()
+    .references(() => category.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type CategoryItem = typeof categoryItem.$inferSelect;
+export type NewCategoryItem = typeof categoryItem.$inferInsert;
+
+export const categoryItemRelations = relations(categoryItem, ({ one }) => ({
+  category: one(category, {
+    fields: [categoryItem.categoryId],
+    references: [category.id],
+  }),
+}));
+
+
 export const pledge = pgTable("pledge", {
   id: serial("id").primaryKey(),
   contactId: integer("contact_id")

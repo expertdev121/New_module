@@ -54,7 +54,7 @@ import {
   useUpdatePledgeMutation,
 } from "@/lib/query/pledge/usePledgeQuery";
 import PaymentDialog from "./payment-form";
-import { getCategoryById, STATIC_CATEGORIES } from "@/lib/data/categories";
+import { getCategoryItems } from "@/lib/data/categories";
 
 import {
   Card,
@@ -75,6 +75,14 @@ const supportedCurrencies = [
   "CAD",
   "ZAR",
 ] as const;
+
+// Static categories for display (you'll need to replace this with your actual categories)
+const STATIC_CATEGORIES = [
+  { id: 1, name: "Donation", description: "General donations" },
+  { id: 2, name: "Tuition", description: "Educational tuition fees" },
+  { id: 3, name: "Miscellaneous", description: "Miscellaneous fees and charges" },
+  // Add your other categories here
+];
 
 // Helper function to round amounts to 2 decimal places
 const roundToTwoDecimals = (value: number): number => {
@@ -126,11 +134,11 @@ interface PledgeDialogProps {
   contactId: number;
   contactName?: string;
   mode?: "create" | "edit";
-  pledgeData?: PledgeData; // For edit mode
+  pledgeData?: PledgeData;
   onPledgeCreated?: (pledgeId: number) => void;
   onPledgeCreatedAndPay?: (pledgeId: number) => void;
   onPledgeUpdated?: (pledgeId: number) => void;
-  trigger?: React.ReactNode; // Custom trigger element
+  trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -153,6 +161,10 @@ export default function PledgeDialog({
 
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const [itemSelectionPopoverOpen, setItemSelectionPopoverOpen] = useState(false);
+
+  // State for category items
+  const [categoryItems, setCategoryItems] = useState<string[]>([]);
+  const [loadingCategoryItems, setLoadingCategoryItems] = useState(false);
 
   const donationCategory = STATIC_CATEGORIES.find(
     (cat) => cat.name.toLowerCase() === "donation"
@@ -216,6 +228,23 @@ export default function PledgeDialog({
   const createPledgeAndPayMutation = useCreatePledgeAndPayMutation();
   const updatePledgeMutation = useUpdatePledgeMutation();
 
+  // Function to fetch category items from API
+  const fetchCategoryItems = async (categoryId: number) => {
+    if (!categoryId) return;
+    
+    setLoadingCategoryItems(true);
+    try {
+      const items = await getCategoryItems(categoryId);
+      setCategoryItems(items);
+    } catch (error) {
+      console.error('Error fetching category items:', error);
+      setCategoryItems([]);
+      toast.error('Failed to load category items');
+    } finally {
+      setLoadingCategoryItems(false);
+    }
+  };
+
   useEffect(() => {
     if (!contactId || contactId <= 0) {
       console.error("Invalid contactId prop:", contactId);
@@ -236,11 +265,25 @@ export default function PledgeDialog({
       form.reset(values);
       setSelectedCategoryId(pledgeData.categoryId || null);
 
+      // Fetch category items if category is selected
+      if (pledgeData.categoryId) {
+        fetchCategoryItems(pledgeData.categoryId);
+      }
+
       setTimeout(() => {
         form.trigger();
       }, 100);
     }
   }, [isEditMode, pledgeData, open, contactId]);
+
+  // Fetch category items when category changes
+  useEffect(() => {
+    if (selectedCategoryId) {
+      fetchCategoryItems(selectedCategoryId);
+    } else {
+      setCategoryItems([]);
+    }
+  }, [selectedCategoryId]);
 
   useEffect(() => {
     if (
@@ -258,9 +301,7 @@ export default function PledgeDialog({
     const exchangeRate = form.getValues("exchangeRate");
     if (watchedOriginalAmount && exchangeRate) {
       const usdAmount = watchedOriginalAmount * exchangeRate;
-      // Round to 2 decimal places before setting
       const roundedUsdAmount = roundToTwoDecimals(usdAmount);
-      // Only update if the value actually changed to avoid unnecessary re-renders
       const currentUsdAmount = form.getValues("originalAmountUsd");
       if (Math.abs(currentUsdAmount - roundedUsdAmount) > 0.001) {
         form.setValue("originalAmountUsd", roundedUsdAmount, {
@@ -270,7 +311,7 @@ export default function PledgeDialog({
     }
   }, [watchedOriginalAmount, form.watch("exchangeRate"), form]);
 
-  const handleCategoryChange = (categoryId: string) => {
+  const handleCategoryChange = async (categoryId: string) => {
     const id = parseInt(categoryId);
     form.setValue("categoryId", id, { shouldValidate: true });
     setSelectedCategoryId(id);
@@ -278,6 +319,9 @@ export default function PledgeDialog({
     if (!isEditMode) {
       form.setValue("description", "", { shouldValidate: true });
     }
+    
+    // Fetch items for the new category
+    await fetchCategoryItems(id);
   };
 
   const handleItemSelect = (item: string) => {
@@ -302,7 +346,6 @@ export default function PledgeDialog({
         return;
       }
 
-      // Round all amounts before submission
       const roundedOriginalAmount = roundToTwoDecimals(data.originalAmount);
       const roundedOriginalAmountUsd = roundToTwoDecimals(data.originalAmountUsd);
       const roundedExchangeRate = roundToTwoDecimals(data.exchangeRate);
@@ -359,6 +402,7 @@ export default function PledgeDialog({
     const defaultValues = getDefaultValues();
     form.reset(defaultValues);
     setSelectedCategoryId(defaultCategoryId);
+    setCategoryItems([]);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -368,7 +412,6 @@ export default function PledgeDialog({
     }
   };
 
-  // Handle amount input changes with rounding on blur
   const handleAmountChange = (field: any, value: string) => {
     const numValue = parseFloat(value) || 0;
     field.onChange(numValue);
@@ -384,7 +427,8 @@ export default function PledgeDialog({
     createPledgeAndPayMutation.isPending ||
     updatePledgeMutation.isPending;
 
-  const selectedCategory = selectedCategoryId ? getCategoryById(selectedCategoryId) : null;
+  const selectedCategory = selectedCategoryId ? 
+    STATIC_CATEGORIES.find(cat => cat.id === selectedCategoryId) : null;
 
   const defaultTrigger = isEditMode ? (
     <Button size="sm" variant="outline" aria-label="Edit Pledge">
@@ -544,7 +588,7 @@ export default function PledgeDialog({
                           />
                         </FormControl>
                         <FormMessage />
-                        {selectedCategory && selectedCategory.items.length > 0 && (
+                        {selectedCategory && categoryItems.length > 0 && (
                           <div className="mt-2">
                             <FormLabel className="text-sm text-muted-foreground">
                               Or select from {selectedCategory.name} items:
@@ -560,8 +604,12 @@ export default function PledgeDialog({
                                   className="w-full justify-between mt-1"
                                   aria-haspopup="listbox"
                                   aria-expanded={itemSelectionPopoverOpen}
+                                  disabled={loadingCategoryItems}
                                 >
-                                  Select item from {selectedCategory.name}
+                                  {loadingCategoryItems 
+                                    ? "Loading items..." 
+                                    : `Select item from ${selectedCategory.name}`
+                                  }
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </PopoverTrigger>
@@ -574,7 +622,7 @@ export default function PledgeDialog({
                                   <CommandList className="max-h-[200px]">
                                     <CommandEmpty>No items found.</CommandEmpty>
                                     <CommandGroup>
-                                      {selectedCategory.items.map((item, index) => (
+                                      {categoryItems.map((item, index) => (
                                         <CommandItem
                                           key={index}
                                           value={item}
