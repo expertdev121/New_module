@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 export interface CreatePaymentData {
   pledgeId: number;
   amount: number;
+  relationshipId?: number;
   currency: string;
   amountUsd?: number;
   paymentDate: string;
@@ -30,6 +31,7 @@ export interface CreatePaymentResponse {
     id: number;
     pledgeId: number;
     amount: string;
+    relationshipId?: number;
     currency: string;
     amountUsd: string | null;
     paymentDate: string;
@@ -51,6 +53,7 @@ export interface CreatePaymentResponse {
 export interface PledgeQueryParams {
   contactId?: number;
   categoryId?: number;
+  relationshipId?: number;
   page?: number;
   limit?: number;
   search?: string;
@@ -59,10 +62,12 @@ export interface PledgeQueryParams {
   endDate?: string;
 }
 
+// ------------- CRITICAL UPDATE: Support nested data in Pledge -------------
 export interface Pledge {
   id: number;
   contactId: number;
   categoryId: number | null;
+  relationshipId?: number;
   pledgeDate: string;
   description: string;
   originalAmount: string;
@@ -80,7 +85,37 @@ export interface Pledge {
   progressPercentage: number;
   categoryName: string | null;
   categoryDescription: string | null;
+  relationship?: {
+    id: number;
+    type: string;
+    label: string;
+    isActive: boolean;
+    notes?: string | null;
+    relatedContact: {
+      id: number;
+      firstName: string;
+      lastName: string;
+      fullName: string;
+      email?: string | null;
+      phone?: string | null;
+    };
+  } | null;
+
+  contact?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    email?: string | null;
+  };
+
+  category?: {
+    id: number;
+    name: string;
+    description?: string | null;
+  } | null;
 }
+// ------------- END CRITICAL UPDATE -------------
 
 export interface PledgesResponse {
   pledges: Pledge[];
@@ -95,6 +130,7 @@ export interface PledgesResponse {
   filters: {
     contactId?: number;
     categoryId?: number;
+    relationshipId?: number; // ADDED to match queryPossible keys
     search?: string;
     status?: string;
     startDate?: string;
@@ -105,6 +141,7 @@ export interface PledgesResponse {
 export interface CreatePledgeData {
   contactId: number;
   categoryId?: number;
+  relationshipId?: number;
   pledgeDate: string;
   description: string;
   originalAmount: number;
@@ -123,10 +160,10 @@ export interface CreatePledgeAndPayData extends CreatePledgeData {
   shouldRedirectToPay: boolean;
 }
 
-// Update interface for pledge data
 export interface UpdatePledgeData {
   id: number;
   contactId?: number;
+  relationshipId?: number;
   categoryId?: number;
   pledgeDate?: string;
   description?: string;
@@ -143,12 +180,10 @@ export interface UpdatePledgeResponse {
   pledge: Pledge;
 }
 
-// Update function
 const updatePledge = async (
   data: UpdatePledgeData
 ): Promise<UpdatePledgeResponse> => {
   const { id, ...updateData } = data;
-  
   const response = await fetch(`/api/pledges/${id}`, {
     method: "PUT",
     headers: {
@@ -198,7 +233,7 @@ const fetchPledgeById = async (id: number): Promise<Pledge> => {
 
 const fetchPledges = async (
   params: PledgeQueryParams
-): Promise<PledgesResponse> => { 
+): Promise<PledgesResponse> => {
   const searchParams = new URLSearchParams();
 
   Object.entries(params).forEach(([key, value]) => {
@@ -280,7 +315,7 @@ export const usePledgeByIdQuery = (id: number) =>
     queryFn: () => fetchPledgeById(id),
     enabled: !!id,
     staleTime: 1000 * 60 * 5,
-  }); 
+  });
 
 export const usePledgesQuery = (params: PledgeQueryParams) => {
   return useQuery({
@@ -320,38 +355,31 @@ export const useUpdatePledgeMutation = () => {
   return useMutation({
     mutationFn: updatePledge,
     onSuccess: (data, variables) => {
-      // Invalidate all pledge queries
       queryClient.invalidateQueries({ queryKey: pledgeKeys.all });
-      
-      // Update the specific pledge in cache if it exists
-      queryClient.setQueryData(
-        pledgeKeys.detail(variables.id),
-        data.pledge
-      );
-      
-      // Invalidate pledge list for the contact
+      queryClient.setQueryData(pledgeKeys.detail(variables.id), data.pledge);
       if (variables.contactId || data.pledge.contactId) {
         queryClient.invalidateQueries({
-          queryKey: pledgeKeys.list({ 
-            contactId: variables.contactId || data.pledge.contactId 
+          queryKey: pledgeKeys.list({
+            contactId: variables.contactId || data.pledge.contactId,
           }),
         });
       }
-      
-      // Handle null to undefined conversion for categoryId
-      const categoryIdForQuery = variables.categoryId ?? 
+      const categoryIdForQuery =
+        variables.categoryId ??
         (data.pledge.categoryId !== null ? data.pledge.categoryId : undefined);
-      
+
       if (categoryIdForQuery !== undefined) {
         queryClient.invalidateQueries({
-          queryKey: pledgeKeys.list({ 
-            categoryId: categoryIdForQuery
+          queryKey: pledgeKeys.list({
+            categoryId: categoryIdForQuery,
           }),
         });
       }
-
-      // If amount or currency changed, invalidate payment queries too
-      if (variables.originalAmount || variables.currency || variables.originalAmountUsd) {
+      if (
+        variables.originalAmount ||
+        variables.currency ||
+        variables.originalAmountUsd
+      ) {
         queryClient.invalidateQueries({ queryKey: paymentKeys.all });
         queryClient.invalidateQueries({
           queryKey: paymentKeys.byPledge(variables.id),
@@ -371,16 +399,10 @@ export const useCreatePaymentMutation = () => {
     mutationFn: createPayment,
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: paymentKeys.all });
-
-      // Invalidate payments for this specific pledge
       queryClient.invalidateQueries({
         queryKey: paymentKeys.byPledge(variables.pledgeId),
       });
-
-      // Invalidate all pledge queries since payment affects pledge balance
       queryClient.invalidateQueries({ queryKey: pledgeKeys.all });
-
-      // Optionally invalidate specific pledge detail if you have that query
       queryClient.invalidateQueries({
         queryKey: pledgeKeys.detail(variables.pledgeId),
       });

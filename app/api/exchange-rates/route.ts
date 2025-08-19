@@ -83,7 +83,7 @@ export async function GET(request: Request) {
         ],
         set: {
           rate: sql`excluded.rate`,
-          updatedAt: sql`excluded.updated_at`, // Correct snake_case column name
+          updatedAt: sql`excluded.updated_at`, 
         },
       });
   }

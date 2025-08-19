@@ -22,6 +22,35 @@ interface PledgeResponse {
   hasActivePlan: boolean;
   paymentPlanStatus: 'active' | 'none';
   schedulePercentage: number;
+  relationship?: {
+    id: number;
+    type: string;
+    label: string;
+    isActive: boolean;
+    notes?: string | null;
+    relatedContact: {
+      id: number;
+      firstName: string;
+      lastName: string;
+      fullName: string;
+      email?: string | null;
+      phone?: string | null;
+    };
+  } | null;
+
+  contact?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    fullName: string;
+    email?: string | null;
+  };
+
+  category?: {
+    id: number;
+    name: string;
+    description?: string | null;
+  } | null;
 }
 
 interface ApiResponse {

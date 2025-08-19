@@ -1,7 +1,15 @@
 import { db } from "@/lib/db";
-import { pledge, category, contact, paymentPlan, installmentSchedule } from "@/lib/db/schema";
+import { 
+  pledge, 
+  category, 
+  contact, 
+  paymentPlan, 
+  installmentSchedule,
+  relationships 
+} from "@/lib/db/schema";
 import { sql, eq, and, or, gte, lte, ilike, SQL } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { alias } from "drizzle-orm/pg-core";
 
 // Define types for payment plan data
 interface PaymentPlanData {
@@ -188,35 +196,10 @@ export async function GET(
       // Continue without detailed payment plan data
     }
 
-    // Build main query
-    let query = db
-      .select({
-        id: pledge.id,
-        pledgeDate: pledge.pledgeDate,
-        description: pledge.description,
-        originalAmount: pledge.originalAmount,
-        currency: pledge.currency,
-        originalAmountUsd: pledge.originalAmountUsd,
-        totalPaid: pledge.totalPaid,
-        totalPaidUsd: pledge.totalPaidUsd,
-        balance: pledge.balance,
-        balanceUsd: pledge.balanceUsd,
-        notes: pledge.notes,
-        categoryName: category.name,
-        categoryDescription: category.description,
-        progressPercentage: sql<number>`
-          CASE 
-            WHEN ${pledge.originalAmount}::numeric > 0 
-            THEN ROUND((${pledge.totalPaid}::numeric / ${pledge.originalAmount}::numeric) * 100, 1)
-            ELSE 0 
-          END
-        `,
-      })
-      .from(pledge)
-      .leftJoin(category, eq(pledge.categoryId, category.id))
-      .leftJoin(contact, eq(pledge.contactId, contact.id))
-      .$dynamic();
+    // Create alias for related contact to avoid conflicts
+    const relatedContact = alias(contact, "related_contact");
 
+    // Build main query conditions
     const conditions: SQL<unknown>[] = [];
 
     // Always filter by contactId
@@ -256,6 +239,48 @@ export async function GET(
       }
     }
 
+    // Build main query with relationship joins
+    let query = db
+      .select({
+        id: pledge.id,
+        pledgeDate: pledge.pledgeDate,
+        description: pledge.description,
+        originalAmount: pledge.originalAmount,
+        currency: pledge.currency,
+        originalAmountUsd: pledge.originalAmountUsd,
+        totalPaid: pledge.totalPaid,
+        totalPaidUsd: pledge.totalPaidUsd,
+        balance: pledge.balance,
+        balanceUsd: pledge.balanceUsd,
+        notes: pledge.notes,
+        categoryName: category.name,
+        categoryDescription: category.description,
+        progressPercentage: sql<number>`
+          CASE 
+            WHEN ${pledge.originalAmount}::numeric > 0 
+            THEN ROUND((${pledge.totalPaid}::numeric / ${pledge.originalAmount}::numeric) * 100, 1)
+            ELSE 0 
+          END
+        `,
+        // Relationship fields
+        relationshipId: pledge.relationshipId,
+        relationshipType: relationships.relationshipType,
+        relationshipIsActive: relationships.isActive,
+        relationshipNotes: relationships.notes,
+        // Related contact fields
+        relatedContactId: relatedContact.id,
+        relatedContactFirstName: relatedContact.firstName,
+        relatedContactLastName: relatedContact.lastName,
+        relatedContactEmail: relatedContact.email,
+        relatedContactPhone: relatedContact.phone,
+      })
+      .from(pledge)
+      .leftJoin(category, eq(pledge.categoryId, category.id))
+      .leftJoin(contact, eq(pledge.contactId, contact.id))
+      .leftJoin(relationships, eq(pledge.relationshipId, relationships.id))
+      .leftJoin(relatedContact, eq(relationships.relatedContactId, relatedContact.id))
+      .$dynamic();
+
     // Apply conditions
     if (conditions.length > 0) {
       query = query.where(and(...conditions));
@@ -266,7 +291,21 @@ export async function GET(
 
     const pledgesData = await query;
 
-    // Post-process the results to add payment plan information
+    console.log(`=== PLEDGES API DEBUG: Found ${pledgesData.length} pledges for contact ${contactId} ===`);
+
+    // Debug first pledge relationship data
+    if (pledgesData.length > 0) {
+      const firstPledge = pledgesData[0];
+      console.log("=== PLEDGES API DEBUG: First pledge relationship data ===", {
+        pledgeId: firstPledge.id,
+        relationshipId: firstPledge.relationshipId,
+        relationshipType: firstPledge.relationshipType,
+        relatedContactId: firstPledge.relatedContactId,
+        relatedContactName: `${firstPledge.relatedContactFirstName || ''} ${firstPledge.relatedContactLastName || ''}`.trim(),
+      });
+    }
+
+    // Post-process the results to add payment plan information and relationship data
     const pledges = pledgesData.map(pledge => {
       const planData = paymentPlanData[pledge.id];
       const detailedPlan = detailedPaymentPlans[pledge.id];
@@ -280,6 +319,23 @@ export async function GET(
       // Calculate unscheduled amount (balance minus scheduled amount, but not negative)
       const unscheduledAmount = Math.max(0, balanceNum - scheduledAmountNum).toString();
 
+      // Structure relationship data for frontend
+      const relationship = pledge.relationshipId ? {
+        id: pledge.relationshipId,
+        type: pledge.relationshipType,
+        isActive: pledge.relationshipIsActive,
+        notes: pledge.relationshipNotes,
+        relatedContact: pledge.relatedContactId ? {
+          id: pledge.relatedContactId,
+          firstName: pledge.relatedContactFirstName,
+          lastName: pledge.relatedContactLastName,
+          email: pledge.relatedContactEmail,
+          phone: pledge.relatedContactPhone,
+          fullName: `${pledge.relatedContactFirstName || ""} ${pledge.relatedContactLastName || ""}`.trim(),
+        } : null,
+        label: `${pledge.relationshipType || ""} - ${pledge.relatedContactFirstName || ""} ${pledge.relatedContactLastName || ""}`.trim(),
+      } : null;
+
       return {
         ...pledge,
         // Payment plan related fields (existing functionality)
@@ -291,13 +347,18 @@ export async function GET(
         paymentPlanStatus: hasActivePlan ? 'active' : 'none',
         schedulePercentage: balanceNum > 0 ? 
           Math.round((scheduledAmountNum / balanceNum) * 100) : 0,
-        // NEW: Add detailed payment plan information
+        // Detailed payment plan information (existing functionality)
         paymentPlan: detailedPlan || null,
+        // NEW: Relationship data for frontend
+        relationship,
       };
     });
 
-    // Get total count for pagination (if needed)
-    // You might want to add this for better pagination
+    // Count pledges with relationships for debugging
+    const pledgesWithRelationships = pledges.filter(p => p.relationship);
+    console.log(`=== PLEDGES API DEBUG: ${pledgesWithRelationships.length} out of ${pledges.length} pledges have relationships ===`);
+
+    // Get total count for pagination
     const totalCountQuery = db
       .select({ count: sql<number>`count(*)` })
       .from(pledge)

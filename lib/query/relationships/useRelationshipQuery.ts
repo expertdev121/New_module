@@ -4,121 +4,119 @@ import { toast } from "sonner";
 export interface RelationshipFormData {
   contactId: number;
   relatedContactId: number;
-   relationshipType:
-  | "mother"
-  | "father"
-  | "grandmother"
-  | "grandchild"
-  | "grandfather"
-  | "grandparent"
-  | "parent"
-  | "step-parent"
-  | "stepmother"
-  | "stepfather"
-  | "sister"
-  | "brother"
-  | "step-sister"
-  | "step-brother"
-  | "stepson"
-  | "daughter"
-  | "son"
-  | "aunt"
-  | "uncle"
-  | "aunt/uncle"
-  | "nephew"
-  | "niece"
-  | "grandson"
-  | "granddaughter"
-  | "cousin (m)"
-  | "cousin (f)"
-  | "spouse"
-  | "partner"
-  | "wife"
-  | "husband"
-  | "former husband"
-  | "former wife"
-  | "fiance"
-  | "divorced co-parent"
-  | "separated co-parent"
-  | "legal guardian"
-  | "legal guardian partner"
-  | "friend"
-  | "neighbor"
-  | "relative"
-  | "business"
-  | "owner"
-  | "chevrusa"
-  | "congregant"
-  | "rabbi"
-  | "contact"
-  | "foundation"
-  | "donor"
-  | "fund"
-  | "rebbi contact"
-  | "rebbi contact for"
-  | "employee"
-  | "employer"
-  | "machatunim"
-  // Added missing types below:
-  | "His Sister"
-  | "Her Sister"
-  | "Her Brother"
-  | "His Brother"
-  | "His Aunt"
-  | "Her Aunt"
-  | "His Uncle"
-  | "Her Uncle"
-  | "His Parents"
-  | "Her Parents"
-  | "Her Mother"
-  | "His Mother"
-  | "His Father"
-  | "His Parents"
-  | "Her Nephew"
-  | "His Nephew"
-  | "His Niece"
-  | "Her Niece"
-  | "His Grandparents"
-  | "Her Grandparents"
-  | "Her Father"
-  | "Their Daughter"
-  | "Their Son"
-  | "His Daughter"
-  | "His Son"
-  | "Her Daughter"
-  | "Her Son"
-  | "His Cousin (M)"
-  | "Her Grandfather"
-  | "Her Grandmother"
-  | "His Grandfather"
-  | "His Grandmother"
-  | "His Wife"
-  | "Her Husband"
-  | "Her Former Husband"
-  | "His Former Wife"
-  | "His Cousin (F)"
-  | "Her Cousin (M)"
-  | "Her Cousin (F)"
-  | "Partner"
-  | "Friend"
-  | "Neighbor"
-  | "Relative"
-  | "Business"
-  | "Chevrusa"
-  | "Congregant"
-  | "Contact"
-  | "Donor"
-  | "Fiance"
-  | "Foundation"
-  | "Fund"
-  | "Her Step Son"
-  | "His Step Mother"
-  | "Owner"
-  | "Rabbi"
-  | "Their Granddaughter"
-  | "Their Grandson"
-  | "Employee"
-  | "Employer";
+  relationshipType:
+    | "mother"
+    | "father"
+    | "grandmother"
+    | "grandchild"
+    | "grandfather"
+    | "grandparent"
+    | "parent"
+    | "step-parent"
+    | "stepmother"
+    | "stepfather"
+    | "sister"
+    | "brother"
+    | "step-sister"
+    | "step-brother"
+    | "stepson"
+    | "daughter"
+    | "son"
+    | "aunt"
+    | "uncle"
+    | "aunt/uncle"
+    | "nephew"
+    | "niece"
+    | "grandson"
+    | "granddaughter"
+    | "cousin (m)"
+    | "cousin (f)"
+    | "spouse"
+    | "partner"
+    | "wife"
+    | "husband"
+    | "former husband"
+    | "former wife"
+    | "fiance"
+    | "divorced co-parent"
+    | "separated co-parent"
+    | "legal guardian"
+    | "legal guardian partner"
+    | "friend"
+    | "neighbor"
+    | "relative"
+    | "business"
+    | "owner"
+    | "chevrusa"
+    | "congregant"
+    | "rabbi"
+    | "contact"
+    | "foundation"
+    | "donor"
+    | "fund"
+    | "rebbi contact"
+    | "rebbi contact for"
+    | "employee"
+    | "employer"
+    | "machatunim"
+    | "His Sister"
+    | "Her Sister"
+    | "Her Brother"
+    | "His Brother"
+    | "His Aunt"
+    | "Her Aunt"
+    | "His Uncle"
+    | "Her Uncle"
+    | "His Parents"
+    | "Her Parents"
+    | "Her Mother"
+    | "His Mother"
+    | "His Father"
+    | "Her Nephew"
+    | "His Nephew"
+    | "His Niece"
+    | "Her Niece"
+    | "His Grandparents"
+    | "Her Grandparents"
+    | "Her Father"
+    | "Their Daughter"
+    | "Their Son"
+    | "His Daughter"
+    | "His Son"
+    | "Her Daughter"
+    | "Her Son"
+    | "His Cousin (M)"
+    | "Her Grandfather"
+    | "Her Grandmother"
+    | "His Grandfather"
+    | "His Grandmother"
+    | "His Wife"
+    | "Her Husband"
+    | "Her Former Husband"
+    | "His Former Wife"
+    | "His Cousin (F)"
+    | "Her Cousin (M)"
+    | "Her Cousin (F)"
+    | "Partner"
+    | "Friend"
+    | "Neighbor"
+    | "Relative"
+    | "Business"
+    | "Chevrusa"
+    | "Congregant"
+    | "Contact"
+    | "Donor"
+    | "Fiance"
+    | "Foundation"
+    | "Fund"
+    | "Her Step Son"
+    | "His Step Mother"
+    | "Owner"
+    | "Rabbi"
+    | "Their Granddaughter"
+    | "Their Grandson"
+    | "Employee"
+    | "Employer";
   isActive: boolean;
   notes?: string;
 }
@@ -127,121 +125,7 @@ export interface Relationship {
   id: number;
   contactId: number;
   relatedContactId: number;
- relationshipType:
-  | "mother"
-  | "father"
-  | "grandmother"
-  | "grandchild"
-  | "grandfather"
-  | "grandparent"
-  | "parent"
-  | "step-parent"
-  | "stepmother"
-  | "stepfather"
-  | "sister"
-  | "brother"
-  | "step-sister"
-  | "step-brother"
-  | "stepson"
-  | "daughter"
-  | "son"
-  | "aunt"
-  | "uncle"
-  | "aunt/uncle"
-  | "nephew"
-  | "niece"
-  | "grandson"
-  | "granddaughter"
-  | "cousin (m)"
-  | "cousin (f)"
-  | "spouse"
-  | "partner"
-  | "wife"
-  | "husband"
-  | "former husband"
-  | "former wife"
-  | "fiance"
-  | "divorced co-parent"
-  | "separated co-parent"
-  | "legal guardian"
-  | "legal guardian partner"
-  | "friend"
-  | "neighbor"
-  | "relative"
-  | "business"
-  | "owner"
-  | "chevrusa"
-  | "congregant"
-  | "rabbi"
-  | "contact"
-  | "foundation"
-  | "donor"
-  | "fund"
-  | "rebbi contact"
-  | "rebbi contact for"
-  | "employee"
-  | "employer"
-  | "machatunim"
-  // Added missing types below:
-  | "His Sister"
-  | "Her Sister"
-  | "Her Brother"
-  | "His Brother"
-  | "His Aunt"
-  | "Her Aunt"
-  | "His Uncle"
-  | "Her Uncle"
-  | "His Parents"
-  | "Her Parents"
-  | "Her Mother"
-  | "His Mother"
-  | "His Father"
-  | "His Parents"
-  | "Her Nephew"
-  | "His Nephew"
-  | "His Niece"
-  | "Her Niece"
-  | "His Grandparents"
-  | "Her Grandparents"
-  | "Her Father"
-  | "Their Daughter"
-  | "Their Son"
-  | "His Daughter"
-  | "His Son"
-  | "Her Daughter"
-  | "Her Son"
-  | "His Cousin (M)"
-  | "Her Grandfather"
-  | "Her Grandmother"
-  | "His Grandfather"
-  | "His Grandmother"
-  | "His Wife"
-  | "Her Husband"
-  | "Her Former Husband"
-  | "His Former Wife"
-  | "His Cousin (F)"
-  | "Her Cousin (M)"
-  | "Her Cousin (F)"
-  | "Partner"
-  | "Friend"
-  | "Neighbor"
-  | "Relative"
-  | "Business"
-  | "Chevrusa"
-  | "Congregant"
-  | "Contact"
-  | "Donor"
-  | "Fiance"
-  | "Foundation"
-  | "Fund"
-  | "Her Step Son"
-  | "His Step Mother"
-  | "Owner"
-  | "Rabbi"
-  | "Their Granddaughter"
-  | "Their Grandson"
-  | "Employee"
-  | "Employer";
+  relationshipType: RelationshipFormData["relationshipType"];
   isActive: boolean;
   notes?: string;
   createdAt: string;
@@ -299,50 +183,24 @@ export interface ContactSearchResult {
   };
 }
 
-export const useCreateRelationshipMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (data: RelationshipFormData) => {
-      const response = await fetch("/api/relationships", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to create relationship");
-      }
-
-      return response.json();
-    },
-    onSuccess: (data, variables) => {
-      queryClient.invalidateQueries({ queryKey: ["relationships"] });
-      queryClient.invalidateQueries({
-        queryKey: ["relationships", variables.contactId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["relationships", variables.relatedContactId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["contact-details", variables.contactId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ["contact-details", variables.relatedContactId],
-      });
-      queryClient.invalidateQueries({ queryKey: ["contacts"] });
-
-      toast.success("Relationship added successfully!");
-    },
-    onError: (error) => {
-      console.error("Error creating relationship:", error);
-      toast.error(
-        error instanceof Error ? error.message : "Failed to create relationship"
-      );
-    },
+// NEW: Helper for dynamic dropdown usage in forms.
+export const useRelationshipDropdownQuery = (
+  contactId: number,
+  search?: string,
+  options?: { limit?: number; enabled?: boolean }
+) => {
+  return useRelationshipsQuery({
+    contactId,
+    isActive: true,
+    search,
+    limit: options?.limit ?? 50,
+    sortBy: "relationshipType",
+    sortOrder: "asc",
+    ...options,
   });
 };
 
+// Main list/query with extensive params.
 export const useRelationshipsQuery = (params?: {
   contactId?: number;
   relatedContactId?: number;
@@ -392,47 +250,47 @@ export const useRelationshipsByContactQuery = (contactId: number) => {
   return useRelationshipsQuery({ contactId, limit: 100 });
 };
 
-export const useContactSearchQuery = (
-  searchTerm: string,
-  options?: { enabled?: boolean }
-) => {
-  return useQuery({
-    queryKey: ["contactSearch", searchTerm],
-    queryFn: async (): Promise<ContactSearchResult> => {
-      const searchParams = new URLSearchParams({
-        search: searchTerm,
-        limit: "20",
+export const useCreateRelationshipMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (data: RelationshipFormData) => {
+      const response = await fetch("/api/relationships", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
       });
 
-      const response = await fetch(`/api/contacts?${searchParams.toString()}`);
-
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to search contacts");
+        throw new Error(errorData.error || "Failed to create relationship");
       }
 
       return response.json();
     },
-    enabled: options?.enabled ?? true,
-    staleTime: 2 * 60 * 1000,
-  });
-};
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["relationships"] });
+      queryClient.invalidateQueries({
+        queryKey: ["relationships", variables.contactId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["relationships", variables.relatedContactId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["contact-details", variables.contactId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["contact-details", variables.relatedContactId],
+      });
+      queryClient.invalidateQueries({ queryKey: ["contacts"] });
 
-export const useContactDetailsQuery = (contactId: number) => {
-  return useQuery({
-    queryKey: ["contact-details", contactId],
-    queryFn: async (): Promise<ContactDetails> => {
-      const response = await fetch(`/api/contacts/${contactId}`);
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || "Failed to fetch contact details");
-      }
-
-      return response.json();
+      toast.success("Relationship added successfully!");
     },
-    enabled: !!contactId && contactId > 0,
-    staleTime: 2 * 60 * 1000,
+    onError: (error) => {
+      console.error("Error creating relationship:", error);
+      toast.error(
+        error instanceof Error ? error.message : "Failed to create relationship"
+      );
+    },
   });
 };
 
@@ -561,5 +419,49 @@ export const useRelationshipNetworkQuery = (contactId: number, depth = 2) => {
     },
     enabled: !!contactId && contactId > 0,
     staleTime: 10 * 60 * 1000,
+  });
+};
+
+export const useContactSearchQuery = (
+  searchTerm: string,
+  options?: { enabled?: boolean }
+) => {
+  return useQuery({
+    queryKey: ["contactSearch", searchTerm],
+    queryFn: async (): Promise<ContactSearchResult> => {
+      const searchParams = new URLSearchParams({
+        search: searchTerm,
+        limit: "20",
+      });
+
+      const response = await fetch(`/api/contacts?${searchParams.toString()}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to search contacts");
+      }
+
+      return response.json();
+    },
+    enabled: options?.enabled ?? true,
+    staleTime: 2 * 60 * 1000,
+  });
+};
+
+export const useContactDetailsQuery = (contactId: number) => {
+  return useQuery({
+    queryKey: ["contact-details", contactId],
+    queryFn: async (): Promise<ContactDetails> => {
+      const response = await fetch(`/api/contacts/${contactId}`);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to fetch contact details");
+      }
+
+      return response.json();
+    },
+    enabled: !!contactId && contactId > 0,
+    staleTime: 2 * 60 * 1000,
   });
 };
