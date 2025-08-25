@@ -75,6 +75,11 @@ export interface Payment {
   isSplitPayment: boolean;
   allocations: PaymentAllocation[];
   allocationCount:number;
+
+  isThirdPartyPayment?: boolean;
+  payerContactId?: number | null;
+  payerContactName?: string | null;
+    pledgeOwnerName?: string | null;
 }
 
 export interface PaymentAllocation {
@@ -95,6 +100,7 @@ export interface PaymentAllocation {
     currency: string;
   };
   pledgeDescription?: string;
+    pledgeOwnerName?: string | null;
 }
 
 export interface PaymentsResponse {
@@ -169,6 +175,10 @@ export interface CreatePaymentData {
   amountInPledgeCurrency?: string | null;
   isSplitPayment?: boolean;
   allocations?: PaymentAllocation[];
+
+  isThirdPartyPayment?: boolean;
+  payerContactId?: number | null;
+    pledgeOwnerName?: string | null;
 }
 
 export interface CreatePaymentResponse {
@@ -225,6 +235,10 @@ export interface UpdatePaymentData {
   amountInPledgeCurrency?: string | null;
   isSplitPayment?: boolean;
   allocations?: PaymentAllocation[];
+
+  isThirdPartyPayment?: boolean;
+  payerContactId?: number | null;
+    pledgeOwnerName?: string | null;
 }
 
 export interface UpdatePaymentResponse {

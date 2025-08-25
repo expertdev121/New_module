@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { payment, pledge } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, contact } from "@/lib/db/schema";
 import { eq, desc, or, ilike, and, SQL, sql, inArray } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
@@ -19,6 +19,8 @@ const QueryParamsSchema = z.object({
   limit: z.number().min(1).max(100).default(10),
   search: z.string().optional(),
   paymentStatus: PaymentStatusEnum.optional(),
+  showPaymentsMade: z.boolean().optional(),
+  showPaymentsReceived: z.boolean().optional(),
 });
 
 type QueryParams = z.infer<typeof QueryParamsSchema>;
@@ -30,6 +32,7 @@ export async function GET(
   const { id } = await params;
   const contactId = id ? parseInt(id, 10) : null;
   const { searchParams } = new URL(request.url);
+  
   try {
     const queryParams: QueryParams = QueryParamsSchema.parse({
       contactId: contactId,
@@ -37,6 +40,8 @@ export async function GET(
       limit: parseInt(searchParams.get("limit") || "10", 10),
       search: searchParams.get("search") || undefined,
       paymentStatus: searchParams.get("paymentStatus") || undefined,
+      showPaymentsMade: searchParams.get("showPaymentsMade") === "true",
+      showPaymentsReceived: searchParams.get("showPaymentsReceived") === "true",
     });
 
     const {
@@ -45,24 +50,18 @@ export async function GET(
       limit,
       search,
       paymentStatus,
+      showPaymentsMade,
+      showPaymentsReceived,
     } = queryParams;
+
+    // Get pledges owned by this contact
     const pledges = await db
       .select({ id: pledge.id })
       .from(pledge)
       .where(eq(pledge.contactId, contactIdNum));
 
-    if (pledges.length === 0) {
-      return NextResponse.json(
-        { payments: [] },
-        {
-          headers: {
-            "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
-          },
-        }
-      );
-    }
-
     const pledgeIds = pledges.map((p) => p.id);
+
     let query = db
       .select({
         id: payment.id,
@@ -81,15 +80,81 @@ export async function GET(
         notes: payment.notes,
         paymentPlanId: payment.paymentPlanId,
         pledgeId: payment.pledgeId,
+        
+        // Third-party payment fields
+        isThirdPartyPayment: payment.isThirdPartyPayment,
+        payerContactId: payment.payerContactId,
+        
+        // Get payer contact name for third-party payments
+        payerContactName: sql<string>`(
+          CASE 
+            WHEN ${payment.payerContactId} IS NOT NULL THEN 
+              (SELECT CONCAT(first_name, ' ', last_name)
+               FROM ${contact} 
+               WHERE id = ${payment.payerContactId})
+            ELSE NULL
+          END
+        )`.as("payerContactName"),
+        
+        // Check if it's a split payment
+        isSplitPayment: sql<boolean>`(
+          SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
+        )`.as("isSplitPayment"),
       })
       .from(payment)
-      .where(inArray(payment.pledgeId, pledgeIds))
       .$dynamic();
 
-    const conditions: SQL<unknown>[] = [];
+    // FIXED: Proper filtering logic for third-party payments
+    const baseConditions: SQL<unknown>[] = [];
+
+    if (showPaymentsMade === true && showPaymentsReceived === false) {
+      // Show only payments made BY this contact (third-party payments they made)
+      baseConditions.push(eq(payment.payerContactId, contactIdNum));
+    } else if (showPaymentsReceived === true && showPaymentsMade === false) {
+      // Show only direct payments to their own pledges (exclude third-party payments from others)
+      if (pledgeIds.length > 0) {
+        baseConditions.push(
+          and(
+            inArray(payment.pledgeId, pledgeIds),
+            or(
+              eq(payment.isThirdPartyPayment, false),
+              sql`${payment.isThirdPartyPayment} IS NULL`
+            )
+          )!
+        );
+      } else {
+        return NextResponse.json({ payments: [] });
+      }
+    } else {
+      // Default: Show payments made by contact + direct payments to their pledges
+      const conditions: SQL<unknown>[] = [];
+      
+      // Payments made by this contact (including third-party payments)
+      conditions.push(eq(payment.payerContactId, contactIdNum));
+      
+      // Direct payments to this contact's pledges (excluding third-party payments from others)
+      if (pledgeIds.length > 0) {
+        conditions.push(
+          and(
+            inArray(payment.pledgeId, pledgeIds),
+            or(
+              eq(payment.isThirdPartyPayment, false),
+              sql`${payment.isThirdPartyPayment} IS NULL`
+            )
+          )!
+        );
+      }
+      
+      if (conditions.length > 0) {
+        baseConditions.push(or(...conditions)!);
+      }
+    }
+
+    // Additional filters
+    const additionalConditions: SQL<unknown>[] = [];
 
     if (paymentStatus) {
-      conditions.push(eq(payment.paymentStatus, paymentStatus));
+      additionalConditions.push(eq(payment.paymentStatus, paymentStatus));
     }
 
     if (search) {
@@ -106,11 +171,13 @@ export async function GET(
       searchConditions.push(
         ilike(sql`COALESCE(${payment.receiptNumber}, '')`, `%${search}%`)
       );
-      conditions.push(or(...searchConditions)!);
+      additionalConditions.push(or(...searchConditions)!);
     }
 
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+    // Combine all conditions
+    const allConditions = [...baseConditions, ...additionalConditions];
+    if (allConditions.length > 0) {
+      query = query.where(and(...allConditions));
     }
 
     const offset = (page - 1) * limit;

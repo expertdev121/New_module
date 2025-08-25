@@ -1,11 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, Plus, X } from "lucide-react";
+import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, Plus, X, Search, UserPlus } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -78,6 +78,13 @@ interface Pledge {
   };
 }
 
+interface Contact {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+}
+
 interface Allocation {
   id?: number;
   pledgeId: number;
@@ -124,6 +131,10 @@ interface Payment {
   solicitorName?: string | null;
   pledgeDescription?: string | null;
   installmentScheduleId?: number | null;
+  // Third-party payment fields
+  isThirdPartyPayment?: boolean;
+  thirdPartyContactId?: number | null;
+  payerContactId?: number | null;
 }
 
 const useSolicitors = (params: { search?: string; status?: "active" | "inactive" | "suspended" } = {}) => {
@@ -140,6 +151,18 @@ const useSolicitors = (params: { search?: string; status?: "active" | "inactive"
     },
   });
 };
+
+const useContacts = (search?: string) =>
+  useQuery<{ contacts: Contact[] }>({
+    queryKey: ["contacts", search],
+    queryFn: async () => {
+      if (!search || search.length < 2) return { contacts: [] };
+      const response = await fetch(`/api/contacts/search?q=${encodeURIComponent(search)}`);
+      if (!response.ok) throw new Error("Failed to fetch contacts");
+      return response.json();
+    },
+    enabled: !!search && search.length >= 2,
+  });
 
 const supportedCurrencies = [
   "USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR",
@@ -270,6 +293,12 @@ const editPaymentSchema = z
     pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
     paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
     isSplitPayment: z.boolean().optional(),
+    
+    // Third-party payment fields
+    isThirdPartyPayment: z.boolean().optional(),
+    thirdPartyContactId: z.number().positive().optional().nullable(),
+    payerContactId: z.number().positive().optional().nullable(),
+    
     allocations: z
       .array(
         z.object({
@@ -301,6 +330,19 @@ const editPaymentSchema = z
       message: "Total allocated amount must equal payment amount",
       path: ["allocations"],
     }
+  )
+  .refine(
+    (data) => {
+      // Third-party payment validation
+      if (data.isThirdPartyPayment && !data.thirdPartyContactId) {
+        return false;
+      }
+      return true;
+    },
+    {
+      message: "Third-party contact must be selected for third-party payments",
+      path: ["thirdPartyContactId"],
+    }
   );
 
 type EditPaymentFormData = z.infer<typeof editPaymentSchema>;
@@ -330,15 +372,27 @@ export default function EditPaymentDialog({
 
   const contactId = useContactId() || propContactId || payment.contactId;
 
+  // Third-party payment state
+  const [contactSearch, setContactSearch] = useState("");
+  const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
+
+  // Check if this payment is already a third-party payment
+  const isExistingThirdPartyPayment = payment.isThirdPartyPayment || false;
+  const existingThirdPartyContactId = payment.thirdPartyContactId || null;
+
+  // Get pledges for the current contact or third-party contact
+  const targetContactId = selectedThirdPartyContact?.id || contactId;
   const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
     {
-      contactId: contactId as number,
+      contactId: targetContactId as number,
       page: 1,
       limit: 100,
       status: undefined,
     },
-    { enabled: !!contactId }
+    { enabled: !!targetContactId }
   );
+
+  const { data: contactsData, isLoading: isLoadingContacts } = useContacts(contactSearch);
 
   const [internalOpen, setInternalOpen] = useState(false);
   const [showSolicitorSection, setShowSolicitorSection] = useState(!!payment.solicitorId);
@@ -388,6 +442,10 @@ export default function EditPaymentDialog({
       pledgeId: payment.pledgeId || null,
       paymentPlanId: payment.paymentPlanId || null,
       isSplitPayment: isSplitPayment,
+      // Third-party payment defaults
+      isThirdPartyPayment: isExistingThirdPartyPayment,
+      thirdPartyContactId: existingThirdPartyContactId,
+      payerContactId: payment.payerContactId || null,
       autoAdjustAllocations: false,
       redistributionMethod: "proportional",
       allocations: isSplitPayment && payment.allocations
@@ -429,12 +487,43 @@ export default function EditPaymentDialog({
   const watchedExchangeRate = form.watch("exchangeRate");
   const watchedIsSplitPayment = form.watch("isSplitPayment");
   const watchedAllocations = form.watch("allocations");
+  const watchedIsThirdParty = form.watch("isThirdPartyPayment");
+  const watchedThirdPartyContactId = form.watch("thirdPartyContactId");
 
   const totalAllocatedAmount = (watchedAllocations || []).reduce(
     (sum, alloc) => sum + (alloc.allocatedAmount || 0),
     0
   );
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
+
+  // Effect to load existing third-party contact if editing a third-party payment
+  useEffect(() => {
+    if (isExistingThirdPartyPayment && existingThirdPartyContactId && contactsData?.contacts) {
+      const existingContact = contactsData.contacts.find(c => c.id === existingThirdPartyContactId);
+      if (existingContact) {
+        setSelectedThirdPartyContact(existingContact);
+      }
+    }
+  }, [isExistingThirdPartyPayment, existingThirdPartyContactId, contactsData]);
+
+  // Effect to clear pledge selection when third-party contact changes
+  useEffect(() => {
+    if (watchedIsThirdParty) {
+      // Reset pledge selection when changing third-party contact
+      form.setValue("pledgeId", null);
+      if (watchedIsSplitPayment) {
+        form.setValue("allocations", [{
+          pledgeId: 0,
+          allocatedAmount: 0,
+          notes: null,
+          currency: payment.currency,
+          receiptNumber: null,
+          receiptType: null,
+          receiptIssued: false,
+        }]);
+      }
+    }
+  }, [selectedThirdPartyContact, watchedIsThirdParty, watchedIsSplitPayment, form, payment.currency]);
 
   // Check if payment can be converted to split
   useEffect(() => {
@@ -544,6 +633,40 @@ export default function EditPaymentDialog({
     }
   };
 
+  // Handle third-party payment toggle
+  const handleThirdPartyToggle = (checked: boolean) => {
+    form.setValue("isThirdPartyPayment", checked);
+    if (!checked) {
+      setSelectedThirdPartyContact(null);
+      setContactSearch("");
+      form.setValue("thirdPartyContactId", null);
+      form.setValue("payerContactId", null);
+    } else {
+      // Set the current contact as the payer when enabling third-party mode
+      form.setValue("payerContactId", contactId || null);
+    }
+  };
+
+  // Handle contact selection
+  const handleContactSelect = (contact: Contact) => {
+    setSelectedThirdPartyContact(contact);
+    form.setValue("thirdPartyContactId", contact.id);
+    setContactSearch("");
+    // Reset pledge selection when changing contact
+    form.setValue("pledgeId", null);
+    if (watchedIsSplitPayment) {
+      form.setValue("allocations", [{
+        pledgeId: 0,
+        allocatedAmount: 0,
+        notes: null,
+        currency: payment.currency,
+        receiptNumber: null,
+        receiptType: null,
+        receiptIssued: false,
+      }]);
+    }
+  };
+
   // Handle split payment toggle
   const handleSplitPaymentToggle = (checked: boolean) => {
     form.setValue("isSplitPayment", checked);
@@ -610,7 +733,7 @@ export default function EditPaymentDialog({
     remove(index);
   };
 
-  // Enhanced exchange rate and date validation effect - UPDATED to use received date and allow future payment dates
+  // Enhanced exchange rate and date validation effect
   useEffect(() => {
     // Use received date if available, otherwise fall back to payment date
     const effectiveDate = watchedReceivedDate || watchedPaymentDate;
@@ -624,7 +747,6 @@ export default function EditPaymentDialog({
     selectedDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
     
-    // REMOVED: Payment date future validation - payment dates can now be in the future
     // Clear any existing payment date errors since future dates are now allowed
     form.clearErrors("paymentDate");
 
@@ -719,6 +841,9 @@ export default function EditPaymentDialog({
       pledgeId: payment.pledgeId || null,
       paymentPlanId: payment.paymentPlanId || null,
       isSplitPayment: isSplitPayment,
+      isThirdPartyPayment: isExistingThirdPartyPayment,
+      thirdPartyContactId: existingThirdPartyContactId,
+      payerContactId: payment.payerContactId || null,
       autoAdjustAllocations: false,
       redistributionMethod: "proportional",
     });
@@ -726,6 +851,13 @@ export default function EditPaymentDialog({
     setAutoAdjustAllocations(false);
     setRedistributionMethod("proportional");
     setShowAmountChangeWarning(false);
+    setSelectedThirdPartyContact(null);
+    setContactSearch("");
+
+    // If editing an existing third-party payment, restore the contact
+    if (isExistingThirdPartyPayment && existingThirdPartyContactId) {
+      // This will be handled by the effect that loads the existing contact
+    }
 
     // Reset allocations
     const initialAllocations = isSplitPayment && payment.allocations
@@ -751,7 +883,7 @@ export default function EditPaymentDialog({
         }]
         : [];
     replace(initialAllocations);
-  }, [form, payment, isSplitPayment, replace]);
+  }, [form, payment, isSplitPayment, replace, isExistingThirdPartyPayment, existingThirdPartyContactId]);
 
   const updatePaymentMutation = useUpdatePaymentMutation(watchedIsSplitPayment ? payment.id : payment.pledgeId || 0);
 
@@ -768,15 +900,24 @@ export default function EditPaymentDialog({
         }
       }
 
+      const isThirdParty = !!(data.isThirdPartyPayment && selectedThirdPartyContact);
+
+      // Build base payload with third-party fields
+      const basePayload = {
+        isThirdPartyPayment: isThirdParty,
+        thirdPartyContactId: isThirdParty ? selectedThirdPartyContact?.id : null,
+        payerContactId: isThirdParty ? (contactId || null) : null,
+      };
+
       if (isPaymentPlanPayment) {
         // For payment plan payments, allow amount changes but warn about installment impact
-        const allowedUpdates = { ...data };
+        const allowedUpdates = { ...data, ...basePayload };
 
         // Remove undefined or empty fields
         const filteredData = Object.fromEntries(
           Object.entries(allowedUpdates).filter(([key, val]) => {
             // Keep essential fields even if they're falsy
-            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment'].includes(key)) return true;
+            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment'].includes(key)) return true;
             return val !== undefined && val !== null && val !== '';
           })
         );
@@ -796,20 +937,24 @@ export default function EditPaymentDialog({
 
         const filteredData = Object.fromEntries(
           Object.entries(data).filter(([key, val]) => {
-            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment'].includes(key)) return true;
+            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment'].includes(key)) return true;
             return val !== undefined && val !== null && val !== '';
           })
         );
 
         const updateData = {
           ...filteredData,
+          ...basePayload,
           ...(watchedIsSplitPayment && processedAllocations && { allocations: processedAllocations }),
         };
 
         await updatePaymentMutation.mutateAsync(updateData as any);
       }
 
-      toast.success("Payment updated successfully!");
+      // Success handling
+      const paymentType = isThirdParty ? "Third-party payment" : "Payment";
+      const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
+      toast.success(`${paymentType}${target} updated successfully!`);
       setOpen(false);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update payment");
@@ -835,15 +980,37 @@ export default function EditPaymentDialog({
       contact: solicitor.contact,
     })) || [];
 
-  const pledgeOptions =
-    pledgesData?.pledges?.map((pledge: Pledge) => ({
+  // Fix pledge options with useMemo and deduplication
+  const pledgeOptions = useMemo(() => {
+    if (!pledgesData?.pledges) return [];
+
+    // Remove duplicates by pledge ID
+    const uniquePledges = pledgesData.pledges.reduce((acc, pledge) => {
+      if (!acc.find(p => p.id === pledge.id)) {
+        acc.push(pledge);
+      }
+      return acc;
+    }, [] as Pledge[]);
+
+    return uniquePledges.map((pledge: Pledge) => ({
       label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
       value: pledge.id,
       balance: parseFloat(pledge.balance),
       currency: pledge.currency,
       description: pledge.description || "No description",
       originalAmount: parseFloat(pledge.originalAmount),
-    })) || [];
+    }));
+  }, [pledgesData?.pledges]);
+
+  const contactOptions = useMemo(() => {
+    if (!contactsData?.contacts) return [];
+
+    return contactsData.contacts.map((contact: Contact) => ({
+      label: contact.fullName,
+      value: contact.id,
+      ...contact,
+    }));
+  }, [contactsData?.contacts]);
 
   const effectivePledgeDescription = pledgeData?.pledge?.description || payment.pledgeDescription || "N/A";
 
@@ -866,10 +1033,23 @@ export default function EditPaymentDialog({
                 Split Payment
               </Badge>
             )}
+            {watchedIsThirdParty && (
+              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                <UserPlus className="h-3 w-3 mr-1" />
+                Third-Party
+              </Badge>
+            )}
           </DialogTitle>
           <DialogDescription>
             <div>
-              {watchedIsSplitPayment ? (
+              {watchedIsThirdParty && selectedThirdPartyContact ? (
+                <div>
+                  Editing payment for <strong>{selectedThirdPartyContact.fullName}</strong>
+                  <span className="block mt-1 text-sm text-muted-foreground">
+                    This payment will appear in your account but apply to their pledge balance
+                  </span>
+                </div>
+              ) : watchedIsSplitPayment ? (
                 <>
                   Edit split payment affecting {watchedAllocations?.length || 0} pledges
                   <span className="block mt-1 text-sm text-muted-foreground">
@@ -951,6 +1131,98 @@ export default function EditPaymentDialog({
               </Alert>
             )}
 
+            {/* Third-Party Payment Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <UserPlus className="h-5 w-5" />
+                  Payment Type
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="isThirdPartyPayment"
+                      checked={watchedIsThirdParty}
+                      onCheckedChange={handleThirdPartyToggle}
+                      disabled={isPaymentPlanPayment} // Disable for payment plan payments
+                    />
+                    <label
+                      htmlFor="isThirdPartyPayment"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Third-Party Payment (Payment for someone else&apos;s pledge)
+                    </label>
+                  </div>
+
+                  {watchedIsThirdParty && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Search for Contact</label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Type to search contacts..."
+                            value={contactSearch}
+                            onChange={(e) => setContactSearch(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+
+                      {contactSearch.length >= 2 && (
+                        <div className="border rounded-md max-h-40 overflow-y-auto">
+                          {isLoadingContacts ? (
+                            <div className="p-3 text-center text-gray-500">Loading contacts...</div>
+                          ) : contactOptions.length > 0 ? (
+                            contactOptions.map((contact, index) => (
+                              <button
+                                key={`contact-${contact.value}-${index}`}
+                                type="button"
+                                className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0"
+                                onClick={() => handleContactSelect(contact)}
+                              >
+                                <div className="font-medium">{contact.label}</div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-3 text-center text-gray-500">No contacts found</div>
+                          )}
+                        </div>
+                      )}
+
+                      {selectedThirdPartyContact && (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-blue-900">
+                                Selected Contact: {selectedThirdPartyContact.fullName}
+                              </div>
+                              <div className="text-sm text-blue-700">
+                                Payment will apply to this contact&apos;s pledge but appear in your account
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedThirdPartyContact(null);
+                                form.setValue("thirdPartyContactId", null);
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             {/* Payment Details */}
             <Card>
               <CardHeader>
@@ -988,6 +1260,77 @@ export default function EditPaymentDialog({
                       Split Payment Across Multiple Pledges
                     </label>
                   </div>
+
+                  {/* Single Pledge Selection - only show for non-split payments */}
+                  {!watchedIsSplitPayment && (
+                    <FormField
+                      control={form.control}
+                      name="pledgeId"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-col md:col-span-2">
+                          <FormLabel>
+                            Select Pledge
+                            {watchedIsThirdParty && selectedThirdPartyContact && (
+                              <span className="text-sm text-muted-foreground ml-2">
+                                (from {selectedThirdPartyContact.fullName}&apos;s pledges)
+                              </span>
+                            )}
+                          </FormLabel>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <FormControl>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className={cn(
+                                    "w-full justify-between",
+                                    (!field.value || field.value === 0) && "text-muted-foreground"
+                                  )}
+                                  disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
+                                >
+                                  {field.value
+                                    ? pledgeOptions.find((pledge: any) => pledge.value === field.value)?.label
+                                    : isLoadingPledges
+                                      ? "Loading pledges..."
+                                      : watchedIsThirdParty && !selectedThirdPartyContact
+                                        ? "Select a contact first"
+                                        : "Select pledge"}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                              <Command>
+                                <CommandInput placeholder="Search pledges..." className="h-9" />
+                                <CommandList>
+                                  <CommandEmpty>No pledge found.</CommandEmpty>
+                                  <CommandGroup>
+                                    {pledgeOptions.map((pledge: any, index) => (
+                                      <CommandItem
+                                        value={pledge.label}
+                                        key={`pledge-${pledge.value}-${index}`}
+                                        onSelect={() => {
+                                          field.onChange(pledge.value);
+                                        }}
+                                      >
+                                        {pledge.label}
+                                        <Check
+                                          className={cn(
+                                            "ml-auto h-4 w-4",
+                                            pledge.value === field.value ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                </CommandList>
+                              </Command>
+                            </PopoverContent>
+                          </Popover>
+                        </FormItem>
+                      )}
+                    />
+                  )}
 
                   {/* Amount */}
                   <FormField
@@ -1045,7 +1388,7 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Exchange Rate - UPDATED: Shows which date is being used and removed refresh button */}
+                  {/* Exchange Rate */}
                   <FormField
                     control={form.control}
                     name="exchangeRate"
@@ -1095,7 +1438,7 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Payment Date - UPDATED: Removed max attribute to allow future dates */}
+                  {/* Payment Date */}
                   <FormField
                     control={form.control}
                     name="paymentDate"
@@ -1111,7 +1454,6 @@ export default function EditPaymentDialog({
                           <Input 
                             {...field} 
                             type="date" 
-                            // REMOVED: max attribute to allow future dates
                           />
                         </FormControl>
                         {isPaymentPlanPayment && (
@@ -1119,11 +1461,6 @@ export default function EditPaymentDialog({
                             Changing date may affect future installment scheduling
                           </p>
                         )}
-                        {/* {watchedPaymentDate && new Date(watchedPaymentDate) > new Date() && (
-                          <p className="text-xs text-blue-600">
-                            Future payment date - exchange rate based on current rates
-                          </p>
-                        )} */}
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1159,7 +1496,9 @@ export default function EditPaymentDialog({
                     </Badge>
                   </CardTitle>
                   <DialogDescription>
-                    Edit allocation amounts and receipt details for this split payment. All allocations must use the same currency as the payment.
+                    {watchedIsThirdParty && selectedThirdPartyContact
+                      ? `Edit allocation amounts for this split payment to ${selectedThirdPartyContact.fullName}'s pledges`
+                      : "Edit allocation amounts and receipt details for this split payment. All allocations must use the same currency as the payment."}
                   </DialogDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1192,7 +1531,14 @@ export default function EditPaymentDialog({
                             name={`allocations.${index}.pledgeId`}
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Pledge *</FormLabel>
+                                <FormLabel>
+                                  Pledge *
+                                  {watchedIsThirdParty && selectedThirdPartyContact && (
+                                    <span className="text-sm text-muted-foreground ml-2">
+                                      (from {selectedThirdPartyContact.fullName}&apos;s pledges)
+                                    </span>
+                                  )}
+                                </FormLabel>
                                 <Popover>
                                   <PopoverTrigger asChild>
                                     <FormControl>
@@ -1203,14 +1549,16 @@ export default function EditPaymentDialog({
                                           "w-full justify-between",
                                           (!field.value || field.value === 0) && "text-muted-foreground"
                                         )}
-                                        disabled={isLoadingPledges}
+                                        disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
                                       >
                                         <span className="block truncate">
                                           {field.value
                                             ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
                                             : isLoadingPledges
                                               ? "Loading pledges..."
-                                              : "Select pledge"}
+                                              : watchedIsThirdParty && !selectedThirdPartyContact
+                                                ? "Select a contact first"
+                                                : "Select pledge"}
                                         </span>
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
@@ -1222,10 +1570,10 @@ export default function EditPaymentDialog({
                                       <CommandList>
                                         <CommandEmpty>No pledge found.</CommandEmpty>
                                         <CommandGroup>
-                                          {pledgeOptions.map((pledge) => (
+                                          {pledgeOptions.map((pledge, pledgeIndex) => (
                                             <CommandItem
                                               value={pledge.label}
-                                              key={pledge.value}
+                                              key={`allocation-${index}-pledge-${pledge.value}-${pledgeIndex}`}
                                               onSelect={() => {
                                                 field.onChange(pledge.value);
                                               }}

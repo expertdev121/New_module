@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { payment, pledge, paymentAllocations } from "@/lib/db/schema";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq, and, or } from "drizzle-orm";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
 
 class AppError extends Error {
   statusCode: number;
-  details?: unknown; // Changed from any to unknown
+  details?: unknown;
   constructor(message: string, statusCode = 400, details?: unknown) {
     super(message);
     this.statusCode = statusCode;
@@ -52,6 +52,8 @@ const querySchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   hasSolicitor: z.preprocess((val) => val === 'true', z.boolean()).optional(),
+  showPaymentsMade: z.preprocess((val) => val === 'true', z.boolean()).optional(),
+  showPaymentsReceived: z.preprocess((val) => val === 'true', z.boolean()).optional(),
 });
 
 const allocationSchema = z.object({
@@ -59,7 +61,6 @@ const allocationSchema = z.object({
   amount: z.number().positive(),
   installmentScheduleId: z.preprocess((val) => val ? parseInt(String(val), 10) : null, z.number().positive().nullable()).optional(),
   notes: z.string().optional().nullable(),
-  // Receipt fields made optional and nullable here
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(receiptTypeValues).optional().nullable(),
   receiptIssued: z.boolean().optional(),
@@ -79,7 +80,6 @@ const paymentSchema = z.object({
   referenceNumber: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),
 
-  // Receipt fields optional and nullable in main schema
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(receiptTypeValues).optional().nullable(),
   receiptIssued: z.boolean().optional(),
@@ -92,6 +92,10 @@ const paymentSchema = z.object({
 
   pledgeId: z.preprocess((val) => val ? parseInt(String(val), 10) : null, z.number().positive().nullable()).optional(),
   allocations: z.array(allocationSchema).optional(),
+
+  // Third-party payment fields - CORRECTED
+  isThirdPartyPayment: z.boolean().optional(),
+  payerContactId: z.preprocess((val) => val ? parseInt(String(val), 10) : null, z.number().positive().nullable()).optional(),
 }).refine((data) => {
   // Exactly one of pledgeId or allocations must be provided
   const hasPledgeId = data.pledgeId !== null && data.pledgeId !== undefined;
@@ -136,7 +140,7 @@ async function updatePledgeTotals(pledgeId: number) {
     .where(eq(pledge.id, pledgeId))
     .limit(1);
 
-  if (currentPledge.length === 0) return; // no pledge to update
+  if (currentPledge.length === 0) return;
 
   const pledgeData = currentPledge[0];
   const originalAmount = parseFloat(pledgeData.originalAmount);
@@ -150,7 +154,7 @@ async function updatePledgeTotals(pledgeId: number) {
   const pledgeExchangeRate = parseFloat(pledgeData.exchangeRate || "1");
   const allocatedTotalInPledgeCurrency = pledgeData.currency === "USD"
     ? allocatedTotalUsd
-    : allocatedTotalUsd * pledgeExchangeRate;
+    : allocatedTotalUsd / pledgeExchangeRate;
 
   const newTotalPaid = directTotal + allocatedTotalInPledgeCurrency;
   const newTotalPaidUsd = directTotalUsd + allocatedTotalUsd;
@@ -221,6 +225,11 @@ export async function POST(request: NextRequest) {
         : null,
       bonusRuleId: validatedData.bonusRuleId || null,
       notes: validatedData.notes || null,
+      
+      // CORRECTED: Third-party payment fields
+      isThirdPartyPayment: validatedData.isThirdPartyPayment ?? false,
+      payerContactId: validatedData.payerContactId || null,
+      
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -266,7 +275,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Insert split payment record
-      const amountUsd = validatedData.amount * validatedData.exchangeRate; // Fixed multiplication as in PATCH
+      const amountUsd = validatedData.amount * validatedData.exchangeRate;
       const splitPaymentData = {
         ...commonPaymentData,
         pledgeId: null,
@@ -293,6 +302,10 @@ export async function POST(request: NextRequest) {
           receiptNumber: allocation.receiptNumber || null,
           receiptType: allocation.receiptType || null,
           receiptIssued: allocation.receiptIssued ?? false,
+          
+          // CORRECTED: Track payer contact in allocations
+          payerContactId: validatedData.payerContactId || null,
+          
           createdAt: new Date(),
           updatedAt: new Date(),
         };
@@ -308,6 +321,8 @@ export async function POST(request: NextRequest) {
           payment: createdPayment,
           allocations: createdAllocations,
           count: createdAllocations.length,
+          isThirdPartyPayment: validatedData.isThirdPartyPayment || false,
+          payerContactId: validatedData.payerContactId || null,
         },
         { status: 201 }
       );
@@ -325,7 +340,7 @@ export async function POST(request: NextRequest) {
       }
 
       const pledgeData = currentPledge[0];
-      const amountUsd = validatedData.amount * validatedData.exchangeRate; // Fixed multiplication as in PATCH
+      const amountUsd = validatedData.amount * validatedData.exchangeRate;
       const pledgeExchangeRate = parseFloat(pledgeData.exchangeRate || "1");
 
       const amountInPledgeCurrency =
@@ -351,6 +366,8 @@ export async function POST(request: NextRequest) {
         {
           message: "Payment created successfully",
           payment: createdPayment,
+          isThirdPartyPayment: validatedData.isThirdPartyPayment || false,
+          payerContactId: validatedData.payerContactId || null,
         },
         { status: 201 }
       );
@@ -368,14 +385,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-//
-// --- GET handler (Fetch payments) ---
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const params = Object.fromEntries(searchParams.entries());
 
-    // Parse and validate query parameters
     const parsedParams = querySchema.safeParse(params);
 
     if (!parsedParams.success) {
@@ -401,29 +415,57 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate,
       hasSolicitor,
+      showPaymentsMade,
+      showPaymentsReceived,
     } = parsedParams.data;
 
     const offset = (page - 1) * limit;
     const conditions = [];
+
+    // FIXED: Handle different contact-based queries with proper third-party payment filtering
+    if (contactId) {
+      if (showPaymentsMade === true && showPaymentsReceived === false) {
+        // Show only payments made by this contact (as payer) - includes third-party payments they made
+        conditions.push(eq(payment.payerContactId, contactId));
+      } else if (showPaymentsReceived === true && showPaymentsMade === false) {
+        // Show only NON-THIRD-PARTY payments received by this contact's pledges
+        conditions.push(
+          sql`(
+            (${payment.pledgeId} IN (SELECT id FROM ${pledge} WHERE contact_id = ${contactId}) 
+             AND (${payment.isThirdPartyPayment} = false OR ${payment.isThirdPartyPayment} IS NULL))
+            OR 
+            ${payment.id} IN (
+              SELECT pa.payment_id FROM ${paymentAllocations} pa
+              JOIN ${pledge} p ON pa.pledge_id = p.id
+              WHERE p.contact_id = ${contactId}
+              AND (pa.payer_contact_id IS NULL OR pa.payer_contact_id = ${contactId})
+            )
+          )`
+        );
+      } else {
+        // Show payments made by contact + NON-THIRD-PARTY payments to their pledges (default behavior)
+        conditions.push(
+          sql`(
+            ${payment.payerContactId} = ${contactId} OR
+            (${payment.pledgeId} IN (SELECT id FROM ${pledge} WHERE contact_id = ${contactId}) 
+             AND (${payment.isThirdPartyPayment} = false OR ${payment.isThirdPartyPayment} IS NULL))
+            OR 
+            ${payment.id} IN (
+              SELECT pa.payment_id FROM ${paymentAllocations} pa
+              JOIN ${pledge} p ON pa.pledge_id = p.id
+              WHERE p.contact_id = ${contactId}
+              AND (pa.payer_contact_id IS NULL OR pa.payer_contact_id = ${contactId})
+            )
+          )`
+        );
+      }
+    }
 
     if (pledgeId) {
       conditions.push(
         sql`(${payment.pledgeId} = ${pledgeId} OR ${payment.id} IN (
           SELECT payment_id FROM ${paymentAllocations} WHERE pledge_id = ${pledgeId}
         ))`
-      );
-    }
-
-    if (contactId) {
-      conditions.push(
-        sql`(
-          ${payment.pledgeId} IN (SELECT id FROM ${pledge} WHERE contact_id = ${contactId}) OR 
-          ${payment.id} IN (
-            SELECT pa.payment_id FROM ${paymentAllocations} pa
-            JOIN ${pledge} p ON pa.pledge_id = p.id
-            WHERE p.contact_id = ${contactId}
-          )
-        )`
       );
     }
 
@@ -493,6 +535,11 @@ export async function GET(request: NextRequest) {
         notes: payment.notes,
         paymentPlanId: payment.paymentPlanId,
         installmentScheduleId: payment.installmentScheduleId,
+        
+        // Third-party payment fields
+        isThirdPartyPayment: payment.isThirdPartyPayment,
+        payerContactId: payment.payerContactId,
+        
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
         pledgeDescription: sql<string>`(
@@ -510,6 +557,26 @@ export async function GET(request: NextRequest) {
         contactId: sql<number>`(
           SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId}
         )`.as("contactId"),
+        
+        // Contact information for pledge owner and payer
+        pledgeOwnerName: sql<string>`(
+          SELECT CONCAT(c.first_name, ' ', c.last_name)
+          FROM ${pledge} p
+          JOIN contact c ON p.contact_id = c.id
+          WHERE p.id = ${payment.pledgeId}
+        )`.as("pledgeOwnerName"),
+        
+        // Get payer contact name for third-party payments
+        payerContactName: sql<string>`(
+          CASE 
+            WHEN ${payment.payerContactId} IS NOT NULL THEN 
+              (SELECT CONCAT(c.first_name, ' ', c.last_name)
+               FROM contact c 
+               WHERE c.id = ${payment.payerContactId})
+            ELSE NULL
+          END
+        )`.as("payerContactName"),
+        
         solicitorName: sql<string>`(
           SELECT CONCAT(c.first_name, ' ', c.last_name)
           FROM solicitor s
@@ -543,7 +610,6 @@ export async function GET(request: NextRequest) {
       countQuery.execute(),
     ]);
 
-    // Fetch allocations for split payments also
     const paymentsWithAllocations = await Promise.all(
       payments.map(async (p) => {
         if (p.isSplitPayment) {
@@ -559,9 +625,27 @@ export async function GET(request: NextRequest) {
               receiptType: paymentAllocations.receiptType,
               receiptIssued: paymentAllocations.receiptIssued,
               notes: paymentAllocations.notes,
+              payerContactId: paymentAllocations.payerContactId,
               pledgeDescription: sql<string>`(
                 SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
               )`.as("pledgeDescription"),
+              pledgeOwnerName: sql<string>`(
+                SELECT CONCAT(c.first_name, ' ', c.last_name)
+                FROM ${pledge} p
+                JOIN contact c ON p.contact_id = c.id
+                WHERE p.id = ${paymentAllocations.pledgeId}
+              )`.as("pledgeOwnerName"),
+              
+              // Get payer contact name for allocations too
+              payerContactName: sql<string>`(
+                CASE 
+                  WHEN ${paymentAllocations.payerContactId} IS NOT NULL THEN 
+                    (SELECT CONCAT(c.first_name, ' ', c.last_name)
+                     FROM contact c 
+                     WHERE c.id = ${paymentAllocations.payerContactId})
+                  ELSE NULL
+                END
+              )`.as("payerContactName"),
             })
             .from(paymentAllocations)
             .leftJoin(pledge, eq(paymentAllocations.pledgeId, pledge.id))

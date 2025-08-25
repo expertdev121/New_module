@@ -636,10 +636,16 @@ export const payment = pgTable(
       () => installmentSchedule.id,
       { onDelete: "set null" }
     ),
-    // NEW FIELD: Optional relationship assignment
     relationshipId: integer("relationship_id").references(() => relationships.id, {
       onDelete: "set null",
     }),
+    
+    // NEW FIELDS FOR THIRD-PARTY PAYMENTS
+    payerContactId: integer("payer_contact_id").references(() => contact.id, {
+      onDelete: "set null",
+    }),
+    isThirdPartyPayment: boolean("is_third_party_payment").default(false).notNull(),
+    
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     currency: currencyEnum("currency").notNull(),
     amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }),
@@ -678,6 +684,8 @@ export const payment = pgTable(
     pledgeIdIdx: index("payment_pledge_id_idx").on(table.pledgeId),
     paymentPlanIdIdx: index("payment_payment_plan_id_idx").on(table.paymentPlanId),
     relationshipIdIdx: index("payment_relationship_id_idx").on(table.relationshipId),
+    payerContactIdIdx: index("payment_payer_contact_id_idx").on(table.payerContactId),
+    isThirdPartyIdx: index("payment_is_third_party_idx").on(table.isThirdPartyPayment),
     paymentDateIdx: index("payment_payment_date_idx").on(table.paymentDate),
     statusIdx: index("payment_status_idx").on(table.paymentStatus),
     methodIdx: index("payment_method_idx").on(table.paymentMethod),
@@ -704,6 +712,12 @@ export const paymentAllocations = pgTable(
       () => installmentSchedule.id,
       { onDelete: "set null" }
     ),
+    
+    // NEW FIELD FOR THIRD-PARTY TRACKING
+    payerContactId: integer("payer_contact_id").references(() => contact.id, {
+      onDelete: "set null",
+    }),
+    
     allocatedAmount: numeric("allocated_amount", {
       precision: 10,
       scale: 2,
@@ -723,6 +737,7 @@ export const paymentAllocations = pgTable(
   (table) => ({
     paymentIdIdx: index("payment_allocations_payment_id_idx").on(table.paymentId),
     pledgeIdIdx: index("payment_allocations_pledge_id_idx").on(table.pledgeId),
+    payerContactIdIdx: index("payment_allocations_payer_contact_id_idx").on(table.payerContactId),
     installmentScheduleIdIdx: index("payment_allocations_installment_schedule_id_idx").on(table.installmentScheduleId),
     uniqueAllocation: uniqueIndex("payment_allocations_unique").on(
       table.paymentId,
@@ -917,11 +932,17 @@ export const paymentRelations = relations(payment, ({ one, many }) => ({
     fields: [payment.installmentScheduleId],
     references: [installmentSchedule.id],
   }),
-  // NEW RELATION: Payment can be assigned to a relationship
   relationship: one(relationships, {
     fields: [payment.relationshipId],
     references: [relationships.id],
   }),
+  
+  // NEW RELATION FOR PAYER CONTACT
+  payerContact: one(contact, {
+    fields: [payment.payerContactId],
+    references: [contact.id],
+  }),
+  
   solicitor: one(solicitor, {
     fields: [payment.solicitorId],
     references: [solicitor.id],

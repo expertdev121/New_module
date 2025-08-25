@@ -230,6 +230,27 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     );
   };
 
+  // UPDATED Third Party Payment Badge Component - Shows who you paid for
+  const ThirdPartyBadge = ({ payment }: { payment: ApiPayment }) => {
+    if (!payment.isThirdPartyPayment) {
+      return <span className="text-gray-400">-</span>;
+    }
+
+    return (
+      <div className="flex flex-col items-center gap-1">
+        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+          <Users className="h-3 w-3 mr-1" />
+          Paid For
+        </Badge>
+        {payment.pledgeOwnerName && (
+          <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.pledgeOwnerName}>
+            {payment.pledgeOwnerName}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   // Helper function to format dates with fallback for unscheduled
   const formatDateWithFallback = (
     date: string | null | undefined,
@@ -514,6 +535,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Status
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
+                    Third Party
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-900">
                     Scheduled
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
@@ -545,7 +569,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                   // Loading skeleton
                   Array.from({ length: currentLimit }).map((_, index) => (
                     <TableRow key={index}>
-                      {Array.from({ length: 11 }).map((_, cellIndex) => (
+                      {Array.from({ length: 12 }).map((_, cellIndex) => (
                         <TableCell key={cellIndex}>
                           <Skeleton className="h-4 w-20" />
                         </TableCell>
@@ -555,7 +579,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                 ) : data?.payments.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={11}
+                      colSpan={12}
                       className="text-center py-8 text-gray-500"
                     >
                       No payments found
@@ -573,6 +597,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                         </TableCell>
                         <TableCell>
                           <PaymentStatusBadge status={payment.paymentStatus} />
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <ThirdPartyBadge payment={payment} />
                         </TableCell>
                         <TableCell className="font-medium">
                           {formatDateWithFallback(payment.paymentDate)}
@@ -651,7 +678,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                       {/* Expanded Row Content */}
                       {expandedRows.has(payment.id) && (
                         <TableRow>
-                          <TableCell colSpan={11} className="bg-gray-50 p-6">
+                          <TableCell colSpan={12} className="bg-gray-50 p-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               {/* Column 1: Payment Details */}
                               <div className="space-y-3">
@@ -659,6 +686,23 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   Payment Details
                                 </h4>
                                 <div className="space-y-2 text-sm">
+                                  {/* UPDATED Third Party Payment info */}
+                                  {payment.isThirdPartyPayment && (
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Third Party Payment:</span>
+                                      <div className="flex flex-col items-end">
+                                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                          <Users className="h-3 w-3 mr-1" />
+                                          Paid For
+                                        </Badge>
+                                        {payment.pledgeOwnerName && (
+                                          <span className="text-xs text-gray-500 mt-1">
+                                            For: {payment.pledgeOwnerName}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Status:
@@ -762,7 +806,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                 </div>
                               </div>
-
                               {/* Column 3: Campaign/Solicitor/IDs */}
                               <div className="space-y-3">
                                 <div className="space-y-2 text-sm">
@@ -912,6 +955,14 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                           affecting {payment.allocationCount} pledges. All allocations will be removed.
                                         </>
                                       )}
+                                      {payment.isThirdPartyPayment && (
+                                        <>
+                                          <br />
+                                          <br />
+                                          <strong className="text-blue-600">Note:</strong> This is a third-party payment
+                                          {payment.pledgeOwnerName && ` made for ${payment.pledgeOwnerName}`}.
+                                        </>
+                                      )}
                                       <br />
                                       <br />
                                       <strong>Payment Details:</strong>
@@ -937,6 +988,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                         : payment.paymentPlanId
                                           ? "Planned Payment"
                                           : "Direct Payment"}
+                                      {payment.isThirdPartyPayment && " (Third Party)"}
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
