@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { db } from "@/lib/db";
-import { paymentPlan, pledge, installmentSchedule, type PaymentPlan } from "@/lib/db/schema";
+import { paymentPlan, pledge, installmentSchedule, payment, type PaymentPlan } from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -61,8 +61,23 @@ const updatePaymentPlanSchema = z.object({
       })
     )
     .optional(),
-  paymentMethod: z.string().optional(),
-  methodDetail: z.string().optional(),
+  // UPDATED: Add proper enum validation for paymentMethod
+  paymentMethod: z.enum([
+    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
+    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
+    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer"
+  ]).optional(),
+  // UPDATED: Add proper enum validation for methodDetail
+  methodDetail: z.enum([
+    "achisomoch", "authorize", "bank_of_america_charitable", "banquest", "banquest_cm",
+    "benevity", "chai_charitable", "charityvest_inc", "cjp", "donors_fund", "earthport",
+    "e_transfer", "facts", "fidelity", "fjc", "foundation", "goldman_sachs", "htc", "jcf",
+    "jcf_san_diego", "jgive", "keshet", "masa", "masa_old", "matach", "matching_funds",
+    "mizrachi_canada", "mizrachi_olami", "montrose", "morgan_stanley_gift", "ms", "mt",
+    "ojc", "paypal", "pelecard", "schwab_charitable", "stripe", "tiaa", "touro", "uktoremet",
+    "vanguard_charitable", "venmo", "vmm", "wise", "worldline", "yaadpay", "yaadpay_cm",
+    "yourcause", "yu", "zelle"
+  ]).optional(),
 }).refine((data) => {
   if (data.distributionType === "fixed") {
     return (
@@ -125,6 +140,9 @@ export async function GET(
         updatedAt: paymentPlan.updatedAt,
         exchangeRate: paymentPlan.exchangeRate,
 
+        paymentMethod: sql<string>`(SELECT ${payment.paymentMethod} FROM ${payment} WHERE ${payment.paymentPlanId} = ${paymentPlan.id} LIMIT 1)`.as("paymentMethod"),
+    methodDetail: sql<string>`(SELECT ${payment.methodDetail} FROM ${payment} WHERE ${payment.paymentPlanId} = ${paymentPlan.id} LIMIT 1)`.as("methodDetail"),
+    
         // Pledge related - subqueries:
         pledgeOriginalAmount: sql<string>`(SELECT ${pledge.originalAmount} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmount"),
         pledgeOriginalAmountUsd: sql<string>`(SELECT ${pledge.originalAmountUsd} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmountUsd"),
@@ -401,6 +419,7 @@ export async function PATCH(
         }
       }
     }
+
     const dataToUpdate: Partial<PaymentPlan> = {
       updatedAt: new Date(),
       ...(validatedData.planName !== undefined && { planName: validatedData.planName }),
@@ -470,6 +489,32 @@ export async function PATCH(
       .set(dataToUpdate)
       .where(eq(paymentPlan.id, planId))
       .returning();
+
+    // related payment records if payment method or method detail changed
+    if (validatedData.paymentMethod !== undefined || validatedData.methodDetail !== undefined) {
+      const paymentUpdates: any = {
+        updatedAt: new Date(),
+      };
+      
+      if (validatedData.paymentMethod !== undefined) {
+        paymentUpdates.paymentMethod = validatedData.paymentMethod;
+      }
+      
+      if (validatedData.methodDetail !== undefined) {
+        paymentUpdates.methodDetail = validatedData.methodDetail;
+      }
+
+      // Update all pending payments for this payment plan
+      await db
+        .update(payment)
+        .set(paymentUpdates)
+        .where(
+          and(
+            eq(payment.paymentPlanId, planId),
+            eq(payment.paymentStatus, "pending") // Only update pending payments
+          )
+        );
+    }
 
     return NextResponse.json({
       message: "Payment plan updated successfully",

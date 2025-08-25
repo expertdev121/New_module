@@ -215,6 +215,16 @@ const receiptTypes = [
   { value: "other", label: "Other" },
 ] as const;
 
+const accountOptions = [
+  { value: "Bank HaPoalim", label: "Bank HaPoalim" },
+  { value: "Bank of Montreal", label: "Bank of Montreal" },
+  { value: "Mizrachi Tfachot", label: "Mizrachi Tfachot" },
+  { value: "MS - Donations", label: "MS - Donations" },
+  { value: "MS - Operations", label: "MS - Operations" },
+  { value: "Citibank (*)", label: "Citibank (*)" },
+  { value: "Pagi", label: "Pagi" },
+] as const;
+
 // Allocation schema with receipt fields per allocation
 const allocationSchema = z.object({
   pledgeId: z.number().optional(),
@@ -1211,9 +1221,64 @@ export default function PaymentFormDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Account</FormLabel>
-                        <FormControl>
-                          <Input {...field} value={field.value || ""} />
-                        </FormControl>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value
+                                  ? accountOptions.find((account) => account.value === field.value)?.label
+                                  : "Select account"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <Command>
+                              <CommandInput placeholder="Search accounts..." />
+                              <CommandEmpty>No account found.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem
+                                  value="None"
+                                  onSelect={() => {
+                                    form.setValue("account", null, { shouldValidate: true, shouldDirty: true });
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      !field.value ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  None
+                                </CommandItem>
+                                {accountOptions.map((account, index) => (
+                                  <CommandItem
+                                    value={account.value}
+                                    key={`account-${account.value}-${index}`}
+                                    onSelect={() => {
+                                      form.setValue("account", account.value, { shouldValidate: true, shouldDirty: true });
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        account.value === field.value ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    {account.label}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}

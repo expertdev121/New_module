@@ -75,7 +75,7 @@ export interface Payment {
   isSplitPayment: boolean;
   allocations: PaymentAllocation[];
   allocationCount:number;
-
+  account?:string;
   isThirdPartyPayment?: boolean;
   payerContactId?: number | null;
   payerContactName?: string | null;

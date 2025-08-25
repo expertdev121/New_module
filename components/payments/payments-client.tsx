@@ -781,7 +781,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Account:
                                     </span>
                                     <span className="font-medium">
-                                      {"N/A"}
+                                      {(payment.account)}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
