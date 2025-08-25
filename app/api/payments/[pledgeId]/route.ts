@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule, solicitor } from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
 import { eq, desc, or, ilike, and, SQL, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -17,13 +17,14 @@ class AppError extends Error {
   }
 }
 
+// Updated to match your database schema
 const PaymentStatusEnum = z.enum([
   "pending",
-  "completed",
+  "completed", 
   "failed",
   "cancelled",
   "refunded",
-  "processing",
+  "processing"
 ]);
 
 const QueryParamsSchema = z.object({
@@ -41,7 +42,7 @@ const allocationUpdateSchema = z.object({
   notes: z.string().optional().nullable(),
   installmentScheduleId: z.number().optional().nullable(),
   currency: z.enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"]).optional(),
-  exchangeRate: z.number().positive().optional(), 
+  exchangeRate: z.number().positive().optional(),
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(["invoice", "confirmation", "receipt", "other"]).optional().nullable(),
   receiptIssued: z.boolean().optional(),
@@ -63,13 +64,12 @@ const updatePaymentSchema = z.object({
   ]).optional(),
   methodDetail: z.string().optional().nullable(),
   paymentStatus: PaymentStatusEnum.optional(),
-  referenceNumber: z.string().optional().nullable(),
+  account: z.string().optional().nullable(),
+  checkDate: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),
-
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(["invoice", "confirmation", "receipt", "other"]).optional().nullable(),
   receiptIssued: z.boolean().optional(),
-
   solicitorId: z.number().positive("Solicitor ID must be positive").optional().nullable(),
   bonusPercentage: z.number().min(0).max(100).optional().nullable(),
   bonusAmount: z.number().min(0).optional().nullable(),
@@ -78,8 +78,16 @@ const updatePaymentSchema = z.object({
   pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
   installmentScheduleId: z.number().positive("Installment schedule ID must be positive").optional().nullable(),
+  
+  // Third-party payment fields from your schema
+  payerContactId: z.number().positive("Payer contact ID must be positive").optional().nullable(),
+  isThirdPartyPayment: z.boolean().optional(),
+  
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationUpdateSchema).optional(),
+  // Form-only fields that won't be saved to database
+  autoAdjustAllocations: z.boolean().optional(),
+  redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
 }).refine((data) => {
   if (data.isSplitPayment && data.allocations && data.allocations.length > 0 && data.amount) {
     const totalAllocated = data.allocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
@@ -90,6 +98,21 @@ const updatePaymentSchema = z.object({
 }, {
   message: "Total allocation amount must equal the payment amount for split payments",
 });
+
+type AllocationResponse = {
+  id: number;
+  pledgeId: number;
+  allocatedAmount: number;
+  notes: string | null;
+  currency: string | null;
+  installmentScheduleId: number | null;
+  receiptNumber: string | null;
+  receiptType: string | null;
+  receiptIssued: boolean | null;
+  createdAt: Date;
+  updatedAt: string | null;
+};
+
 
 async function updatePaymentPlanTotals(paymentPlanId: number) {
   const payments = await db
@@ -288,6 +311,12 @@ export async function GET(
         pledgeId: payment.pledgeId,
         paymentPlanId: payment.paymentPlanId,
         installmentScheduleId: payment.installmentScheduleId,
+        relationshipId: payment.relationshipId,
+        
+        // Third-party payment fields from your schema
+        payerContactId: payment.payerContactId,
+        isThirdPartyPayment: payment.isThirdPartyPayment,
+        
         amount: payment.amount,
         currency: payment.currency,
         amountUsd: payment.amountUsd,
@@ -300,6 +329,8 @@ export async function GET(
         paymentStatus: payment.paymentStatus,
         referenceNumber: payment.referenceNumber,
         checkNumber: payment.checkNumber,
+        checkDate: payment.checkDate,
+        account: payment.account,
         receiptNumber: payment.receiptNumber,
         receiptType: payment.receiptType,
         receiptIssued: payment.receiptIssued,
@@ -310,16 +341,28 @@ export async function GET(
         notes: payment.notes,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
+        
+        // Related data
         pledgeExchangeRate: pledge.exchangeRate,
+        pledgeDescription: pledge.description,
+        contactId: pledge.contactId,
+        
+        // Computed fields
         isSplitPayment: sql<boolean>`(
           SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
         )`.as("isSplitPayment"),
         allocationCount: sql<number>`(
           SELECT COUNT(*) FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
         )`.as("allocationCount"),
+        solicitorName: sql<string>`(
+          SELECT CONCAT(first_name, ' ', last_name) 
+          FROM ${solicitor} 
+          WHERE id = ${payment.solicitorId}
+        )`.as("solicitorName"),
       })
       .from(payment)
       .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .leftJoin(solicitor, eq(payment.solicitorId, solicitor.id))
       .where(eq(payment.pledgeId, pledgeId))
       .$dynamic();
 
@@ -419,7 +462,7 @@ export async function DELETE(
 
     const currentPayment = existingPayment[0];
 
-    // Get allocations if it’s a split payment
+    // Get allocations if it's a split payment
     const existingAllocations = await db
       .select()
       .from(paymentAllocations)
@@ -465,8 +508,6 @@ export async function DELETE(
     return ErrorHandler.handle(error);
   }
 }
-
-
 
 export async function PATCH(
   request: NextRequest,
@@ -522,6 +563,7 @@ export async function PATCH(
         .where(eq(paymentAllocations.paymentId, paymentId));
 
       if (existingAllocations.length === 0) {
+        // Converting to split payment
         if (!Array.isArray(validatedData.allocations) || validatedData.allocations.length === 0) {
           throw new AppError(
             "Allocations must be provided when converting to split payment.",
@@ -544,6 +586,7 @@ export async function PATCH(
           );
         }
 
+        // Validate all allocations
         for (const allocation of validatedData.allocations) {
           if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
             throw new AppError(
@@ -567,19 +610,32 @@ export async function PATCH(
           }
         }
 
-        const { paymentId: _, allocations: __, isSplitPayment: ___, ...dataToUpdate } = validatedData;
+        // Filter out form-only fields and update payment
+        const { 
+          paymentId: _, 
+          allocations: __, 
+          isSplitPayment: ___, 
+          autoAdjustAllocations: ____, 
+          redistributionMethod: _____, 
+          ...dataToUpdate 
+        } = validatedData;
+        
         const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
           ...dataToUpdate,
           updatedAt: new Date(),
         };
+        
+        // Convert numeric fields to strings for database storage
         ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
           (f) => {
             if (updateData[f] !== undefined && updateData[f] !== null)
               updateData[f] = updateData[f].toString();
           }
         );
+
         await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
 
+        // Create new allocations
         for (const alloc of validatedData.allocations) {
           let allocatedAmountUsd: string | null = null;
 
@@ -620,6 +676,7 @@ export async function PATCH(
           }
         }
       } else {
+        // Updating existing split payment
         if (Array.isArray(validatedData.allocations) && validatedData.allocations.length > 0) {
           const totalAllocated = validatedData.allocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
           const paymentAmount = validatedData.amount ?? parseFloat(currentPayment.amount);
@@ -637,6 +694,7 @@ export async function PATCH(
             );
           }
 
+          // Validate allocations
           for (const allocation of validatedData.allocations) {
             if (allocation.id) {
               const existingAllocation = existingAllocations.find((existing) => existing.id === allocation.id);
@@ -671,7 +729,16 @@ export async function PATCH(
             }
           }
 
-          const { paymentId: _, allocations: __, isSplitPayment: ___, ...dataToUpdate } = validatedData;
+          // Update payment
+          const { 
+            paymentId: _, 
+            allocations: __, 
+            isSplitPayment: ___, 
+            autoAdjustAllocations: ____, 
+            redistributionMethod: _____, 
+            ...dataToUpdate 
+          } = validatedData;
+          
           const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
             ...dataToUpdate,
             updatedAt: new Date(),
@@ -686,6 +753,7 @@ export async function PATCH(
 
           await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
 
+          // Update existing allocations
           for (const allocation of validatedData.allocations) {
             if (!allocation?.id) continue;
 
@@ -740,7 +808,16 @@ export async function PATCH(
             }
           }
         } else {
-          const { paymentId: _, allocations: __, isSplitPayment: ___, ...dataToUpdate } = validatedData;
+          // Update payment without changing allocations
+          const { 
+            paymentId: _, 
+            allocations: __, 
+            isSplitPayment: ___, 
+            autoAdjustAllocations: ____, 
+            redistributionMethod: _____, 
+            ...dataToUpdate 
+          } = validatedData;
+          
           const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
             ...dataToUpdate,
             updatedAt: new Date(),
@@ -757,6 +834,7 @@ export async function PATCH(
         }
       }
     } else {
+      // Regular (non-split) payment update
       const existingAllocations = await db
         .select()
         .from(paymentAllocations)
@@ -789,7 +867,15 @@ export async function PATCH(
         }
       }
 
-      const { paymentId: _, allocations: __, isSplitPayment: ___, ...dataToUpdate } = validatedData;
+      const { 
+        paymentId: _, 
+        allocations: __, 
+        isSplitPayment: ___, 
+        autoAdjustAllocations: ____, 
+        redistributionMethod: _____, 
+        ...dataToUpdate 
+      } = validatedData;
+      
       const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
         ...dataToUpdate,
         pledgeId: validatedData.pledgeId || currentPayment.pledgeId,
@@ -806,6 +892,7 @@ export async function PATCH(
       await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
     }
 
+    // Get updated payment
     const updatedPaymentRows = await db
       .select()
       .from(payment)
@@ -817,6 +904,7 @@ export async function PATCH(
     }
     const updatedPayment = updatedPaymentRows[0];
 
+    // Update related entities
     if (updatedPayment.paymentPlanId) {
       await updatePaymentPlanTotals(updatedPayment.paymentPlanId);
     }
@@ -849,7 +937,8 @@ export async function PATCH(
       await updatePledgeTotals(currentPayment.pledgeId);
     }
 
-    let allocations: (z.infer<typeof allocationUpdateSchema> & { updatedAt: string | null })[] | null = null;
+    // Get allocations for response
+   let allocations: AllocationResponse[] | null = null;
     if (validatedData.isSplitPayment) {
       const rawAllocations = await db
         .select({
@@ -876,6 +965,13 @@ export async function PATCH(
       }));
     }
 
+    // Get pledge description for response
+    const pledgeDescription = updatedPayment.pledgeId ? 
+      (await db.select({description: pledge.description})
+        .from(pledge)
+        .where(eq(pledge.id, updatedPayment.pledgeId))
+        .limit(1))[0]?.description : null;
+
     return NextResponse.json({
       message: `${validatedData.isSplitPayment ? "Split payment" : "Payment"} updated successfully`,
       payment: {
@@ -883,6 +979,7 @@ export async function PATCH(
         allocations,
         isSplitPayment: validatedData.isSplitPayment ?? false,
         allocationCount: allocations?.length ?? 0,
+        pledgeDescription,
       },
     });
   } catch (err: unknown) {
@@ -895,4 +992,3 @@ export async function PATCH(
     return ErrorHandler.handle(err);
   }
 }
-

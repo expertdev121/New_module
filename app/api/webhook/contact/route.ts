@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contact } from '@/lib/db/schema';
-import { eq, or } from 'drizzle-orm';
+import { eq, or, and } from 'drizzle-orm';
 import { z } from 'zod';
 
 // Helper: safely extract error message
@@ -19,6 +19,12 @@ function normalizePhone(phone: string | null | undefined): string | null {
 function normalizeEmail(email: string | null | undefined): string | null {
   if (!email?.trim()) return null;
   return email.toLowerCase().trim();
+}
+
+// Helper: normalize name for comparison
+function normalizeName(name: string | null | undefined): string | null {
+  if (!name?.trim()) return null;
+  return name.toLowerCase().trim();
 }
 
 // Schema for URL parameters (all strings from URL)
@@ -102,8 +108,23 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check for duplicates only if we have email or phone
+      // Check for duplicates - priority: name match, then email/phone match
       const whereConditions = [];
+      
+      // First check for exact name match (case insensitive)
+      const normalizedFirstName = normalizeName(firstName);
+      const normalizedLastName = normalizeName(lastName);
+      
+      if (normalizedFirstName && normalizedLastName) {
+        whereConditions.push(
+          and(
+            eq(contact.firstName, firstName), // Store original case but compare normalized
+            eq(contact.lastName, lastName)
+          )
+        );
+      }
+
+      // Also check email/phone duplicates if provided
       if (email) whereConditions.push(eq(contact.email, email));
       if (phone) whereConditions.push(eq(contact.phone, phone));
 
@@ -121,11 +142,18 @@ export async function POST(request: NextRequest) {
           .limit(1);
 
         if (existingContact.length > 0) {
+          // Check if it's a name match or email/phone match
+          const nameMatch = existingContact[0].firstName.toLowerCase() === normalizedFirstName && 
+                           existingContact[0].lastName.toLowerCase() === normalizedLastName;
+          
           return NextResponse.json(
             {
               success: false,
-              message: 'Contact already exists',
+              message: nameMatch 
+                ? 'Contact with this name already exists'
+                : 'Contact with this email or phone already exists',
               code: 'DUPLICATE_CONTACT',
+              matchType: nameMatch ? 'name' : 'email_or_phone',
               existingContact: existingContact[0]
             },
             { status: 409 }
@@ -284,8 +312,23 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check for duplicates only if we have email or phone
+      // Check for duplicates - priority: name match, then email/phone match
       const whereConditions = [];
+      
+      // First check for exact name match (case insensitive)
+      const normalizedFirstName = normalizeName(firstName);
+      const normalizedLastName = normalizeName(lastName);
+      
+      if (normalizedFirstName && normalizedLastName) {
+        whereConditions.push(
+          and(
+            eq(contact.firstName, firstName), // Store original case but compare normalized
+            eq(contact.lastName, lastName)
+          )
+        );
+      }
+
+      // Also check email/phone duplicates if provided
       if (email) whereConditions.push(eq(contact.email, email));
       if (phone) whereConditions.push(eq(contact.phone, phone));
 
@@ -303,11 +346,18 @@ export async function POST(request: NextRequest) {
           .limit(1);
 
         if (existingContact.length > 0) {
+          // Check if it's a name match or email/phone match
+          const nameMatch = existingContact[0].firstName.toLowerCase() === normalizedFirstName && 
+                           existingContact[0].lastName.toLowerCase() === normalizedLastName;
+          
           return NextResponse.json(
             {
               success: false,
-              message: 'Contact already exists',
+              message: nameMatch 
+                ? 'Contact with this name already exists'
+                : 'Contact with this email or phone already exists',
               code: 'DUPLICATE_CONTACT',
+              matchType: nameMatch ? 'name' : 'email_or_phone',
               existingContact: existingContact[0]
             },
             { status: 409 }
@@ -375,7 +425,7 @@ export async function GET() {
       success: true,
       message: 'Webhook endpoint is active',
       methods: ['POST'],
-      note: 'Accepts data via URL query parameters or request body. Only first_name and last_name are required.',
+      note: 'Accepts data via URL query parameters or request body. Only first_name and last_name are required. Checks for duplicate names before creating.',
       example: '/api/webhook/contact?first_name=John&last_name=Doe&email=john@test.com'
     },
     { status: 200 }

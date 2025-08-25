@@ -2,11 +2,11 @@
 // eslint-disable-next-line react-hooks/exhaustive-deps
 "use client";
 
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronsUpDown, X, Plus, Split, Users } from "lucide-react";
+import { Check, ChevronsUpDown, X, Plus, Split, Users, Search, UserPlus } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -80,6 +80,13 @@ interface Pledge {
   };
 }
 
+interface Contact {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+}
+
 const useSolicitors = (params: { search?: string; status?: "active" | "inactive" | "suspended" } = {}) =>
   useQuery<{ solicitors: Solicitor[] }>({
     queryKey: ["solicitors", params],
@@ -92,6 +99,18 @@ const useSolicitors = (params: { search?: string; status?: "active" | "inactive"
       if (!response.ok) throw new Error("Failed to fetch solicitors");
       return response.json();
     },
+  });
+
+const useContacts = (search?: string) =>
+  useQuery<{ contacts: Contact[] }>({
+    queryKey: ["contacts", search],
+    queryFn: async () => {
+      if (!search || search.length < 2) return { contacts: [] };
+      const response = await fetch(`/api/contacts/search?q=${encodeURIComponent(search)}`);
+      if (!response.ok) throw new Error("Failed to fetch contacts");
+      return response.json();
+    },
+    enabled: !!search && search.length >= 2,
   });
 
 const supportedCurrencies = [
@@ -196,6 +215,16 @@ const receiptTypes = [
   { value: "other", label: "Other" },
 ] as const;
 
+const accountOptions = [
+  { value: "Bank HaPoalim", label: "Bank HaPoalim" },
+  { value: "Bank of Montreal", label: "Bank of Montreal" },
+  { value: "Mizrachi Tfachot", label: "Mizrachi Tfachot" },
+  { value: "MS - Donations", label: "MS - Donations" },
+  { value: "MS - Operations", label: "MS - Operations" },
+  { value: "Citibank (*)", label: "Citibank (*)" },
+  { value: "Pagi", label: "Pagi" },
+] as const;
+
 // Allocation schema with receipt fields per allocation
 const allocationSchema = z.object({
   pledgeId: z.number().optional(),
@@ -207,7 +236,7 @@ const allocationSchema = z.object({
   receiptIssued: z.boolean().optional(),
 });
 
-// Payment schema without common receipt fields
+// Payment schema
 const paymentSchema = z.object({
   amount: z.number().optional(),
   currency: z.enum(supportedCurrencies).optional(),
@@ -231,6 +260,10 @@ const paymentSchema = z.object({
   pledgeId: z.number().optional().nullable(),
   paymentPlanId: z.number().optional().nullable(),
   installmentScheduleId: z.number().optional().nullable(),
+
+  // Third-party payment fields
+  isThirdPartyPayment: z.boolean().optional(),
+  thirdPartyContactId: z.number().optional().nullable(),
 
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationSchema).optional(),
@@ -264,20 +297,24 @@ export default function PaymentFormDialog({
   const [open, setOpen] = useState(false);
   const [showSolicitorSection, setShowSolicitorSection] = useState(false);
   const [pledgeDialogOpen, setPledgeDialogOpen] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
 
   const contactId = useContactId() || propContactId;
 
+  const { data: contactsData, isLoading: isLoadingContacts } = useContacts(contactSearch);
+
+  // Get pledges for the current contact or third-party contact
+  const targetContactId = selectedThirdPartyContact?.id || contactId;
   const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
     {
-      contactId: contactId as number,
+      contactId: targetContactId as number,
       page: 1,
       limit: 100,
       status: undefined,
     },
-    { enabled: !!contactId }
+    { enabled: !!targetContactId }
   );
-
-  const isLoadingAllInstallments = false;
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -302,30 +339,32 @@ export default function PaymentFormDialog({
       pledgeId: initialPledgeId || null,
       paymentPlanId: null,
       installmentScheduleId: null,
+      isThirdPartyPayment: false,
+      thirdPartyContactId: null,
       isSplitPayment: false,
       allocations: initialPledgeId
         ? [
-            {
-              pledgeId: initialPledgeId,
-              allocatedAmount: 0,
-              installmentScheduleId: null,
-              notes: null,
-              receiptNumber: null,
-              receiptType: null,
-              receiptIssued: false,
-            },
-          ]
+          {
+            pledgeId: initialPledgeId,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ]
         : [
-            {
-              pledgeId: 0,
-              allocatedAmount: 0,
-              installmentScheduleId: null,
-              notes: null,
-              receiptNumber: null,
-              receiptType: null,
-              receiptIssued: false,
-            },
-          ],
+          {
+            pledgeId: 0,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ],
     },
   });
 
@@ -333,15 +372,6 @@ export default function PaymentFormDialog({
     control: form.control,
     name: "allocations",
   });
-
-  const setCurrencyWithFallback = (currency: string) => {
-    if (supportedCurrencies.includes(currency as typeof supportedCurrencies[number])) {
-      form.setValue("currency", currency as typeof supportedCurrencies[number]);
-    } else {
-      form.setValue("currency", "USD");
-      console.warn(`Unsupported currency: ${currency}, defaulting to USD`);
-    }
-  };
 
   const watchedCurrency = form.watch("currency");
   const watchedAmount = form.watch("amount");
@@ -352,6 +382,7 @@ export default function PaymentFormDialog({
   const watchedAllocations = form.watch("allocations");
   const watchedIsSplitPayment = form.watch("isSplitPayment");
   const watchedMainPledgeId = form.watch("pledgeId");
+  const watchedIsThirdParty = form.watch("isThirdPartyPayment");
 
   const totalAllocatedAmount = (watchedAllocations || []).reduce(
     (sum, alloc) => sum + (alloc.allocatedAmount || 0),
@@ -364,8 +395,17 @@ export default function PaymentFormDialog({
     { enabled: !watchedIsSplitPayment && !!watchedMainPledgeId && watchedMainPledgeId !== 0 }
   );
 
-  const effectivePledgeDescription = pledgeData?.pledge?.description || "N/A";
-  const effectivePledgeCurrency = pledgeData?.pledge?.currency || "USD";
+  // Add debugging for pledges data
+  useEffect(() => {
+    if (pledgesData?.pledges) {
+      const ids = pledgesData.pledges.map(p => p.id);
+      const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
+      if (duplicates.length > 0) {
+        console.warn('Duplicate pledge IDs found:', [...new Set(duplicates)]);
+        console.log('All pledges:', pledgesData.pledges);
+      }
+    }
+  }, [pledgesData?.pledges]);
 
   const getExchangeRate = (currency: string): number => {
     if (currency === "USD") return 1;
@@ -386,26 +426,6 @@ export default function PaymentFormDialog({
     }
   }, [watchedCurrency, exchangeRatesData, form]);
 
-  // Set initial pledge as default values when dialog opens
-  useEffect(() => {
-    if (initialPledgeId && !form.formState.isDirty) {
-      form.setValue("pledgeId", initialPledgeId);
-      if (!watchedIsSplitPayment) {
-        form.setValue("allocations.0.pledgeId", initialPledgeId);
-        const initialPledge = pledgesData?.pledges?.find(p => p.id === initialPledgeId);
-        if (initialPledge) {
-          const balance = parseFloat(initialPledge.balance);
-          form.setValue("amount", balance);
-          form.setValue("allocations.0.allocatedAmount", balance);
-          const currency = initialPledge.currency as typeof supportedCurrencies[number];
-          if (supportedCurrencies.includes(currency)) {
-            form.setValue("currency", currency);
-          }
-        }
-      }
-    }
-  }, [initialPledgeId, form, pledgesData, watchedIsSplitPayment]);
-
   // Update amountUsd whenever amount, currency or exchangeRate changes
   useEffect(() => {
     const currency = form.getValues("currency");
@@ -415,7 +435,7 @@ export default function PaymentFormDialog({
 
     if (currency && amount != null) {
       const rate = currency === "USD" ? 1 : currentExchangeRate;
-      const usdAmount = amount*rate;
+      const usdAmount = amount * rate;
       form.setValue("amountUsd", Math.round(usdAmount * 100) / 100, {
         shouldValidate: true,
         shouldDirty: true,
@@ -458,167 +478,149 @@ export default function PaymentFormDialog({
       pledgeId: initialPledgeId || null,
       paymentPlanId: null,
       installmentScheduleId: null,
+      isThirdPartyPayment: false,
+      thirdPartyContactId: null,
       isSplitPayment: false,
       allocations: initialPledgeId
         ? [
-            {
-              pledgeId: initialPledgeId,
-              allocatedAmount: 0,
-              installmentScheduleId: null,
-              notes: null,
-              receiptNumber: null,
-              receiptType: null,
-              receiptIssued: false,
-            },
-          ]
+          {
+            pledgeId: initialPledgeId,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ]
         : [
-            {
-              pledgeId: 0,
-              allocatedAmount: 0,
-              installmentScheduleId: null,
-              notes: null,
-              receiptNumber: null,
-              receiptType: null,
-              receiptIssued: false,
-            },
-          ],
+          {
+            pledgeId: 0,
+            allocatedAmount: 0,
+            installmentScheduleId: null,
+            notes: null,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          },
+        ],
     });
     setShowSolicitorSection(false);
+    setSelectedThirdPartyContact(null);
+    setContactSearch("");
   }, [form, initialPledgeId]);
-
-  const isValidCurrency = (currency: string): currency is typeof supportedCurrencies[number] => {
-    return supportedCurrencies.includes(currency as typeof supportedCurrencies[number]);
-  };
-
-  const convertAmountBetweenCurrencies = (
-    amount: number,
-    fromCurrency: string,
-    toCurrency: string,
-    exchangeRates: Record<string, string> | undefined
-  ): number => {
-    const validFromCurrency = isValidCurrency(fromCurrency) ? fromCurrency : "USD";
-    const validToCurrency = isValidCurrency(toCurrency) ? toCurrency : "USD";
-
-    if (validFromCurrency === validToCurrency || !exchangeRates) return Math.round(amount * 100) / 100;
-
-    const fromRate = parseFloat(exchangeRates[validFromCurrency] || "1");
-    const toRate = parseFloat(exchangeRates[validToCurrency] || "1");
-
-    if (isNaN(fromRate) || isNaN(toRate) || fromRate === 0 || toRate === 0) {
-      console.warn(
-        `Invalid exchange rates for ${validFromCurrency} or ${validToCurrency}, defaulting to direct conversion`
-      );
-      return Math.round(amount * 100) / 100;
-    }
-
-    const amountInUsd = amount / fromRate;
-    const convertedAmount = amountInUsd * toRate;
-
-    return Math.round(convertedAmount * 100) / 100;
-  };
 
   const onSubmit = async (data: PaymentFormData) => {
     try {
-      // Convert exchangeRate and amounts to numbers explicitly (if strings)
-      const exchangeRateNum = Number(data.exchangeRate);
-      const amountNum = Number(data.amount);
-      const amountUsdNum = Number(data.amountUsd);
+      // Validate required fields first
+      if (!data.amount || data.amount <= 0) {
+        throw new Error("Payment amount is required and must be greater than 0");
+      }
 
-      console.log("Form submitted with data:", data);
+      if (!data.currency) {
+        throw new Error("Currency is required");
+      }
+
+      if (!data.paymentMethod) {
+        throw new Error("Payment method is required");
+      }
+
+      if (!data.paymentStatus) {
+        throw new Error("Payment status is required");
+      }
+
+      if (!data.paymentDate) {
+        throw new Error("Payment date is required");
+      }
+
+      const exchangeRateNum = Number(data.exchangeRate) || 1;
+      const amountNum = Number(data.amount);
+      const amountUsdNum = Number(data.amountUsd) || (amountNum * exchangeRateNum);
+
       const isSplit = data.isSplitPayment;
-      const commonPaymentFields = {
+      const isThirdParty = !!(data.isThirdPartyPayment && selectedThirdPartyContact);
+
+      // Build base payload with correct type assertions
+      const basePayload = {
         amount: amountNum,
-        currency: data.currency,
+        currency: data.currency as any,
         amountUsd: amountUsdNum,
         exchangeRate: exchangeRateNum,
         paymentDate: data.paymentDate,
-        receivedDate: data.receivedDate,
-        paymentMethod: data.paymentMethod,
-        methodDetail: data.methodDetail,
-        account: data.account,
-        checkDate: data.checkDate,
-        checkNumber: data.checkNumber,
-        paymentStatus: data.paymentStatus,
-        solicitorId: data.solicitorId ? String(data.solicitorId) : null,
-        bonusPercentage: data.bonusPercentage,
-        bonusAmount: data.bonusAmount,
-        bonusRuleId: data.bonusRuleId,
-        notes: data.notes,
+        receivedDate: data.receivedDate || undefined,
+        paymentMethod: data.paymentMethod as any,
+        methodDetail: data.methodDetail || undefined,
+        account: data.account || undefined,
+        checkDate: data.checkDate || undefined,
+        checkNumber: data.checkNumber || undefined,
+        paymentStatus: data.paymentStatus as any,
+        solicitorId: data.solicitorId ? Number(data.solicitorId) : undefined,
+        bonusPercentage: data.bonusPercentage || undefined,
+        bonusAmount: data.bonusAmount || undefined,
+        bonusRuleId: data.bonusRuleId || undefined,
+        notes: data.notes || undefined,
+        isThirdPartyPayment: isThirdParty,
+        payerContactId: isThirdParty ? (contactId || undefined) : undefined,
       };
-
-      let paymentPayload;
 
       if (isSplit) {
         if (!data.allocations || data.allocations.length === 0) {
           throw new Error("Split payment requires at least one allocation.");
         }
-        paymentPayload = {
-          ...commonPaymentFields,
-          pledgeId: null,
-          allocations: await Promise.all(
-            (data.allocations || []).map(async (allocation) => {
-              const targetPledge = pledgesData?.pledges?.find(p => p.id === allocation.pledgeId);
-              if (!targetPledge) {
-                throw new Error(`Pledge with ID ${allocation.pledgeId} not found for allocation.`);
-              }
-              const paymentCurrency = data.currency || "USD";
-              const validPaymentCurrency = isValidCurrency(paymentCurrency) ? paymentCurrency : "USD";
 
-              const allocatedAmountVal = allocation.allocatedAmount || 0;
+        // Validate all allocations have valid pledge IDs
+        for (const allocation of data.allocations) {
+          if (!allocation.pledgeId || allocation.pledgeId === 0) {
+            throw new Error("All allocations must have a valid pledge selected.");
+          }
+          if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
+            throw new Error("All allocations must have an amount greater than 0.");
+          }
+        }
 
-              // You may want to also convert and send allocatedAmountInPledgeCurrency if needed by backend,
-              // currently sending allocatedAmount in payment currency per your code
-              // const allocatedAmountInPledgeCurrency = convertAmountBetweenCurrencies(
-              //   allocatedAmountVal,
-              //   validPaymentCurrency,
-              //   targetPledge.currency,
-              //   exchangeRatesData?.data?.rates
-              // );
-
-              return {
-                pledgeId: String(allocation.pledgeId),
-                installmentScheduleId: allocation.installmentScheduleId ? String(allocation.installmentScheduleId) : null,
-                amount: allocatedAmountVal,
-                notes: allocation.notes,
-                // Include receipt fields per allocation
-                receiptNumber: allocation.receiptNumber,
-                receiptType: allocation.receiptType,
-                receiptIssued: allocation.receiptIssued,
-              };
-            })
-          ),
+        const paymentPayload = {
+          ...basePayload,
+          pledgeId: 0,
+          // Cast allocations to any to bypass TypeScript checking
+          allocations: data.allocations.map((allocation) => ({
+            pledgeId: Number(allocation.pledgeId),
+            installmentScheduleId: allocation.installmentScheduleId ? Number(allocation.installmentScheduleId) : null,
+            allocatedAmount: Number(allocation.allocatedAmount) || 0, // Changed from 'amount' to 'allocatedAmount'
+            currency: data.currency, // Add currency from the main payment
+            notes: allocation.notes || null,
+            receiptNumber: allocation.receiptNumber || null,
+            receiptType: allocation.receiptType || null,
+            receiptIssued: allocation.receiptIssued || false,
+          })) as any, // Type assertion to bypass strict typing
         };
+
+        await createPaymentMutation.mutateAsync(paymentPayload as any);
       } else {
-        if (!data.pledgeId) {
-          throw new Error("Single payment requires a pledge ID.");
+        if (!data.pledgeId || data.pledgeId === 0) {
+          throw new Error("Single payment requires a valid pledge ID.");
         }
-        const singlePaymentPayload: any = {
-          ...commonPaymentFields,
-          pledgeId: String(data.pledgeId),
+
+        const paymentPayload = {
+          ...basePayload,
+          pledgeId: Number(data.pledgeId),
+          installmentScheduleId: data.allocations?.length === 1 && data.allocations[0].installmentScheduleId
+            ? Number(data.allocations[0].installmentScheduleId)
+            : null,
         };
-        if (data.allocations?.length === 1 && data.allocations[0].installmentScheduleId) {
-          singlePaymentPayload.installmentScheduleId = String(data.allocations[0].installmentScheduleId);
-        }
-        // For single payments, allocations are not included
-        paymentPayload = singlePaymentPayload;
+
+        await createPaymentMutation.mutateAsync(paymentPayload as any);
       }
 
-      console.log("Submitting Payload (final):", paymentPayload);
+      // Success handling
+      const paymentType = isThirdParty ? "Third-party payment" : "Payment";
+      const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
+      toast.success(`${paymentType}${target} created successfully!`);
+      resetForm();
+      setOpen(false);
 
-      await createPaymentMutation.mutateAsync(paymentPayload, {
-        onSuccess: () => {
-          toast.success("Payment and allocations created successfully!");
-          resetForm();
-          setOpen(false);
-        },
-        onError: (error) => {
-          console.error("Error creating payment:", error);
-          toast.error(error instanceof Error ? error.message : "Failed to create payment");
-        },
-      });
     } catch (error) {
-      console.error("Unexpected error:", error);
-      toast.error(error instanceof Error ? error.message : "An unexpected error occurred");
+      console.error("Error creating payment:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to create payment");
     }
   };
 
@@ -629,27 +631,48 @@ export default function PaymentFormDialog({
     }
   };
 
-  const pledgeOptions =
-    pledgesData?.pledges?.map((pledge: Pledge) => ({
+  // Fix pledge options with useMemo and deduplication
+  const pledgeOptions = useMemo(() => {
+    if (!pledgesData?.pledges) return [];
+
+    // Remove duplicates by pledge ID
+    const uniquePledges = pledgesData.pledges.reduce((acc, pledge) => {
+      if (!acc.find(p => p.id === pledge.id)) {
+        acc.push(pledge);
+      }
+      return acc;
+    }, [] as Pledge[]);
+
+    return uniquePledges.map((pledge: Pledge) => ({
       label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
       value: pledge.id,
       balance: parseFloat(pledge.balance),
       currency: pledge.currency,
       description: pledge.description || "No description",
       originalAmount: parseFloat(pledge.originalAmount),
-    })) || [];
+    }));
+  }, [pledgesData?.pledges]);
 
-  const solicitorOptions =
-    solicitorsData?.solicitors?.map((solicitor: Solicitor) => ({
+  const solicitorOptions = useMemo(() => {
+    if (!solicitorsData?.solicitors) return [];
+
+    return solicitorsData.solicitors.map((solicitor: Solicitor) => ({
       label: `${solicitor.firstName} ${solicitor.lastName}${solicitor.id ? ` (${solicitor.id})` : ""}`,
       value: solicitor.id,
       commissionRate: solicitor.commissionRate,
       contact: solicitor.contact,
-    })) || [];
+    }));
+  }, [solicitorsData?.solicitors]);
 
-  const getPledgeById = (id: number): Pledge | undefined => {
-    return pledgesData?.pledges?.find((p: Pledge) => p.id === id);
-  };
+  const contactOptions = useMemo(() => {
+    if (!contactsData?.contacts) return [];
+
+    return contactsData.contacts.map((contact: Contact) => ({
+      label: contact.fullName,
+      value: contact.id,
+      ...contact,
+    }));
+  }, [contactsData?.contacts]);
 
   const addAllocation = () => {
     append({
@@ -667,6 +690,34 @@ export default function PaymentFormDialog({
     remove(index);
   };
 
+  const handleThirdPartyToggle = (checked: boolean) => {
+    form.setValue("isThirdPartyPayment", checked);
+    if (!checked) {
+      setSelectedThirdPartyContact(null);
+      setContactSearch("");
+      form.setValue("thirdPartyContactId", null);
+    }
+  };
+
+  const handleContactSelect = (contact: Contact) => {
+    setSelectedThirdPartyContact(contact);
+    form.setValue("thirdPartyContactId", contact.id);
+    setContactSearch("");
+    // Reset pledge selection when changing contact
+    form.setValue("pledgeId", null);
+    form.setValue("allocations", [
+      {
+        pledgeId: 0,
+        allocatedAmount: 0,
+        installmentScheduleId: null,
+        notes: null,
+        receiptNumber: null,
+        receiptType: null,
+        receiptIssued: false,
+      },
+    ]);
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -679,25 +730,17 @@ export default function PaymentFormDialog({
         <DialogHeader>
           <DialogTitle>Add Payment</DialogTitle>
           <DialogDescription>
-            {watchedIsSplitPayment ? (
-              "Record a split payment across multiple pledges"
-            ) : isLoadingPledge ? (
-              "Loading pledge details..."
-            ) : (
+            {watchedIsThirdParty && selectedThirdPartyContact ? (
               <div>
-                Record a payment for pledge: {effectivePledgeDescription}
-                {pledgeData?.pledge?.remainingBalance && (
-                  <span className="block mt-1 text-sm text-muted-foreground">
-                    Remaining Balance: {effectivePledgeCurrency}{" "}
-                    {pledgeData.pledge.remainingBalance.toLocaleString()}
-                  </span>
-                )}
-                {pledgeData?.contact && (
-                  <span className="block mt-1 text-sm text-muted-foreground">
-                    Contact: {pledgeData.contact.fullName}
-                  </span>
-                )}
+                Recording payment for <strong>{selectedThirdPartyContact.fullName}</strong>
+                <span className="block mt-1 text-sm text-muted-foreground">
+                  This payment will appear in your account but apply to their pledge balance
+                </span>
               </div>
+            ) : watchedIsSplitPayment ? (
+              "Record a split payment across multiple pledges"
+            ) : (
+              "Record a payment for a pledge"
             )}
           </DialogDescription>
         </DialogHeader>
@@ -709,6 +752,97 @@ export default function PaymentFormDialog({
             }}
             className="space-y-6"
           >
+            {/* Third-Party Payment Section */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg flex items-center gap-2">
+                  <UserPlus className="h-5 w-5" />
+                  Payment Type
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="isThirdPartyPayment"
+                      checked={watchedIsThirdParty}
+                      onCheckedChange={handleThirdPartyToggle}
+                    />
+                    <label
+                      htmlFor="isThirdPartyPayment"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Third-Party Payment (Pay for someone else&apos;s pledge)
+                    </label>
+                  </div>
+
+                  {watchedIsThirdParty && (
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Search for Contact</label>
+                        <div className="relative">
+                          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                          <Input
+                            placeholder="Type to search contacts..."
+                            value={contactSearch}
+                            onChange={(e) => setContactSearch(e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                      </div>
+
+                      {contactSearch.length >= 2 && (
+                        <div className="border rounded-md max-h-40 overflow-y-auto">
+                          {isLoadingContacts ? (
+                            <div className="p-3 text-center text-gray-500">Loading contacts...</div>
+                          ) : contactOptions.length > 0 ? (
+                            contactOptions.map((contact, index) => (
+                              <button
+                                key={`contact-${contact.value}-${index}`}
+                                type="button"
+                                className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0"
+                                onClick={() => handleContactSelect(contact)}
+                              >
+                                <div className="font-medium">{contact.label}</div>
+                              </button>
+                            ))
+                          ) : (
+                            <div className="p-3 text-center text-gray-500">No contacts found</div>
+                          )}
+                        </div>
+                      )}
+
+                      {selectedThirdPartyContact && (
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <div className="font-medium text-blue-900">
+                                Selected Contact: {selectedThirdPartyContact.fullName}
+                              </div>
+                              <div className="text-sm text-blue-700">
+                                Payment will apply to this contact&apos;s pledge but appear in your account
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedThirdPartyContact(null);
+                                form.setValue("thirdPartyContactId", null);
+                              }}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Payment Details</CardTitle>
@@ -746,7 +880,7 @@ export default function PaymentFormDialog({
                               receiptIssued: false,
                             },
                           ]);
-                          if (initialPledgeId) {
+                          if (initialPledgeId && !selectedThirdPartyContact) {
                             form.setValue("pledgeId", initialPledgeId);
                             const initialPledge = pledgesData?.pledges?.find(p => p.id === initialPledgeId);
                             if (initialPledge) {
@@ -770,13 +904,20 @@ export default function PaymentFormDialog({
                     </label>
                   </div>
 
-                  {!watchedIsSplitPayment && showPledgeSelector && (
+                  {!watchedIsSplitPayment && (showPledgeSelector || watchedIsThirdParty) && (
                     <FormField
                       control={form.control}
                       name="pledgeId"
                       render={({ field }) => (
                         <FormItem className="flex flex-col md:col-span-2">
-                          <FormLabel>Select Pledge</FormLabel>
+                          <FormLabel>
+                            Select Pledge
+                            {watchedIsThirdParty && selectedThirdPartyContact && (
+                              <span className="text-sm text-muted-foreground ml-2">
+                                (from {selectedThirdPartyContact.fullName}&apos;s pledges)
+                              </span>
+                            )}
+                          </FormLabel>
                           <Popover>
                             <PopoverTrigger asChild>
                               <FormControl>
@@ -787,15 +928,17 @@ export default function PaymentFormDialog({
                                     "w-full justify-between",
                                     (!field.value || field.value === 0) && "text-muted-foreground"
                                   )}
-                                  disabled={isLoadingPledges}
+                                  disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
                                 >
                                   {field.value
                                     ? pledgeOptions.find(
-                                        (pledge: any) => pledge.value === field.value
-                                      )?.label
+                                      (pledge: any) => pledge.value === field.value
+                                    )?.label
                                     : isLoadingPledges
-                                    ? "Loading pledges..."
-                                    : "Select pledge"}
+                                      ? "Loading pledges..."
+                                      : watchedIsThirdParty && !selectedThirdPartyContact
+                                        ? "Select a contact first"
+                                        : "Select pledge"}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -806,10 +949,10 @@ export default function PaymentFormDialog({
                                 <CommandList>
                                   <CommandEmpty>No pledge found.</CommandEmpty>
                                   <CommandGroup>
-                                    {pledgeOptions.map((pledge: any) => (
+                                    {pledgeOptions.map((pledge: any, index) => (
                                       <CommandItem
                                         value={pledge.label}
-                                        key={pledge.value}
+                                        key={`pledge-${pledge.value}-${index}`}
                                         onSelect={() => {
                                           field.onChange(pledge.value);
                                           form.setValue("allocations.0.pledgeId", pledge.value);
@@ -944,7 +1087,7 @@ export default function PaymentFormDialog({
 
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Payment Method &amp; Status</CardTitle>
+                <CardTitle className="text-lg">Payment Method & Status</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -977,10 +1120,10 @@ export default function PaymentFormDialog({
                               <CommandInput placeholder="Search payment methods..." />
                               <CommandEmpty>No payment method found.</CommandEmpty>
                               <CommandGroup>
-                                {paymentMethods.map((method) => (
+                                {paymentMethods.map((method, index) => (
                                   <CommandItem
                                     value={method.label}
-                                    key={method.value}
+                                    key={`payment-method-${method.value}-${index}`}
                                     onSelect={() => {
                                       form.setValue("paymentMethod", method.value, { shouldValidate: true, shouldDirty: true });
                                     }}
@@ -1046,10 +1189,10 @@ export default function PaymentFormDialog({
                                   />
                                   None
                                 </CommandItem>
-                                {methodDetails.map((detail) => (
+                                {methodDetails.map((detail, index) => (
                                   <CommandItem
                                     value={detail.value}
-                                    key={detail.value}
+                                    key={`method-detail-${detail.value}-${index}`}
                                     onSelect={() => {
                                       form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
                                     }}
@@ -1078,9 +1221,64 @@ export default function PaymentFormDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Account</FormLabel>
-                        <FormControl>
-                          <Input {...field} value={field.value || ""} />
-                        </FormControl>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value
+                                  ? accountOptions.find((account) => account.value === field.value)?.label
+                                  : "Select account"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                            <Command>
+                              <CommandInput placeholder="Search accounts..." />
+                              <CommandEmpty>No account found.</CommandEmpty>
+                              <CommandGroup>
+                                <CommandItem
+                                  value="None"
+                                  onSelect={() => {
+                                    form.setValue("account", null, { shouldValidate: true, shouldDirty: true });
+                                  }}
+                                >
+                                  <Check
+                                    className={cn(
+                                      "mr-2 h-4 w-4",
+                                      !field.value ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                  None
+                                </CommandItem>
+                                {accountOptions.map((account, index) => (
+                                  <CommandItem
+                                    value={account.value}
+                                    key={`account-${account.value}-${index}`}
+                                    onSelect={() => {
+                                      form.setValue("account", account.value, { shouldValidate: true, shouldDirty: true });
+                                    }}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        account.value === field.value ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    {account.label}
+                                  </CommandItem>
+                                ))}
+                              </CommandGroup>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1193,8 +1391,8 @@ export default function PaymentFormDialog({
                                   {field.value
                                     ? solicitorOptions.find((solicitor: any) => solicitor.value === field.value)?.label
                                     : isLoadingSolicitors
-                                    ? "Loading solicitors..."
-                                    : "Select solicitor"}
+                                      ? "Loading solicitors..."
+                                      : "Select solicitor"}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -1205,10 +1403,10 @@ export default function PaymentFormDialog({
                                 <CommandList>
                                   <CommandEmpty>No solicitor found.</CommandEmpty>
                                   <CommandGroup>
-                                    {solicitorOptions.map((solicitor: any) => (
+                                    {solicitorOptions.map((solicitor: any, index) => (
                                       <CommandItem
                                         value={solicitor.label}
-                                        key={solicitor.value}
+                                        key={`solicitor-${solicitor.value}-${index}`}
                                         onSelect={() => {
                                           field.onChange(solicitor.value);
                                           if (solicitor.commissionRate != null) {
@@ -1307,14 +1505,16 @@ export default function PaymentFormDialog({
                     </Badge>
                   </CardTitle>
                   <DialogDescription>
-                    Add allocation amounts for this split payment. All allocations must use the same currency as the payment.
+                    {watchedIsThirdParty && selectedThirdPartyContact
+                      ? `Add allocation amounts for this split payment to ${selectedThirdPartyContact.fullName}'s pledges`
+                      : "Add allocation amounts for this split payment"}
                   </DialogDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {fields.length > 0 ? (
                     fields.map((field, index) => (
                       <div
-                        key={field.id}
+                        key={`${field.id}-${index}`}
                         className="border border-gray-300 rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
                       >
                         <div className="flex items-center justify-between mb-4">
@@ -1339,7 +1539,14 @@ export default function PaymentFormDialog({
                             name={`allocations.${index}.pledgeId`}
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Pledge *</FormLabel>
+                                <FormLabel>
+                                  Pledge *
+                                  {watchedIsThirdParty && selectedThirdPartyContact && (
+                                    <span className="text-sm text-muted-foreground ml-2">
+                                      (from {selectedThirdPartyContact.fullName}&apos;s pledges)
+                                    </span>
+                                  )}
+                                </FormLabel>
                                 <Popover>
                                   <PopoverTrigger asChild>
                                     <FormControl>
@@ -1350,14 +1557,16 @@ export default function PaymentFormDialog({
                                           "w-full flex justify-between items-center min-w-0",
                                           (!field.value || field.value === 0) && "text-muted-foreground"
                                         )}
-                                        disabled={isLoadingPledges}
+                                        disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
                                       >
                                         <span className="block truncate max-w-[calc(100%-1.5rem)]" style={{ minWidth: 0 }}>
                                           {field.value
                                             ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
                                             : isLoadingPledges
-                                            ? "Loading pledges..."
-                                            : "Select pledge"}
+                                              ? "Loading pledges..."
+                                              : watchedIsThirdParty && !selectedThirdPartyContact
+                                                ? "Select a contact first"
+                                                : "Select pledge"}
                                         </span>
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
@@ -1369,10 +1578,10 @@ export default function PaymentFormDialog({
                                       <CommandList>
                                         <CommandEmpty>No pledge found.</CommandEmpty>
                                         <CommandGroup>
-                                          {pledgeOptions.map((pledge) => (
+                                          {pledgeOptions.map((pledge, pledgeIndex) => (
                                             <CommandItem
                                               value={pledge.label}
-                                              key={pledge.value}
+                                              key={`allocation-${index}-pledge-${pledge.value}-${pledgeIndex}`}
                                               onSelect={() => {
                                                 field.onChange(pledge.value);
                                                 form.setValue(`allocations.${index}.installmentScheduleId`, null);
@@ -1581,7 +1790,8 @@ export default function PaymentFormDialog({
                   isLoadingRates ||
                   isLoadingSolicitors ||
                   isLoadingPledges ||
-                  (watchedIsSplitPayment && remainingToAllocate !== 0)
+                  (watchedIsSplitPayment && remainingToAllocate !== 0) ||
+                  (watchedIsThirdParty && !selectedThirdPartyContact)
                 }
               >
                 {createPaymentMutation.isPending ? "Creating Payment..." : "Record Payment"}
@@ -1598,7 +1808,11 @@ export default function PaymentFormDialog({
             </div>
           </form>
         </Form>
-        <PledgeDialog open={pledgeDialogOpen} onOpenChange={setPledgeDialogOpen} contactId={contactId ?? 0} />
+        <PledgeDialog
+          open={pledgeDialogOpen}
+          onOpenChange={setPledgeDialogOpen}
+          contactId={selectedThirdPartyContact?.id || contactId || 0}
+        />
       </DialogContent>
     </Dialog>
   );

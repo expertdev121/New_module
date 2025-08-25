@@ -16,6 +16,7 @@ import { ErrorHandler } from "@/lib/error-handler";
 const updatePledgeSchema = z.object({
   contactId: z.number().positive().optional(),
   categoryId: z.number().positive().optional(),
+  relationshipId: z.number().positive().optional(), // Add this line
   pledgeDate: z.string().min(1, "Pledge date is required").optional(),
   description: z.string().min(1, "Description is required").optional(),
   originalAmount: z.number().positive("Pledge amount must be positive").optional(),
@@ -249,6 +250,10 @@ export async function PUT(
     if (validatedData.categoryId !== undefined) {
       updateData.categoryId = validatedData.categoryId;
     }
+    // Add relationship handling
+    if (validatedData.relationshipId !== undefined) {
+      updateData.relationshipId = validatedData.relationshipId;
+    }
     if (validatedData.pledgeDate !== undefined) {
       updateData.pledgeDate = validatedData.pledgeDate;
     }
@@ -343,6 +348,7 @@ export async function PUT(
     return ErrorHandler.handle(error);
   }
 }
+
 
 export async function DELETE(
   request: NextRequest,

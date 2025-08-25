@@ -60,6 +60,7 @@ export async function GET(request: Request) {
     transformedRates["USD"] = "1.0";
   }
 
+  // Proper upsert with correct column names matching the schema
   const insertData: Omit<ExchangeRateRow, "id" | "createdAt">[] = Object.entries(transformedRates)
     .filter(([cur]) => cur !== "USD")
     .map(([currency, rate]) => ({
@@ -70,20 +71,22 @@ export async function GET(request: Request) {
       updatedAt: new Date().toISOString().split("T")[0],
     }));
 
-  await db
-    .insert(exchangeRate)
-    .values(insertData)
-    .onConflictDoUpdate({
-      target: [
-        exchangeRate.baseCurrency,
-        exchangeRate.targetCurrency,
-        exchangeRate.date,
-      ],
-      set: {
-        rate: sql`excluded.rate`,
-        updatedAt: sql`excluded.updated_at`,
-      },
-    });
+  if (insertData.length > 0) {
+    await db
+      .insert(exchangeRate)
+      .values(insertData)
+      .onConflictDoUpdate({
+        target: [
+          exchangeRate.baseCurrency,
+          exchangeRate.targetCurrency,
+          exchangeRate.date,
+        ],
+        set: {
+          rate: sql`excluded.rate`,
+          updatedAt: sql`excluded.updated_at`, 
+        },
+      });
+  }
 
   const result = { data: { currency: "USD", rates: transformedRates } };
   rateCache.set(date, result);

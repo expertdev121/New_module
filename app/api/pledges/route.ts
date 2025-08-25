@@ -1,25 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { pledge, NewPledge } from "@/lib/db/schema";
+import {
+  pledge,
+  NewPledge,
+  relationships,
+  contact,
+  category,
+  paymentPlan,
+} from "@/lib/db/schema";
 import { sql, eq, and } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
 
 const pledgeSchema = z.object({
   contactId: z.number().positive(),
   categoryId: z.number().positive().optional(),
+  relationshipId: z.number().positive().optional(),
   pledgeDate: z.string().min(1, "Pledge date is required"),
   description: z.string().min(1, "Description is required"),
   originalAmount: z.number().positive("Pledge amount must be positive"),
   currency: z
     .enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"])
     .default("USD"),
-  originalAmountUsd: z
-    .number()
-    .positive("Pledge amount in USD must be positive"),
+  originalAmountUsd: z.number().positive("Pledge amount in USD must be positive"),
   exchangeRate: z.number().positive("Exchange rate must be positive"),
   campaignCode: z.string().optional(),
   notes: z.string().optional(),
+});
+
+const querySchema = z.object({
+  contactId: z.number().positive().optional(),
+  categoryId: z.number().positive().optional(),
+  relationshipId: z.number().positive().optional(),
+  page: z.coerce.number().min(1).default(1),
+  limit: z.coerce.number().min(1).max(100).default(10),
+  search: z.string().optional(),
+  status: z.enum(["fullyPaid", "partiallyPaid", "unpaid"]).optional(),
+  startDate: z.string().optional(),
+  endDate: z.string().optional(),
+  campaignCode: z.string().optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -32,13 +52,14 @@ export async function POST(request: NextRequest) {
     const newPledge: NewPledge = {
       contactId: validatedData.contactId,
       categoryId: validatedData.categoryId || null,
+      relationshipId: validatedData.relationshipId || null,
       pledgeDate: validatedData.pledgeDate,
       description: validatedData.description,
       originalAmount: validatedData.originalAmount.toString(),
       currency: validatedData.currency,
       originalAmountUsd: validatedData.originalAmountUsd.toString(),
       exchangeRate: validatedData.exchangeRate.toString(),
-      campaignCode: validatedData.campaignCode || null, // Added campaign code field
+      campaignCode: validatedData.campaignCode || null,
       totalPaid: "0",
       totalPaidUsd: "0",
       balance: balance.toString(),
@@ -69,23 +90,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
     console.error("Error creating pledge:", error);
     return ErrorHandler.handle(error);
   }
 }
-
-const querySchema = z.object({
-  contactId: z.number().positive().optional(),
-  categoryId: z.number().positive().optional(),
-  page: z.coerce.number().min(1).default(1),
-  limit: z.coerce.number().min(1).max(100).default(10),
-  search: z.string().optional(),
-  status: z.enum(["fullyPaid", "partiallyPaid", "unpaid"]).optional(),
-  startDate: z.string().optional(),
-  endDate: z.string().optional(),
-  campaignCode: z.string().optional(), // Added campaign code filter
-});
 
 export async function GET(request: NextRequest) {
   try {
@@ -97,13 +105,16 @@ export async function GET(request: NextRequest) {
       categoryId: searchParams.get("categoryId")
         ? parseInt(searchParams.get("categoryId")!)
         : undefined,
+      relationshipId: searchParams.get("relationshipId")
+        ? parseInt(searchParams.get("relationshipId")!)
+        : undefined,
       page: searchParams.get("page") ?? undefined,
       limit: searchParams.get("limit") ?? undefined,
       search: searchParams.get("search") ?? undefined,
       status: searchParams.get("status") ?? undefined,
       startDate: searchParams.get("startDate") ?? undefined,
       endDate: searchParams.get("endDate") ?? undefined,
-      campaignCode: searchParams.get("campaignCode") ?? undefined, // Added campaign code filter
+      campaignCode: searchParams.get("campaignCode") ?? undefined,
     });
 
     if (!parsedParams.success) {
@@ -122,27 +133,22 @@ export async function GET(request: NextRequest) {
     const {
       contactId,
       categoryId,
+      relationshipId,
       page,
       limit,
       search,
       status,
       startDate,
       endDate,
-      campaignCode, // Added campaign code filter
+      campaignCode,
     } = parsedParams.data;
     const offset = (page - 1) * limit;
 
     // Build WHERE conditions
     const conditions = [];
-
-    if (contactId) {
-      conditions.push(eq(pledge.contactId, contactId));
-    }
-
-    if (categoryId) {
-      conditions.push(eq(pledge.categoryId, categoryId));
-    }
-
+    if (contactId) conditions.push(eq(pledge.contactId, contactId));
+    if (categoryId) conditions.push(eq(pledge.categoryId, categoryId));
+    if (relationshipId) conditions.push(eq(pledge.relationshipId, relationshipId));
     if (search) {
       conditions.push(
         sql`${pledge.description} ILIKE ${"%" + search + "%"} OR ${
@@ -152,11 +158,7 @@ export async function GET(request: NextRequest) {
         } ILIKE ${"%" + search + "%"}`
       );
     }
-
-    if (campaignCode) {
-      conditions.push(eq(pledge.campaignCode, campaignCode));
-    }
-
+    if (campaignCode) conditions.push(eq(pledge.campaignCode, campaignCode));
     if (status) {
       switch (status) {
         case "fullyPaid":
@@ -172,30 +174,32 @@ export async function GET(request: NextRequest) {
           break;
       }
     }
-
-    if (startDate) {
-      conditions.push(sql`${pledge.pledgeDate} >= ${startDate}`);
-    }
-
-    if (endDate) {
-      conditions.push(sql`${pledge.pledgeDate} <= ${endDate}`);
-    }
+    if (startDate) conditions.push(sql`${pledge.pledgeDate} >= ${startDate}`);
+    if (endDate) conditions.push(sql`${pledge.pledgeDate} <= ${endDate}`);
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-    // Execute queries
+    // Create aliases for different contact joins
+    const primaryContact = alias(contact, "primary_contact");
+    const relatedContact = alias(contact, "related_contact");
+
+    console.log("=== PLEDGES API DEBUG: Starting query ===");
+
+    // Main query with proper joins
     const pledgesQuery = db
       .select({
+        // Pledge fields
         id: pledge.id,
         contactId: pledge.contactId,
         categoryId: pledge.categoryId,
+        relationshipId: pledge.relationshipId,
         pledgeDate: pledge.pledgeDate,
         description: pledge.description,
         originalAmount: pledge.originalAmount,
         currency: pledge.currency,
         originalAmountUsd: pledge.originalAmountUsd,
         exchangeRate: pledge.exchangeRate,
-        campaignCode: pledge.campaignCode, // Added campaign code to response
+        campaignCode: pledge.campaignCode,
         totalPaid: pledge.totalPaid,
         totalPaidUsd: pledge.totalPaidUsd,
         balance: pledge.balance,
@@ -204,27 +208,49 @@ export async function GET(request: NextRequest) {
         notes: pledge.notes,
         createdAt: pledge.createdAt,
         updatedAt: pledge.updatedAt,
-        // Calculate progress percentage
-        progressPercentage: sql<number>`
-          CASE 
-            WHEN ${pledge.originalAmount}::numeric = 0 THEN 0
-            ELSE ROUND((${pledge.totalPaid}::numeric / ${pledge.originalAmount}::numeric) * 100)
-          END
-        `.as("progressPercentage"),
-        // Add category name via subquery
-        categoryName: sql<string>`(
-          SELECT name FROM category WHERE id = ${pledge.categoryId}
-        )`.as("categoryName"),
-        categoryDescription: sql<string>`(
-          SELECT description FROM category WHERE id = ${pledge.categoryId}
-        )`.as("categoryDescription"),
+        
+        // Category fields
+        categoryName: category.name,
+        categoryDescription: category.description,
+        
+        // Primary contact fields
+        contactFirstName: primaryContact.firstName,
+        contactLastName: primaryContact.lastName,
+        contactEmail: primaryContact.email,
+        
+        // Relationship fields
+        relationshipType: relationships.relationshipType,
+        relationshipIsActive: relationships.isActive,
+        relationshipNotes: relationships.notes,
+        
+        // Related contact fields
+        relatedContactId: relatedContact.id,
+        relatedContactFirstName: relatedContact.firstName,
+        relatedContactLastName: relatedContact.lastName,
+        relatedContactEmail: relatedContact.email,
+        relatedContactPhone: relatedContact.phone,
       })
       .from(pledge)
+      .leftJoin(primaryContact, eq(pledge.contactId, primaryContact.id))
+      .leftJoin(category, eq(pledge.categoryId, category.id))
+      .leftJoin(relationships, eq(pledge.relationshipId, relationships.id))
+      .leftJoin(relatedContact, eq(relationships.relatedContactId, relatedContact.id))
       .where(whereClause)
       .orderBy(sql`${pledge.updatedAt} DESC`)
       .limit(limit)
       .offset(offset);
 
+    // Get scheduled amounts separately
+    const scheduledAmountsQuery = db
+      .select({
+        pledgeId: paymentPlan.pledgeId,
+        totalScheduled: sql<string>`COALESCE(SUM(${paymentPlan.totalPlannedAmount}::numeric), 0)`.as("totalScheduled"),
+      })
+      .from(paymentPlan)
+      .where(eq(paymentPlan.planStatus, "active"))
+      .groupBy(paymentPlan.pledgeId);
+
+    // Count query
     const countQuery = db
       .select({
         count: sql<number>`count(*)`.as("count"),
@@ -232,16 +258,108 @@ export async function GET(request: NextRequest) {
       .from(pledge)
       .where(whereClause);
 
-    const [pledges, totalCountResult] = await Promise.all([
+    // Execute all queries
+    const [pledges, scheduledAmounts, totalCountResult] = await Promise.all([
       pledgesQuery.execute(),
+      scheduledAmountsQuery.execute(),
       countQuery.execute(),
     ]);
+
+    console.log(`=== PLEDGES API DEBUG: Found ${pledges.length} pledges ===`);
+    
+    // Create a map of scheduled amounts for quick lookup
+    const scheduledMap = new Map();
+    scheduledAmounts.forEach((item) => {
+      scheduledMap.set(item.pledgeId, item.totalScheduled);
+    });
+
+    // Debug log first pledge with relationship data
+    if (pledges.length > 0) {
+      const firstPledge = pledges[0];
+      console.log("=== PLEDGES API DEBUG: First pledge ===", {
+        id: firstPledge.id,
+        relationshipId: firstPledge.relationshipId,
+        relationshipType: firstPledge.relationshipType,
+        relatedContactId: firstPledge.relatedContactId,
+        relatedContactName: `${firstPledge.relatedContactFirstName || ''} ${firstPledge.relatedContactLastName || ''}`.trim(),
+        hasRelationship: !!firstPledge.relationshipId,
+        hasRelatedContact: !!firstPledge.relatedContactId,
+      });
+    }
 
     const totalCount = Number(totalCountResult[0]?.count || 0);
     const totalPages = Math.ceil(totalCount / limit);
 
+    // Format the response with structured relationship data
+    const formattedPledges = pledges.map((pledgeItem) => {
+      const scheduledAmount = scheduledMap.get(pledgeItem.id) || "0";
+      const balanceNumeric = parseFloat(pledgeItem.balance || "0");
+      const scheduledNumeric = parseFloat(scheduledAmount);
+      const unscheduledAmount = Math.max(0, balanceNumeric - scheduledNumeric).toString();
+
+      const formattedPledge = {
+        ...pledgeItem,
+        // Add calculated amounts
+        scheduledAmount,
+        unscheduledAmount,
+        progressPercentage: pledgeItem.originalAmount 
+          ? Math.round((parseFloat(pledgeItem.totalPaid || "0") / parseFloat(pledgeItem.originalAmount)) * 100)
+          : 0,
+        
+        // Structure relationship data - THIS IS THE KEY PART
+        relationship: pledgeItem.relationshipId ? {
+          id: pledgeItem.relationshipId,
+          type: pledgeItem.relationshipType,
+          isActive: pledgeItem.relationshipIsActive,
+          notes: pledgeItem.relationshipNotes,
+          relatedContact: pledgeItem.relatedContactId ? {
+            id: pledgeItem.relatedContactId,
+            firstName: pledgeItem.relatedContactFirstName,
+            lastName: pledgeItem.relatedContactLastName,
+            email: pledgeItem.relatedContactEmail,
+            phone: pledgeItem.relatedContactPhone,
+            fullName: `${pledgeItem.relatedContactFirstName || ""} ${pledgeItem.relatedContactLastName || ""}`.trim(),
+          } : null,
+          label: `${pledgeItem.relationshipType || ""} - ${pledgeItem.relatedContactFirstName || ""} ${pledgeItem.relatedContactLastName || ""}`.trim(),
+        } : null,
+        
+        // Structure contact data
+        contact: {
+          id: pledgeItem.contactId,
+          firstName: pledgeItem.contactFirstName,
+          lastName: pledgeItem.contactLastName,
+          email: pledgeItem.contactEmail,
+          fullName: `${pledgeItem.contactFirstName || ""} ${pledgeItem.contactLastName || ""}`.trim(),
+        },
+        
+        // Structure category data
+        category: pledgeItem.categoryId ? {
+          id: pledgeItem.categoryId,
+          name: pledgeItem.categoryName,
+          description: pledgeItem.categoryDescription,
+        } : null,
+      };
+
+      return formattedPledge;
+    });
+
+    // Count pledges with relationships for debugging
+    const pledgesWithRelationships = formattedPledges.filter(p => p.relationship);
+    console.log(`=== PLEDGES API DEBUG: ${pledgesWithRelationships.length} pledges have relationships ===`);
+    
+    if (pledgesWithRelationships.length > 0) {
+      console.log("=== PLEDGES API DEBUG: Sample relationships ===", 
+        pledgesWithRelationships.slice(0, 2).map(p => ({
+          pledgeId: p.id,
+          relationshipType: p.relationship?.type,
+          relatedContactName: p.relationship?.relatedContact?.fullName,
+          isActive: p.relationship?.isActive
+        }))
+      );
+    }
+
     const response = {
-      pledges,
+      pledges: formattedPledges,
       pagination: {
         page,
         limit,
@@ -253,11 +371,12 @@ export async function GET(request: NextRequest) {
       filters: {
         contactId,
         categoryId,
+        relationshipId,
         search,
         status,
         startDate,
         endDate,
-        campaignCode, // Added campaign code to filters response
+        campaignCode,
       },
     };
 

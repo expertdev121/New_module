@@ -238,7 +238,6 @@ export const currencyEnum = pgEnum("currency", [
   "ZAR",
 ]);
 
-// *** NEW ENUMS FOR SOLICITOR SYSTEM ***
 export const solicitorStatusEnum = pgEnum("solicitor_status", [
   "active",
   "inactive",
@@ -251,13 +250,11 @@ export const bonusPaymentTypeEnum = pgEnum("bonus_payment_type", [
   "both",
 ]);
 
-// new enum for distribution type
 export const distributionTypeEnum = pgEnum("distribution_type", [
   "fixed",
   "custom",
 ]);
 
-// new enum for installment status
 export const installmentStatusEnum = pgEnum("installment_status", [
   "pending",
   "paid",
@@ -377,41 +374,66 @@ export const category = pgTable("category", {
 export type Category = typeof category.$inferSelect;
 export type NewCategory = typeof category.$inferInsert;
 
-export const pledge = pgTable("pledge", {
+export const categoryItem = pgTable("category_item", {
   id: serial("id").primaryKey(),
-  contactId: integer("contact_id")
-    .references(() => contact.id, { onDelete: "cascade" })
-    .notNull(),
-  categoryId: integer("category_id").references(() => category.id, {
-    onDelete: "set null",
-  }),
-  pledgeDate: date("pledge_date").notNull(),
-  description: text("description"),
-  originalAmount: numeric("original_amount", {
-    precision: 10,
-    scale: 2,
-  }).notNull(),
-  currency: currencyEnum("currency").notNull().default("USD"),
-  // These fields remain unchanged, to be kept in sync by backend logic
-  totalPaid: numeric("total_paid", { precision: 10, scale: 2 })
-    .default("0")
-    .notNull(),
-  balance: numeric("balance", { precision: 10, scale: 2 }).notNull(),
-  originalAmountUsd: numeric("original_amount_usd", {
-    precision: 10,
-    scale: 2,
-  }),
-  totalPaidUsd: numeric("total_paid_usd", { precision: 10, scale: 2 }).default(
-    "0"
-  ),
-  exchangeRate: numeric("exchange_rate", { precision: 10, scale: 2 }),
-  balanceUsd: numeric("balance_usd", { precision: 10, scale: 2 }),
-  campaignCode: text("campaign_code"),
-  isActive: boolean("is_active").default(true).notNull(),
-  notes: text("notes"),
+  name: text("name").notNull(),
+  categoryId: integer("category_id")
+    .notNull()
+    .references(() => category.id, { onDelete: "cascade" }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+export type CategoryItem = typeof categoryItem.$inferSelect;
+export type NewCategoryItem = typeof categoryItem.$inferInsert;
+
+export const pledge = pgTable(
+  "pledge", 
+  {
+    id: serial("id").primaryKey(),
+    contactId: integer("contact_id")
+      .references(() => contact.id, { onDelete: "cascade" })
+      .notNull(),
+    categoryId: integer("category_id").references(() => category.id, {
+      onDelete: "set null",
+    }),
+    // NEW FIELD: Optional relationship assignment
+    relationshipId: integer("relationship_id").references(() => relationships.id, {
+      onDelete: "set null",
+    }),
+    pledgeDate: date("pledge_date").notNull(),
+    description: text("description"),
+    originalAmount: numeric("original_amount", {
+      precision: 10,
+      scale: 2,
+    }).notNull(),
+    currency: currencyEnum("currency").notNull().default("USD"),
+    totalPaid: numeric("total_paid", { precision: 10, scale: 2 })
+      .default("0")
+      .notNull(),
+    balance: numeric("balance", { precision: 10, scale: 2 }).notNull(),
+    originalAmountUsd: numeric("original_amount_usd", {
+      precision: 10,
+      scale: 2,
+    }),
+    totalPaidUsd: numeric("total_paid_usd", { precision: 10, scale: 2 }).default(
+      "0"
+    ),
+    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 2 }),
+    balanceUsd: numeric("balance_usd", { precision: 10, scale: 2 }),
+    campaignCode: text("campaign_code"),
+    isActive: boolean("is_active").default(true).notNull(),
+    notes: text("notes"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    contactIdIdx: index("pledge_contact_id_idx").on(table.contactId),
+    categoryIdIdx: index("pledge_category_id_idx").on(table.categoryId),
+    relationshipIdIdx: index("pledge_relationship_id_idx").on(table.relationshipId),
+    pledgeDateIdx: index("pledge_pledge_date_idx").on(table.pledgeDate),
+  })
+);
 
 export type Pledge = typeof pledge.$inferSelect;
 export type NewPledge = typeof pledge.$inferInsert;
@@ -423,12 +445,13 @@ export const paymentPlan = pgTable(
     pledgeId: integer("pledge_id")
       .references(() => pledge.id, { onDelete: "cascade" })
       .notNull(),
-
+    // NEW FIELD: Optional relationship assignment
+    relationshipId: integer("relationship_id").references(() => relationships.id, {
+      onDelete: "set null",
+    }),
     planName: text("plan_name"),
     frequency: frequencyEnum("frequency").notNull(),
-    // NEW FIELD: Distribution type
     distributionType: distributionTypeEnum("distribution_type").notNull().default("fixed"),
-
     totalPlannedAmount: numeric("total_planned_amount", {
       precision: 10,
       scale: 2,
@@ -443,7 +466,6 @@ export const paymentPlan = pgTable(
     startDate: date("start_date").notNull(),
     endDate: date("end_date"),
     nextPaymentDate: date("next_payment_date"),
-
     installmentsPaid: integer("installments_paid").default(0).notNull(),
     totalPaid: numeric("total_paid", { precision: 10, scale: 2 })
       .default("0")
@@ -453,12 +475,10 @@ export const paymentPlan = pgTable(
       precision: 10,
       scale: 2,
     }).notNull(),
-
     planStatus: planStatusEnum("plan_status").notNull().default("active"),
     autoRenew: boolean("auto_renew").default(false).notNull(),
     remindersSent: integer("reminders_sent").default(0).notNull(),
     lastReminderDate: date("last_reminder_date"),
-
     isActive: boolean("is_active").default(true).notNull(),
     notes: text("notes"),
     internalNotes: text("internal_notes"),
@@ -467,6 +487,7 @@ export const paymentPlan = pgTable(
   },
   (table) => ({
     pledgeIdIdx: index("payment_plan_pledge_id_idx").on(table.pledgeId),
+    relationshipIdIdx: index("payment_plan_relationship_id_idx").on(table.relationshipId),
     statusIdx: index("payment_plan_status_idx").on(table.planStatus),
     nextPaymentIdx: index("payment_plan_next_payment_idx").on(
       table.nextPaymentDate
@@ -485,7 +506,6 @@ export const exchangeRate = pgTable(
     targetCurrency: currencyEnum("target_currency").notNull(),
     rate: numeric("rate", { precision: 18, scale: 6 }).notNull(),
     date: date("date").notNull(),
-
     createdAt: date("created_at").defaultNow().notNull(),
     updatedAt: date("updated_at").defaultNow().notNull(),
   },
@@ -504,8 +524,6 @@ export const exchangeRate = pgTable(
 export type ExchangeRate = typeof exchangeRate.$inferSelect;
 export type NewExchangeRate = typeof exchangeRate.$inferInsert;
 
-// NEW TABLES FOR SOLICITOR SYSTEM
-// Solicitor table - links to existing contact
 export const solicitor = pgTable(
   "solicitor",
   {
@@ -513,12 +531,12 @@ export const solicitor = pgTable(
     contactId: integer("contact_id")
       .references(() => contact.id, { onDelete: "cascade" })
       .notNull()
-      .unique(), // One-to-one with contact
-    solicitorCode: text("solicitor_code").unique(), // Optional unique identifier
+      .unique(),
+    solicitorCode: text("solicitor_code").unique(),
     status: solicitorStatusEnum("status").notNull().default("active"),
-    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }), // Default rate if no specific bonus rule
-    hireDate: date("hire_date"), // Made nullable by removing .notNull()
-    terminationDate: date("termination_date"), // Made nullable by removing .notNull()
+    commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }),
+    hireDate: date("hire_date"),
+    terminationDate: date("termination_date"),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -533,7 +551,6 @@ export const solicitor = pgTable(
 export type Solicitor = typeof solicitor.$inferSelect;
 export type NewSolicitor = typeof solicitor.$inferInsert;
 
-// Bonus rules for flexible commission structures
 export const bonusRule = pgTable(
   "bonus_rule",
   {
@@ -547,12 +564,12 @@ export const bonusRule = pgTable(
       scale: 2,
     }).notNull(),
     paymentType: bonusPaymentTypeEnum("payment_type").notNull().default("both"),
-    minAmount: numeric("min_amount", { precision: 10, scale: 2 }), // Minimum payment to qualify
-    maxAmount: numeric("max_amount", { precision: 10, scale: 2 }), // Maximum bonus cap
+    minAmount: numeric("min_amount", { precision: 10, scale: 2 }),
+    maxAmount: numeric("max_amount", { precision: 10, scale: 2 }),
     effectiveFrom: date("effective_from").notNull(),
-    effectiveTo: date("effective_to"), // NULL means ongoing
+    effectiveTo: date("effective_to"),
     isActive: boolean("is_active").default(true).notNull(),
-    priority: integer("priority").default(1).notNull(), // Higher number = higher priority if multiple rules apply
+    priority: integer("priority").default(1).notNull(),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -570,7 +587,6 @@ export const bonusRule = pgTable(
 export type BonusRule = typeof bonusRule.$inferSelect;
 export type NewBonusRule = typeof bonusRule.$inferInsert;
 
-// NEW TABLE: Installment Schedules
 export const installmentSchedule = pgTable(
   "installment_schedule",
   {
@@ -589,8 +605,6 @@ export const installmentSchedule = pgTable(
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
-    // paymentId foreign key: Removed direct 'references' to break circular dependency
-    // The relationship will be defined in the relations block below.
     paymentId: integer("payment_id"),
   },
   (table) => ({
@@ -601,7 +615,6 @@ export const installmentSchedule = pgTable(
       table.installmentDate
     ),
     statusIdx: index("installment_schedule_status_idx").on(table.status),
-    // Index for paymentId remains
     paymentIdIdx: index("installment_schedule_payment_id_idx").on(table.paymentId),
   })
 );
@@ -609,7 +622,6 @@ export const installmentSchedule = pgTable(
 export type InstallmentSchedule = typeof installmentSchedule.$inferSelect;
 export type NewInstallmentSchedule = typeof installmentSchedule.$inferInsert;
 
- // PAYMENT TABLE
 export const payment = pgTable(
   "payment",
   {
@@ -624,6 +636,16 @@ export const payment = pgTable(
       () => installmentSchedule.id,
       { onDelete: "set null" }
     ),
+    relationshipId: integer("relationship_id").references(() => relationships.id, {
+      onDelete: "set null",
+    }),
+    
+    // NEW FIELDS FOR THIRD-PARTY PAYMENTS
+    payerContactId: integer("payer_contact_id").references(() => contact.id, {
+      onDelete: "set null",
+    }),
+    isThirdPartyPayment: boolean("is_third_party_payment").default(false).notNull(),
+    
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     currency: currencyEnum("currency").notNull(),
     amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }),
@@ -634,8 +656,8 @@ export const payment = pgTable(
     exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4 }),
     paymentDate: date("payment_date").notNull(),
     receivedDate: date("received_date"),
-    checkDate: date("check_date"), // NEW FIELD
-    account: text("account"), // NEW FIELD
+    checkDate: date("check_date"),
+    account: text("account"),
     paymentMethod: paymentMethodEnum("payment_method").notNull(),
     methodDetail: text("method_detail"),
     paymentStatus: paymentStatusEnum("payment_status")
@@ -661,6 +683,9 @@ export const payment = pgTable(
   (table) => ({
     pledgeIdIdx: index("payment_pledge_id_idx").on(table.pledgeId),
     paymentPlanIdIdx: index("payment_payment_plan_id_idx").on(table.paymentPlanId),
+    relationshipIdIdx: index("payment_relationship_id_idx").on(table.relationshipId),
+    payerContactIdIdx: index("payment_payer_contact_id_idx").on(table.payerContactId),
+    isThirdPartyIdx: index("payment_is_third_party_idx").on(table.isThirdPartyPayment),
     paymentDateIdx: index("payment_payment_date_idx").on(table.paymentDate),
     statusIdx: index("payment_status_idx").on(table.paymentStatus),
     methodIdx: index("payment_method_idx").on(table.paymentMethod),
@@ -673,7 +698,6 @@ export const payment = pgTable(
 export type Payment = typeof payment.$inferSelect;
 export type NewPayment = typeof payment.$inferInsert;
 
-// PAYMENT_ALLOCATIONS TABLE
 export const paymentAllocations = pgTable(
   "payment_allocations",
   {
@@ -688,6 +712,12 @@ export const paymentAllocations = pgTable(
       () => installmentSchedule.id,
       { onDelete: "set null" }
     ),
+    
+    // NEW FIELD FOR THIRD-PARTY TRACKING
+    payerContactId: integer("payer_contact_id").references(() => contact.id, {
+      onDelete: "set null",
+    }),
+    
     allocatedAmount: numeric("allocated_amount", {
       precision: 10,
       scale: 2,
@@ -697,9 +727,9 @@ export const paymentAllocations = pgTable(
       precision: 10,
       scale: 2,
     }),
-    receiptNumber: text("receipt_number"), // NEW FIELD
-    receiptType: receiptTypeEnum("receipt_type"), // NEW FIELD
-    receiptIssued: boolean("receipt_issued").default(false).notNull(), // NEW FIELD
+    receiptNumber: text("receipt_number"),
+    receiptType: receiptTypeEnum("receipt_type"),
+    receiptIssued: boolean("receipt_issued").default(false).notNull(),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -707,6 +737,7 @@ export const paymentAllocations = pgTable(
   (table) => ({
     paymentIdIdx: index("payment_allocations_payment_id_idx").on(table.paymentId),
     pledgeIdIdx: index("payment_allocations_pledge_id_idx").on(table.pledgeId),
+    payerContactIdIdx: index("payment_allocations_payer_contact_id_idx").on(table.payerContactId),
     installmentScheduleIdIdx: index("payment_allocations_installment_schedule_id_idx").on(table.installmentScheduleId),
     uniqueAllocation: uniqueIndex("payment_allocations_unique").on(
       table.paymentId,
@@ -719,7 +750,6 @@ export const paymentAllocations = pgTable(
 export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
 export type NewPaymentAllocation = typeof paymentAllocations.$inferInsert;
 
-// Bonus calculations for audit trail and reporting
 export const bonusCalculation = pgTable(
   "bonus_calculation",
   {
@@ -727,7 +757,7 @@ export const bonusCalculation = pgTable(
     paymentId: integer("payment_id")
       .references(() => payment.id, { onDelete: "cascade" })
       .notNull()
-      .unique(), // One calculation per payment
+      .unique(),
     solicitorId: integer("solicitor_id")
       .references(() => solicitor.id, { onDelete: "cascade" })
       .notNull(),
@@ -782,7 +812,7 @@ export const auditLog = pgTable("audit_log", {
 export type AuditLog = typeof auditLog.$inferSelect;
 export type NewAuditLog = typeof auditLog.$inferInsert;
 
-// *** UPDATED RELATIONS (with new solicitor relations) ***
+// *** RELATIONS ***
 
 export const contactRelations = relations(contact, ({ many }) => ({
   contactRoles: many(contactRoles),
@@ -795,7 +825,6 @@ export const contactRelations = relations(contact, ({ many }) => ({
   }),
   pledges: many(pledge),
   auditLogs: many(auditLog),
-  // *** NEW RELATION ***
   solicitor: many(solicitor),
 }));
 
@@ -813,7 +842,7 @@ export const studentRolesRelations = relations(studentRoles, ({ one }) => ({
   }),
 }));
 
-export const relationshipsRelations = relations(relationships, ({ one }) => ({
+export const relationshipsRelations = relations(relationships, ({ one, many }) => ({
   contact: one(contact, {
     fields: [relationships.contactId],
     references: [contact.id],
@@ -824,10 +853,22 @@ export const relationshipsRelations = relations(relationships, ({ one }) => ({
     references: [contact.id],
     relationName: "relationTarget",
   }),
+  // NEW RELATIONS: Relationships can have pledges, payments, and payment plans assigned
+  pledges: many(pledge),
+  payments: many(payment),
+  paymentPlans: many(paymentPlan),
 }));
 
 export const categoryRelations = relations(category, ({ many }) => ({
   pledges: many(pledge),
+  categoryItems: many(categoryItem),
+}));
+
+export const categoryItemRelations = relations(categoryItem, ({ one }) => ({
+  category: one(category, {
+    fields: [categoryItem.categoryId],
+    references: [category.id],
+  }),
 }));
 
 export const pledgeRelations = relations(pledge, ({ one, many }) => ({
@@ -839,9 +880,13 @@ export const pledgeRelations = relations(pledge, ({ one, many }) => ({
     fields: [pledge.categoryId],
     references: [category.id],
   }),
+  // NEW RELATION: Pledge can be assigned to a relationship
+  relationship: one(relationships, {
+    fields: [pledge.relationshipId],
+    references: [relationships.id],
+  }),
   paymentPlans: many(paymentPlan),
-  payments: many(payment), // KEPT: Direct payment relation
-  // NEW RELATION: Pledge can have many allocations (for split payments)
+  payments: many(payment),
   paymentAllocations: many(paymentAllocations),
 }));
 
@@ -850,31 +895,32 @@ export const paymentPlanRelations = relations(paymentPlan, ({ one, many }) => ({
     fields: [paymentPlan.pledgeId],
     references: [pledge.id],
   }),
+  // NEW RELATION: Payment plan can be assigned to a relationship
+  relationship: one(relationships, {
+    fields: [paymentPlan.relationshipId],
+    references: [relationships.id],
+  }),
   payments: many(payment),
   installmentSchedules: many(installmentSchedule),
 }));
 
 export const installmentScheduleRelations = relations(
   installmentSchedule,
-  ({ one, many }) => ({ // ADDED 'many' for paymentAllocations
+  ({ one, many }) => ({
     paymentPlan: one(paymentPlan, {
       fields: [installmentSchedule.paymentPlanId],
       references: [paymentPlan.id],
     }),
-    // payment relation now defined here, as it was removed from pgTable definition
     payment: one(payment, {
       fields: [installmentSchedule.paymentId],
       references: [payment.id],
     }),
-    // NEW RELATION: An installment schedule can have multiple allocations
-    // (e.g., partial payments, or parts of different split payments)
     paymentAllocations: many(paymentAllocations),
   })
 );
 
-// *** UPDATED PAYMENT RELATIONS (with solicitor and paymentAllocations) ***
-export const paymentRelations = relations(payment, ({ one, many }) => ({ // ADDED 'many' for paymentAllocations
-  pledge: one(pledge, { // KEPT: Direct pledge relation
+export const paymentRelations = relations(payment, ({ one, many }) => ({
+  pledge: one(pledge, {
     fields: [payment.pledgeId],
     references: [pledge.id],
   }),
@@ -882,10 +928,21 @@ export const paymentRelations = relations(payment, ({ one, many }) => ({ // ADDE
     fields: [payment.paymentPlanId],
     references: [paymentPlan.id],
   }),
-  installmentSchedule: one(installmentSchedule, { // KEPT: Direct installment relation
+  installmentSchedule: one(installmentSchedule, {
     fields: [payment.installmentScheduleId],
     references: [installmentSchedule.id],
   }),
+  relationship: one(relationships, {
+    fields: [payment.relationshipId],
+    references: [relationships.id],
+  }),
+  
+  // NEW RELATION FOR PAYER CONTACT
+  payerContact: one(contact, {
+    fields: [payment.payerContactId],
+    references: [contact.id],
+  }),
+  
   solicitor: one(solicitor, {
     fields: [payment.solicitorId],
     references: [solicitor.id],
@@ -898,12 +955,9 @@ export const paymentRelations = relations(payment, ({ one, many }) => ({ // ADDE
     fields: [payment.id],
     references: [bonusCalculation.paymentId],
   }),
-  // NEW RELATION: A payment can have multiple allocations
   paymentAllocations: many(paymentAllocations),
 }));
 
-
-// *** NEW SOLICITOR RELATIONS ***
 export const solicitorRelations = relations(solicitor, ({ one, many }) => ({
   contact: one(contact, {
     fields: [solicitor.contactId],
@@ -941,14 +995,6 @@ export const bonusCalculationRelations = relations(
   })
 );
 
-export const auditLogRelations = relations(auditLog, ({ one }) => ({
-  changedByContact: one(contact, {
-    fields: [auditLog.changedBy],
-    references: [contact.id],
-  }),
-}));
-
-// NEW RELATIONS for paymentAllocations
 export const paymentAllocationsRelations = relations(
   paymentAllocations,
   ({ one }) => ({
@@ -966,3 +1012,12 @@ export const paymentAllocationsRelations = relations(
     }),
   })
 );
+
+export const exchangeRateRelations = relations(exchangeRate, ({ }) => ({}));
+
+export const auditLogRelations = relations(auditLog, ({ one }) => ({
+  changedByContact: one(contact, {
+    fields: [auditLog.changedBy],
+    references: [contact.id],
+  }),
+}));

@@ -3,7 +3,7 @@
 "use client";
 
 import type React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -54,7 +54,8 @@ import {
   useUpdatePledgeMutation,
 } from "@/lib/query/pledge/usePledgeQuery";
 import PaymentDialog from "./payment-form";
-import { getCategoryById, STATIC_CATEGORIES } from "@/lib/data/categories";
+import { getCategoryItems } from "@/lib/data/categories";
+import { useRelationshipDropdownQuery } from "@/lib/query/relationships/useRelationshipQuery";
 
 import {
   Card,
@@ -62,7 +63,6 @@ import {
   CardHeader,
   CardTitle,
   CardDescription,
-  CardFooter,
 } from "@/components/ui/card";
 
 const supportedCurrencies = [
@@ -76,6 +76,41 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
+// Static categories for display (you'll need to replace this with your actual categories)
+const STATIC_CATEGORIES = [
+  { id: 1, name: "Donation", description: "General donations" },
+  { id: 2, name: "Tuition", description: "Educational tuition fees" },
+  { id: 3, name: "Miscellaneous", description: "Miscellaneous fees and charges" },
+  // Add your other categories here
+];
+
+// Define types for relationship data
+interface RelatedContact {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email?: string;
+  phone?: string;
+}
+
+interface RelationshipData {
+  id: number;
+  relationshipType: string;
+  relatedContact?: RelatedContact;
+  isActive: boolean;
+  notes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface RelationshipOption {
+  id: number;
+  label: string;
+  relationshipType: string;
+  relatedContactName: string;
+  relatedContactEmail?: string;
+}
+
 // Helper function to round amounts to 2 decimal places
 const roundToTwoDecimals = (value: number): number => {
   return Math.round((value + Number.EPSILON) * 100) / 100;
@@ -84,6 +119,7 @@ const roundToTwoDecimals = (value: number): number => {
 const pledgeSchema = z.object({
   contactId: z.number().positive("Contact ID is required"),
   categoryId: z.number().positive("Please select a category").optional(),
+  relationshipId: z.number().positive("Please select a relationship").optional(),
   description: z.string().min(1, "Description is required"),
   pledgeDate: z.string().min(1, "Pledge date is required"),
   currency: z.enum(supportedCurrencies, {
@@ -112,6 +148,7 @@ interface PledgeData {
   id?: number;
   contactId: number;
   categoryId?: number;
+  relationshipId?: number;
   description: string;
   pledgeDate: string;
   currency: string;
@@ -126,11 +163,11 @@ interface PledgeDialogProps {
   contactId: number;
   contactName?: string;
   mode?: "create" | "edit";
-  pledgeData?: PledgeData; // For edit mode
+  pledgeData?: PledgeData;
   onPledgeCreated?: (pledgeId: number) => void;
   onPledgeCreatedAndPay?: (pledgeId: number) => void;
   onPledgeUpdated?: (pledgeId: number) => void;
-  trigger?: React.ReactNode; // Custom trigger element
+  trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -153,6 +190,14 @@ export default function PledgeDialog({
 
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const [itemSelectionPopoverOpen, setItemSelectionPopoverOpen] = useState(false);
+  
+  // Relationship-related state
+  const [relationshipPopoverOpen, setRelationshipPopoverOpen] = useState(false);
+  const [relationshipSearch, setRelationshipSearch] = useState("");
+  
+  // State for category items
+  const [categoryItems, setCategoryItems] = useState<string[]>([]);
+  const [loadingCategoryItems, setLoadingCategoryItems] = useState(false);
 
   const donationCategory = STATIC_CATEGORIES.find(
     (cat) => cat.name.toLowerCase() === "donation"
@@ -168,11 +213,46 @@ export default function PledgeDialog({
 
   const isEditMode = mode === "edit";
 
+  // Dynamic relationship loading
+  const {
+    data: relationshipsData,
+    isLoading: relationshipLoading,
+    error: relationshipError,
+    refetch: refetchRelationships,
+  } = useRelationshipDropdownQuery(contactId);
+
+  // Memoized relationship options for performance with proper typing
+  const relationshipOptions = useMemo((): RelationshipOption[] => {
+    if (!relationshipsData?.relationships) return [];
+    
+    return relationshipsData.relationships.map((rel: RelationshipData): RelationshipOption => ({
+      id: rel.id,
+      label: `${rel.relationshipType} - ${rel.relatedContact?.firstName || ''} ${rel.relatedContact?.lastName || ''}`.trim(),
+      relationshipType: rel.relationshipType,
+      relatedContactName: `${rel.relatedContact?.firstName || ''} ${rel.relatedContact?.lastName || ''}`.trim(),
+      relatedContactEmail: rel.relatedContact?.email,
+    }));
+  }, [relationshipsData]);
+
+  // Filter relationships based on search
+  const filteredRelationshipOptions = useMemo((): RelationshipOption[] => {
+    if (!relationshipSearch) return relationshipOptions;
+    
+    const searchLower = relationshipSearch.toLowerCase();
+    return relationshipOptions.filter((rel: RelationshipOption) =>
+      rel.label.toLowerCase().includes(searchLower) ||
+      rel.relationshipType.toLowerCase().includes(searchLower) ||
+      rel.relatedContactName.toLowerCase().includes(searchLower) ||
+      (rel.relatedContactEmail && rel.relatedContactEmail.toLowerCase().includes(searchLower))
+    );
+  }, [relationshipOptions, relationshipSearch]);
+
   const getDefaultValues = (): PledgeFormData => {
     if (isEditMode && pledgeData) {
       return {
         contactId: pledgeData.contactId || contactId,
         categoryId: pledgeData.categoryId,
+        relationshipId: pledgeData.relationshipId,
         currency: pledgeData.currency as (typeof supportedCurrencies)[number],
         exchangeRate: roundToTwoDecimals(Math.max(pledgeData.exchangeRate || 1, 0.0001)),
         originalAmount: roundToTwoDecimals(Math.max(pledgeData.originalAmount || 1, 0.01)),
@@ -187,6 +267,7 @@ export default function PledgeDialog({
     return {
       contactId,
       categoryId: defaultCategoryId || undefined,
+      relationshipId: undefined,
       currency: "USD" as const,
       exchangeRate: 1,
       originalAmount: 0,
@@ -216,6 +297,23 @@ export default function PledgeDialog({
   const createPledgeAndPayMutation = useCreatePledgeAndPayMutation();
   const updatePledgeMutation = useUpdatePledgeMutation();
 
+  // Function to fetch category items from API
+  const fetchCategoryItems = async (categoryId: number) => {
+    if (!categoryId) return;
+    
+    setLoadingCategoryItems(true);
+    try {
+      const items = await getCategoryItems(categoryId);
+      setCategoryItems(items);
+    } catch (error) {
+      console.error('Error fetching category items:', error);
+      setCategoryItems([]);
+      toast.error('Failed to load category items');
+    } finally {
+      setLoadingCategoryItems(false);
+    }
+  };
+
   useEffect(() => {
     if (!contactId || contactId <= 0) {
       console.error("Invalid contactId prop:", contactId);
@@ -236,11 +334,25 @@ export default function PledgeDialog({
       form.reset(values);
       setSelectedCategoryId(pledgeData.categoryId || null);
 
+      // Fetch category items if category is selected
+      if (pledgeData.categoryId) {
+        fetchCategoryItems(pledgeData.categoryId);
+      }
+
       setTimeout(() => {
         form.trigger();
       }, 100);
     }
   }, [isEditMode, pledgeData, open, contactId]);
+
+  // Fetch category items when category changes
+  useEffect(() => {
+    if (selectedCategoryId) {
+      fetchCategoryItems(selectedCategoryId);
+    } else {
+      setCategoryItems([]);
+    }
+  }, [selectedCategoryId]);
 
   useEffect(() => {
     if (
@@ -258,9 +370,7 @@ export default function PledgeDialog({
     const exchangeRate = form.getValues("exchangeRate");
     if (watchedOriginalAmount && exchangeRate) {
       const usdAmount = watchedOriginalAmount * exchangeRate;
-      // Round to 2 decimal places before setting
       const roundedUsdAmount = roundToTwoDecimals(usdAmount);
-      // Only update if the value actually changed to avoid unnecessary re-renders
       const currentUsdAmount = form.getValues("originalAmountUsd");
       if (Math.abs(currentUsdAmount - roundedUsdAmount) > 0.001) {
         form.setValue("originalAmountUsd", roundedUsdAmount, {
@@ -270,7 +380,7 @@ export default function PledgeDialog({
     }
   }, [watchedOriginalAmount, form.watch("exchangeRate"), form]);
 
-  const handleCategoryChange = (categoryId: string) => {
+  const handleCategoryChange = async (categoryId: string) => {
     const id = parseInt(categoryId);
     form.setValue("categoryId", id, { shouldValidate: true });
     setSelectedCategoryId(id);
@@ -278,11 +388,20 @@ export default function PledgeDialog({
     if (!isEditMode) {
       form.setValue("description", "", { shouldValidate: true });
     }
+    
+    // Fetch items for the new category
+    await fetchCategoryItems(id);
   };
 
   const handleItemSelect = (item: string) => {
     form.setValue("description", item, { shouldValidate: true });
     setItemSelectionPopoverOpen(false);
+  };
+
+  // Handle relationship selection
+  const handleRelationshipSelect = (relationshipId: number) => {
+    form.setValue("relationshipId", relationshipId, { shouldValidate: true });
+    setRelationshipPopoverOpen(false);
   };
 
   const isDonationCategory = selectedCategoryId
@@ -302,7 +421,6 @@ export default function PledgeDialog({
         return;
       }
 
-      // Round all amounts before submission
       const roundedOriginalAmount = roundToTwoDecimals(data.originalAmount);
       const roundedOriginalAmountUsd = roundToTwoDecimals(data.originalAmountUsd);
       const roundedExchangeRate = roundToTwoDecimals(data.exchangeRate);
@@ -310,6 +428,7 @@ export default function PledgeDialog({
       const submissionData = {
         contactId: data.contactId,
         categoryId: data.categoryId,
+        relationshipId: data.relationshipId,
         pledgeDate: data.pledgeDate,
         description: data.description,
         originalAmount: roundedOriginalAmount,
@@ -359,6 +478,8 @@ export default function PledgeDialog({
     const defaultValues = getDefaultValues();
     form.reset(defaultValues);
     setSelectedCategoryId(defaultCategoryId);
+    setCategoryItems([]);
+    setRelationshipSearch("");
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -368,7 +489,6 @@ export default function PledgeDialog({
     }
   };
 
-  // Handle amount input changes with rounding on blur
   const handleAmountChange = (field: any, value: string) => {
     const numValue = parseFloat(value) || 0;
     field.onChange(numValue);
@@ -384,7 +504,12 @@ export default function PledgeDialog({
     createPledgeAndPayMutation.isPending ||
     updatePledgeMutation.isPending;
 
-  const selectedCategory = selectedCategoryId ? getCategoryById(selectedCategoryId) : null;
+  const selectedCategory = selectedCategoryId ? 
+    STATIC_CATEGORIES.find(cat => cat.id === selectedCategoryId) : null;
+
+  // Get selected relationship info
+  const selectedRelationship = form.watch("relationshipId") ? 
+    relationshipOptions.find((rel: RelationshipOption) => rel.id === form.watch("relationshipId")) : null;
 
   const defaultTrigger = isEditMode ? (
     <Button size="sm" variant="outline" aria-label="Edit Pledge">
@@ -501,6 +626,133 @@ export default function PledgeDialog({
                     )}
                   />
 
+                  {/* Dynamic Relationship Field */}
+                  <FormField
+                    control={form.control}
+                    name="relationshipId"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Related To (Optional)</FormLabel>
+                        <Popover
+                          open={relationshipPopoverOpen}
+                          onOpenChange={setRelationshipPopoverOpen}
+                        >
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground",
+                                  form.formState.errors.relationshipId && "border-red-500"
+                                )}
+                                aria-haspopup="listbox"
+                                aria-expanded={relationshipPopoverOpen}
+                                disabled={relationshipLoading}
+                              >
+                                {field.value
+                                  ? relationshipOptions.find(
+                                      (rel: RelationshipOption) => rel.id === field.value
+                                    )?.label
+                                  : relationshipLoading 
+                                    ? "Loading relationships..." 
+                                    : relationshipOptions.length === 0
+                                    ? "No relationships found"
+                                    : "Select relationship (optional)"}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0">
+                            <Command>
+                              <CommandInput
+                                placeholder="Search relationships..."
+                                className="h-9"
+                                value={relationshipSearch}
+                                onValueChange={setRelationshipSearch}
+                              />
+                              <CommandList className="max-h-[200px]">
+                                <CommandEmpty>
+                                  {relationshipLoading 
+                                    ? "Loading..." 
+                                    : relationshipSearch 
+                                    ? "No relationships found matching your search."
+                                    : "No relationships found for this contact."}
+                                </CommandEmpty>
+                                <CommandGroup>
+                                  <CommandItem
+                                    value="none"
+                                    onSelect={() => {
+                                      form.setValue("relationshipId", undefined, {
+                                        shouldValidate: true,
+                                      });
+                                      setRelationshipPopoverOpen(false);
+                                    }}
+                                  >
+                                    <span className="text-muted-foreground">No relationship</span>
+                                    <Check
+                                      className={cn(
+                                        "ml-auto h-4 w-4",
+                                        !field.value ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                  </CommandItem>
+                                  {filteredRelationshipOptions.map((rel: RelationshipOption) => (
+                                    <CommandItem
+                                      key={rel.id}
+                                      value={rel.label}
+                                      onSelect={() => {
+                                        handleRelationshipSelect(rel.id);
+                                      }}
+                                    >
+                                      <div className="flex flex-col">
+                                        <span>{rel.label}</span>
+                                        {rel.relatedContactEmail && (
+                                          <span className="text-xs text-muted-foreground">
+                                            {rel.relatedContactEmail}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <Check
+                                        className={cn(
+                                          "ml-auto h-4 w-4 shrink-0",
+                                          rel.id === field.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormDescription>
+                          Optional: Assign this pledge to a specific relationship.
+                          {selectedRelationship && (
+                            <span className="block text-sm text-blue-600 mt-1">
+                              Selected: {selectedRelationship.relationshipType} - {selectedRelationship.relatedContactName}
+                            </span>
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                        {relationshipError && (
+                          <div className="text-sm text-red-600">
+                            Error loading relationships. <button 
+                              type="button" 
+                              onClick={() => refetchRelationships()} 
+                              className="underline"
+                            >
+                              Retry
+                            </button>
+                          </div>
+                        )}
+                      </FormItem>
+                    )}
+                  />
+
                   {/* Campaign Code for Donation Category */}
                   {isDonationCategory && (
                     <FormField
@@ -544,7 +796,7 @@ export default function PledgeDialog({
                           />
                         </FormControl>
                         <FormMessage />
-                        {selectedCategory && selectedCategory.items.length > 0 && (
+                        {selectedCategory && categoryItems.length > 0 && (
                           <div className="mt-2">
                             <FormLabel className="text-sm text-muted-foreground">
                               Or select from {selectedCategory.name} items:
@@ -560,8 +812,12 @@ export default function PledgeDialog({
                                   className="w-full justify-between mt-1"
                                   aria-haspopup="listbox"
                                   aria-expanded={itemSelectionPopoverOpen}
+                                  disabled={loadingCategoryItems}
                                 >
-                                  Select item from {selectedCategory.name}
+                                  {loadingCategoryItems 
+                                    ? "Loading items..." 
+                                    : `Select item from ${selectedCategory.name}`
+                                  }
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </PopoverTrigger>
@@ -574,7 +830,7 @@ export default function PledgeDialog({
                                   <CommandList className="max-h-[200px]">
                                     <CommandEmpty>No items found.</CommandEmpty>
                                     <CommandGroup>
-                                      {selectedCategory.items.map((item, index) => (
+                                      {categoryItems.map((item, index) => (
                                         <CommandItem
                                           key={index}
                                           value={item}
