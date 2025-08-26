@@ -21,7 +21,23 @@ function normalizeEmail(email: string | null | undefined): string | null {
   return email.toLowerCase().trim();
 }
 
-// Validation schema (your full fields)
+// Flatten keys like 'customData[firstname]' to 'firstname'
+function flattenCustomDataKeys(data: Record<string, string>): Record<string, string> {
+  const flatData: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    const customDataMatch = key.match(/^customData\[(.+)\]$/);
+    if (customDataMatch) {
+      flatData[customDataMatch[1]] = value;
+    } else {
+      flatData[key] = value;
+    }
+  }
+
+  return flatData;
+}
+
+// Schema for webhook data (flat keys)
 const webhookSchema = z.object({
   contact_id: z.string().optional(),
   firstname: z.string().min(1, "First name is required"),
@@ -44,7 +60,7 @@ const webhookSchema = z.object({
   customData: z.string().optional(),
 }).catchall(z.string().optional());
 
-// Upsert logic unchanged
+// Upsert contact by firstName + lastName only
 async function handleContactUpsert(data: {
   firstName: string;
   lastName: string;
@@ -60,12 +76,7 @@ async function handleContactUpsert(data: {
   const existingContact = await db
     .select()
     .from(contact)
-    .where(
-      and(
-        eq(contact.firstName, firstName),
-        eq(contact.lastName, lastName)
-      )
-    )
+    .where(and(eq(contact.firstName, firstName), eq(contact.lastName, lastName)))
     .limit(1);
 
   if (existingContact.length > 0) {
@@ -76,9 +87,7 @@ async function handleContactUpsert(data: {
       displayName?: string | null;
       title?: string | null;
       updatedAt?: Date;
-    } = {
-      updatedAt: new Date(),
-    };
+    } = { updatedAt: new Date() };
 
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
@@ -86,11 +95,13 @@ async function handleContactUpsert(data: {
     if (displayName !== undefined) updateData.displayName = displayName.trim() || null;
     if (title !== undefined) updateData.title = title.trim() || null;
 
-    const [updatedContact] = await db
+    const updatedContacts = await db
       .update(contact)
       .set(updateData)
       .where(eq(contact.id, existingContact[0].id))
       .returning();
+
+    const updatedContact = updatedContacts[0];
 
     return {
       contact: {
@@ -101,7 +112,7 @@ async function handleContactUpsert(data: {
       action: 'updated' as const,
     };
   } else {
-    const [newContact] = await db
+    const newContacts = await db
       .insert(contact)
       .values({
         firstName,
@@ -113,6 +124,8 @@ async function handleContactUpsert(data: {
         title: title?.trim() || null,
       })
       .returning();
+
+    const newContact = newContacts[0];
 
     return {
       contact: {
@@ -133,81 +146,67 @@ export async function POST(request: NextRequest) {
     const contentType = request.headers.get('content-type') || '';
     console.log('Content-Type:', contentType);
 
-    // Try extracting data from URL query parameters first
+    // Check query params first
     const url = new URL(request.url);
-    const queryParams = Object.fromEntries(url.searchParams.entries());
+    let data: Record<string, string> = Object.fromEntries(url.searchParams.entries());
+    let dataSource = 'query_parameters';
 
-    let data: Record<string, string> = {};
-    let dataSource = '';
-
-    if (Object.keys(queryParams).length) {
-      data = queryParams;
-      dataSource = 'query_parameters';
-      console.log('Using query parameters:', data);
-    } else if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data') || contentType === '') {
-      // Handle form data
-      try {
+    // If no query params, parse request body based on content-type
+    if (!Object.keys(data).length) {
+      if (contentType.includes('application/x-www-form-urlencoded') || contentType.includes('multipart/form-data') || contentType === '') {
         const formData = await request.formData();
-        for (const [key, val] of formData.entries()) {
-          data[key] = val.toString();
+        data = {};
+        for (const [k, v] of formData.entries()) {
+          data[k] = v.toString();
         }
         dataSource = 'form_data';
-        console.log('Using form data:', data);
-      } catch (e) {
-        console.error('Error reading form data:', e);
-      }
-    } else if (contentType.includes('application/json')) {
-      // Handle JSON data
-      try {
+      } else if (contentType.includes('application/json')) {
         const json = await request.json();
         data = Object.fromEntries(Object.entries(json).map(([k, v]) => [k, String(v)]));
         dataSource = 'json_body';
-        console.log('Using JSON body:', data);
-      } catch (e) {
-        console.error('Error parsing JSON body:', e);
-      }
-    } else {
-      // Fallback - try to parse as urlencoded text
-      try {
+      } else {
         const text = await request.text();
         if (text.trim()) {
           const params = new URLSearchParams(text);
-          for (const [key, val] of params.entries()) {
-            data[key] = val;
+          data = {};
+          for (const [k, v] of params.entries()) {
+            data[k] = v;
           }
           dataSource = 'url_encoded_text';
-          console.log('Using URL encoded text body:', data);
         }
-      } catch (e) {
-        console.error('Fallback parsing error:', e);
       }
     }
 
+    console.log('Received data:', data, 'Source:', dataSource);
+
     if (!Object.keys(data).length) {
-      return NextResponse.json({
-        success: false,
-        message: 'No data found in request',
-        code: 'NO_DATA',
-      }, { status: 400 });
+      return NextResponse.json({ success: false, message: 'No data found', code: 'NO_DATA' }, { status: 400 });
     }
 
-    // Validate the received data
+    // Flatten keys like customData[firstname] to firstname
+    data = flattenCustomDataKeys(data);
+
+    // Validate data
     const parsed = webhookSchema.safeParse(data);
     if (!parsed.success) {
-      return NextResponse.json({
-        success: false,
-        message: 'Data validation failed',
-        code: 'VALIDATION_ERROR',
-        errors: parsed.error.errors.map(e => ({
-          field: e.path.join('.'),
-          message: e.message,
-          received: data[e.path[0] as string],
-        })),
-        debug: { data, dataSource },
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          success: false,
+          message: 'Data validation failed',
+          code: 'VALIDATION_ERROR',
+          errors: parsed.error.errors.map(e => ({
+            field: e.path.join('.'),
+            message: e.message,
+            received: data[e.path[0] as string],
+          })),
+          debug: { data, dataSource },
+        },
+        { status: 400 }
+      );
     }
 
     const validData = parsed.data;
+
     const firstName = validData.firstname?.trim();
     const lastName = validData.lastname?.trim();
     const displayName = validData.displayname?.trim();
@@ -246,15 +245,18 @@ export async function POST(request: NextRequest) {
       source: dataSource,
       action: result.action,
     }, { status: result.isNew ? 201 : 200 });
-    
-  } catch (err: unknown) {
-    console.error('Unexpected error:', err);
-    return NextResponse.json({
-      success: false,
-      message: 'Unexpected server error',
-      code: 'SERVER_ERROR',
-      debug: process.env.NODE_ENV === 'development' ? { error: getErrorMessage(err) } : undefined,
-    }, { status: 500 });
+
+  } catch (error: unknown) {
+    console.error('Unexpected error:', error);
+    return NextResponse.json(
+      {
+        success: false,
+        message: 'Unexpected server error',
+        code: 'SERVER_ERROR',
+        debug: process.env.NODE_ENV === 'development' ? { error: getErrorMessage(error) } : undefined,
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -263,11 +265,12 @@ export async function GET() {
     success: true,
     message: 'Webhook endpoint is active',
     methods: ['POST'],
-    note: 'Accepts data via URL query parameters, form data, or JSON body. Only firstname and lastname are required. Performs contact upsert by name.',
+    note: 'Accepts data via URL query parameters, form data, or JSON body. Only firstname and lastname required. Upserts contact by name.',
     example: {
       queryParams: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com',
-      formData: 'POST with form data containing firstname, lastname, email, etc.',
-      jsonBody: 'POST with JSON body: {"firstname": "John", "lastname": "Doe", "email": "john@test.com"}'
+      formData: 'POST form data: firstname, lastname, email, etc.',
+      jsonBody: 'POST JSON body: {"firstname": "John", "lastname": "Doe", "email": "john@test.com"}',
     }
   }, { status: 200 });
 }
+
