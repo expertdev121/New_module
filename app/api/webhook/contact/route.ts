@@ -72,7 +72,7 @@ const webhookSchema = z.object({
 }).catchall(z.string().optional());
 
 // Extract names with fallback logic
-function extractNames(data: Record<string, any>): { firstName: string | null; lastName: string | null } {
+function extractNames(data: Record<string, string | undefined>): { firstName: string | null; lastName: string | null } {
   // Try various field combinations
   let firstName = normalizeName(data.firstname || data.first_name);
   let lastName = normalizeName(data.lastname || data.last_name);
