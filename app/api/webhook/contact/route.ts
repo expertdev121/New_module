@@ -21,6 +21,15 @@ function normalizeEmail(email: string | null | undefined): string | null {
   return email.toLowerCase().trim();
 }
 
+// Helper: normalize name (handle dashes, empty strings, etc.)
+function normalizeName(name: string | null | undefined): string | null {
+  if (!name?.trim()) return null;
+  const cleaned = name.trim();
+  // If it's just a dash or other placeholder, return null
+  if (cleaned === '-' || cleaned === '_' || cleaned === 'N/A' || cleaned === 'n/a') return null;
+  return cleaned;
+}
+
 // Flatten keys like 'customData[firstname]' to 'firstname'
 function flattenCustomDataKeys(data: Record<string, string>): Record<string, string> {
   const flatData: Record<string, string> = {};
@@ -37,11 +46,13 @@ function flattenCustomDataKeys(data: Record<string, string>): Record<string, str
   return flatData;
 }
 
-// Schema for webhook data (flat keys)
+// Schema for webhook data (flat keys) - more flexible validation
 const webhookSchema = z.object({
   contact_id: z.string().optional(),
-  firstname: z.string().min(1, "First name is required"),
-  lastname: z.string().min(1, "Last name is required"),
+  firstname: z.string().optional(),
+  lastname: z.string().optional(),
+  first_name: z.string().optional(), // Alternative field name
+  last_name: z.string().optional(),  // Alternative field name
   displayname: z.string().optional(),
   title: z.string().optional(),
   full_name: z.string().optional(),
@@ -59,6 +70,45 @@ const webhookSchema = z.object({
   attributionSource: z.string().optional(),
   customData: z.string().optional(),
 }).catchall(z.string().optional());
+
+// Extract names with fallback logic
+function extractNames(data: Record<string, string | undefined>): { firstName: string | null; lastName: string | null } {
+  // Try various field combinations
+  let firstName = normalizeName(data.firstname || data.first_name);
+  let lastName = normalizeName(data.lastname || data.last_name);
+
+  // If we have a full_name but missing first/last, try to split it
+  if ((!firstName || !lastName) && data.full_name) {
+    const fullName = data.full_name.trim();
+    const nameParts = fullName.split(' ').filter((part: string) => part.trim() && part !== '-');
+    
+    if (nameParts.length >= 2) {
+      if (!firstName) firstName = nameParts[0];
+      if (!lastName) lastName = nameParts.slice(1).join(' ');
+    } else if (nameParts.length === 1) {
+      // If only one name part, decide based on what's missing
+      if (!firstName && !lastName) {
+        // Default to last name for single names (common for companies)
+        lastName = nameParts[0];
+        firstName = 'N/A';
+      } else if (!firstName) {
+        firstName = nameParts[0];
+      } else if (!lastName) {
+        lastName = nameParts[0];
+      }
+    }
+  }
+
+  // Final fallback - if we still don't have both names
+  if (!firstName && lastName) {
+    firstName = 'N/A'; // Placeholder for missing first name
+  }
+  if (!lastName && firstName) {
+    lastName = 'N/A'; // Placeholder for missing last name
+  }
+
+  return { firstName, lastName };
+}
 
 // Upsert contact by firstName + lastName only
 async function handleContactUpsert(data: {
@@ -92,8 +142,8 @@ async function handleContactUpsert(data: {
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
     if (address !== undefined) updateData.address = address;
-    if (displayName !== undefined) updateData.displayName = displayName.trim() || null;
-    if (title !== undefined) updateData.title = title.trim() || null;
+    if (displayName !== undefined) updateData.displayName = displayName?.trim() || null;
+    if (title !== undefined) updateData.title = title?.trim() || null;
 
     const updatedContacts = await db
       .update(contact)
@@ -207,22 +257,27 @@ export async function POST(request: NextRequest) {
 
     const validData = parsed.data;
 
-    const firstName = validData.firstname?.trim();
-    const lastName = validData.lastname?.trim();
+    // Extract names with intelligent fallback
+    const { firstName, lastName } = extractNames(validData);
+
+    if (!firstName || !lastName) {
+      return NextResponse.json({
+        success: false,
+        message: 'Unable to extract valid first name and last name from the provided data',
+        code: 'MISSING_REQUIRED_FIELDS',
+        received: { firstName, lastName, full_name: validData.full_name },
+        debug: { 
+          availableFields: Object.keys(validData),
+          dataSource 
+        },
+      }, { status: 400 });
+    }
+
     const displayName = validData.displayname?.trim();
     const title = validData.title?.trim();
     const email = normalizeEmail(validData.email);
     const phone = normalizePhone(validData.phone);
     const address = validData.address?.trim() || null;
-
-    if (!firstName || !lastName) {
-      return NextResponse.json({
-        success: false,
-        message: 'First name and last name are required',
-        code: 'MISSING_REQUIRED_FIELDS',
-        received: { firstName, lastName },
-      }, { status: 400 });
-    }
 
     const result = await handleContactUpsert({
       firstName,
@@ -265,7 +320,7 @@ export async function GET() {
     success: true,
     message: 'Webhook endpoint is active',
     methods: ['POST'],
-    note: 'Accepts data via URL query parameters, form data, or JSON body. Only firstname and lastname required. Upserts contact by name.',
+    note: 'Accepts data via URL query parameters, form data, or JSON body. Extracts names intelligently from various field combinations.',
     example: {
       queryParams: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com',
       formData: 'POST form data: firstname, lastname, email, etc.',
@@ -273,4 +328,3 @@ export async function GET() {
     }
   }, { status: 200 });
 }
-
