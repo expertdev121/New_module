@@ -265,8 +265,9 @@ export const installmentStatusEnum = pgEnum("installment_status", [
 export const contact = pgTable("contact", {
   id: serial("id").primaryKey(),
   firstName: text("first_name").notNull(),
+  displayName: text("display_name"),
   lastName: text("last_name").notNull(),
-  email: text("email").unique(),
+  email: text("email"),
   phone: text("phone"),
   title: text("title"),
   gender: genderEnum("gender"),

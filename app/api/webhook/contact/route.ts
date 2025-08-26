@@ -32,9 +32,10 @@ const webhookQuerySchema = z.object({
   contact_id: z.string().optional(),
   first_name: z.string().min(1, "First name is required"),
   last_name: z.string().min(1, "Last name is required"),
+  display_name: z.string().optional(),
   full_name: z.string().optional(),
-  email: z.string().email("Invalid email format").optional().or(z.literal("")), // Allow empty string
-  phone: z.string().optional().or(z.literal("")), // Allow empty string for phone too
+  email: z.string().email("Invalid email format").optional().or(z.literal("")),
+  phone: z.string().optional().or(z.literal("")),
   tags: z.string().optional(),
   country: z.string().optional(),
   date_created: z.string().optional(),
@@ -47,6 +48,113 @@ const webhookQuerySchema = z.object({
   attributionSource: z.string().optional(),
   customData: z.string().optional(),
 }).catchall(z.string().optional());
+
+// Helper function to handle contact creation or update
+async function handleContactUpsert(data: {
+  firstName: string;
+  lastName: string;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  displayName?: string;
+  externalContactId?: string;
+}) {
+  const { firstName, lastName, email, phone, address, displayName, externalContactId } = data;
+  
+  // Check if contact exists by first and last name
+  const normalizedFirstName = normalizeName(firstName);
+  const normalizedLastName = normalizeName(lastName);
+  
+  const existingContact = await db
+    .select()
+    .from(contact)
+    .where(
+      and(
+        eq(contact.firstName, firstName),
+        eq(contact.lastName, lastName)
+      )
+    )
+    .limit(1);
+
+  if (existingContact.length > 0) {
+    // Contact exists - update it (including display_name if provided)
+    const updateData: {
+      email?: string | null;
+      phone?: string | null;
+      address?: string | null;
+      displayName?: string | null;
+    } = {
+      email: email || existingContact[0].email,
+      phone: phone || existingContact[0].phone,
+      address: address || existingContact[0].address,
+    };
+
+    // Always update display_name if provided, even if it's empty
+    if (displayName !== undefined) {
+      updateData.displayName = displayName.trim() || null;
+    }
+
+    const [updatedContact] = await db
+      .update(contact)
+      .set(updateData)
+      .where(eq(contact.id, existingContact[0].id))
+      .returning();
+
+    return {
+      contact: {
+        ...updatedContact,
+        externalContactId
+      },
+      isNew: false,
+      action: 'updated' as const
+    };
+  } else {
+    // Check for email/phone duplicates only if contact doesn't exist by name
+    const whereConditions = [];
+    if (email) whereConditions.push(eq(contact.email, email));
+    if (phone) whereConditions.push(eq(contact.phone, phone));
+
+    if (whereConditions.length > 0) {
+      const duplicateContact = await db
+        .select({
+          id: contact.id,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          email: contact.email,
+          phone: contact.phone
+        })
+        .from(contact)
+        .where(or(...whereConditions))
+        .limit(1);
+
+      if (duplicateContact.length > 0) {
+        throw new Error(`Contact with this ${email && duplicateContact[0].email === email ? 'email' : 'phone'} already exists with different name: ${duplicateContact[0].firstName} ${duplicateContact[0].lastName}`);
+      }
+    }
+
+    // Create new contact
+    const [newContact] = await db
+      .insert(contact)
+      .values({
+        firstName,
+        lastName,
+        email,
+        phone,
+        address,
+        displayName: displayName?.trim() || null,
+      })
+      .returning();
+
+    return {
+      contact: {
+        ...newContact,
+        externalContactId
+      },
+      isNew: true,
+      action: 'created' as const
+    };
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,13 +197,21 @@ export async function POST(request: NextRequest) {
       // Extract and normalize contact information
       const firstName = data.first_name?.trim();
       const lastName = data.last_name?.trim();
+      const displayName = data.display_name?.trim();
       const email = normalizeEmail(data.email);
       const phone = normalizePhone(data.phone);
       const address = data.full_address?.trim() || null;
 
-      console.log('Extracted from query params:', { firstName, lastName, email, phone, address });
+      console.log('Extracted from query params:', { 
+        firstName, 
+        lastName, 
+        displayName, 
+        email, 
+        phone, 
+        address 
+      });
 
-      // Validate required fields - only first_name and last_name are required now
+      // Validate required fields - only first_name and last_name are required
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -108,86 +224,40 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check for duplicates - priority: name match, then email/phone match
-      const whereConditions = [];
-      
-      // First check for exact name match (case insensitive)
-      const normalizedFirstName = normalizeName(firstName);
-      const normalizedLastName = normalizeName(lastName);
-      
-      if (normalizedFirstName && normalizedLastName) {
-        whereConditions.push(
-          and(
-            eq(contact.firstName, firstName), // Store original case but compare normalized
-            eq(contact.lastName, lastName)
-          )
-        );
-      }
-
-      // Also check email/phone duplicates if provided
-      if (email) whereConditions.push(eq(contact.email, email));
-      if (phone) whereConditions.push(eq(contact.phone, phone));
-
-      if (whereConditions.length > 0) {
-        const existingContact = await db
-          .select({
-            id: contact.id,
-            firstName: contact.firstName,
-            lastName: contact.lastName,
-            email: contact.email,
-            phone: contact.phone
-          })
-          .from(contact)
-          .where(or(...whereConditions))
-          .limit(1);
-
-        if (existingContact.length > 0) {
-          // Check if it's a name match or email/phone match
-          const nameMatch = existingContact[0].firstName.toLowerCase() === normalizedFirstName && 
-                           existingContact[0].lastName.toLowerCase() === normalizedLastName;
-          
-          return NextResponse.json(
-            {
-              success: false,
-              message: nameMatch 
-                ? 'Contact with this name already exists'
-                : 'Contact with this email or phone already exists',
-              code: 'DUPLICATE_CONTACT',
-              matchType: nameMatch ? 'name' : 'email_or_phone',
-              existingContact: existingContact[0]
-            },
-            { status: 409 }
-          );
-        }
-      }
-
-      // Insert new contact
-      const [newContact] = await db
-        .insert(contact)
-        .values({
+      try {
+        const result = await handleContactUpsert({
           firstName,
           lastName,
           email,
           phone,
           address,
-        })
-        .returning();
+          displayName,
+          externalContactId: data.contact_id
+        });
 
-      console.log(`Successfully created contact with ID: ${newContact.id}`);
+        console.log(`Successfully ${result.action} contact with ID: ${result.contact.id}`);
 
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'Contact created successfully',
-          code: 'CONTACT_CREATED',
-          contact: {
-            ...newContact,
-            externalContactId: data.contact_id
+        return NextResponse.json(
+          {
+            success: true,
+            message: `Contact ${result.action} successfully`,
+            code: result.isNew ? 'CONTACT_CREATED' : 'CONTACT_UPDATED',
+            contact: result.contact,
+            source: 'query_parameters',
+            action: result.action
           },
-          source: 'query_parameters'
-        },
-        { status: 201 }
-      );
+          { status: result.isNew ? 201 : 200 }
+        );
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: getErrorMessage(error),
+            code: 'DUPLICATE_CONTACT_ERROR',
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // Fallback: try to parse request body if no query params
@@ -295,11 +365,12 @@ export async function POST(request: NextRequest) {
       // Extract and normalize contact information from body
       const firstName = bodyData.first_name?.trim();
       const lastName = bodyData.last_name?.trim();
+      const displayName = bodyData.display_name?.trim();
       const email = normalizeEmail(bodyData.email);
       const phone = normalizePhone(bodyData.phone);
       const address = bodyData.full_address?.trim() || null;
 
-      // Validate required fields - only first_name and last_name are required now
+      // Validate required fields - only first_name and last_name are required
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -312,86 +383,40 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check for duplicates - priority: name match, then email/phone match
-      const whereConditions = [];
-      
-      // First check for exact name match (case insensitive)
-      const normalizedFirstName = normalizeName(firstName);
-      const normalizedLastName = normalizeName(lastName);
-      
-      if (normalizedFirstName && normalizedLastName) {
-        whereConditions.push(
-          and(
-            eq(contact.firstName, firstName), // Store original case but compare normalized
-            eq(contact.lastName, lastName)
-          )
-        );
-      }
-
-      // Also check email/phone duplicates if provided
-      if (email) whereConditions.push(eq(contact.email, email));
-      if (phone) whereConditions.push(eq(contact.phone, phone));
-
-      if (whereConditions.length > 0) {
-        const existingContact = await db
-          .select({
-            id: contact.id,
-            firstName: contact.firstName,
-            lastName: contact.lastName,
-            email: contact.email,
-            phone: contact.phone
-          })
-          .from(contact)
-          .where(or(...whereConditions))
-          .limit(1);
-
-        if (existingContact.length > 0) {
-          // Check if it's a name match or email/phone match
-          const nameMatch = existingContact[0].firstName.toLowerCase() === normalizedFirstName && 
-                           existingContact[0].lastName.toLowerCase() === normalizedLastName;
-          
-          return NextResponse.json(
-            {
-              success: false,
-              message: nameMatch 
-                ? 'Contact with this name already exists'
-                : 'Contact with this email or phone already exists',
-              code: 'DUPLICATE_CONTACT',
-              matchType: nameMatch ? 'name' : 'email_or_phone',
-              existingContact: existingContact[0]
-            },
-            { status: 409 }
-          );
-        }
-      }
-
-      // Insert new contact
-      const [newContact] = await db
-        .insert(contact)
-        .values({
+      try {
+        const result = await handleContactUpsert({
           firstName,
           lastName,
           email,
           phone,
           address,
-        })
-        .returning();
+          displayName,
+          externalContactId: bodyData.contact_id
+        });
 
-      console.log(`Successfully created contact with ID: ${newContact.id}`);
+        console.log(`Successfully ${result.action} contact with ID: ${result.contact.id}`);
 
-      return NextResponse.json(
-        {
-          success: true,
-          message: 'Contact created successfully',
-          code: 'CONTACT_CREATED',
-          contact: {
-            ...newContact,
-            externalContactId: bodyData.contact_id
+        return NextResponse.json(
+          {
+            success: true,
+            message: `Contact ${result.action} successfully`,
+            code: result.isNew ? 'CONTACT_CREATED' : 'CONTACT_UPDATED',
+            contact: result.contact,
+            source: 'request_body',
+            action: result.action
           },
-          source: 'request_body'
-        },
-        { status: 201 }
-      );
+          { status: result.isNew ? 201 : 200 }
+        );
+      } catch (error) {
+        return NextResponse.json(
+          {
+            success: false,
+            message: getErrorMessage(error),
+            code: 'DUPLICATE_CONTACT_ERROR',
+          },
+          { status: 409 }
+        );
+      }
     }
 
     return NextResponse.json(
@@ -418,15 +443,15 @@ export async function POST(request: NextRequest) {
     );
   }
 }
- 
+
 export async function GET() {
   return NextResponse.json(
     {
       success: true,
       message: 'Webhook endpoint is active',
       methods: ['POST'],
-      note: 'Accepts data via URL query parameters or request body. Only first_name and last_name are required. Checks for duplicate names before creating.',
-      example: '/api/webhook/contact?first_name=John&last_name=Doe&email=john@test.com'
+      note: 'Accepts data via URL query parameters or request body. Only first_name and last_name are required. Checks for existing contacts by name and updates/creates accordingly. Always updates display_name if provided.',
+      example: '/api/webhook/contact?first_name=John&last_name=Doe&email=john@test.com&display_name=Johnny'
     },
     { status: 200 }
   );
