@@ -145,6 +145,7 @@ export interface ContactDetails {
     id: number;
     firstName: string;
     lastName: string;
+    displayName?: string;
     fullName: string;
     email?: string;
     phone?: string;

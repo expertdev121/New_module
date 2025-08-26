@@ -255,10 +255,9 @@ export default function ContactsTable() {
                     router.push(`/contacts/${contact.id}`);
                   }}
                 >
-                  <TableCell className="font-medium">
-                    {contact.lastName}
-                    {","} {contact.firstName}
-                  </TableCell>
+                 <TableCell className="font-medium">
+  {contact.displayName || `${contact.firstName} ${contact.lastName}` || "N/A"}
+</TableCell>
                   <TableCell>{contact.email || "N/A"}</TableCell>
                   <TableCell>{contact.phone || "N/A"}</TableCell>
                   <TableCell>
