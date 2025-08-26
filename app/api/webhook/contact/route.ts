@@ -22,11 +22,11 @@ function normalizeEmail(email: string | null | undefined): string | null {
 }
 
 // Helper: normalize name (handle dashes, empty strings, etc.)
-function normalizeName(name: string | null | undefined): string | null {
-  if (!name?.trim()) return null;
+function normalizeName(name: string | null | undefined): string | undefined {
+  if (!name?.trim()) return undefined;
   const cleaned = name.trim();
-  // If it's just a dash or other placeholder, return null
-  if (cleaned === '-' || cleaned === '_' || cleaned === 'N/A' || cleaned === 'n/a') return null;
+  // If it's just a dash or other placeholder, return undefined
+  if (cleaned === '-' || cleaned === '_' || cleaned === 'N/A' || cleaned === 'n/a') return undefined;
   return cleaned;
 }
 
@@ -46,7 +46,7 @@ function flattenCustomDataKeys(data: Record<string, string>): Record<string, str
   return flatData;
 }
 
-// Schema for webhook data (flat keys) - more flexible validation
+// Schema for webhook data (flat keys) - updated to match your webhook fields
 const webhookSchema = z.object({
   contact_id: z.string().optional(),
   firstname: z.string().optional(),
@@ -54,6 +54,7 @@ const webhookSchema = z.object({
   first_name: z.string().optional(), // Alternative field name
   last_name: z.string().optional(),  // Alternative field name
   displayname: z.string().optional(),
+  display_name: z.string().optional(), // Alternative field name
   title: z.string().optional(),
   full_name: z.string().optional(),
   email: z.string().email("Invalid email format").optional().or(z.literal("")),
@@ -72,8 +73,8 @@ const webhookSchema = z.object({
 }).catchall(z.string().optional());
 
 // Extract names with fallback logic
-function extractNames(data: Record<string, string | undefined>): { firstName: string | null; lastName: string | null } {
-  // Try various field combinations
+function extractNames(data: Record<string, string | undefined>): { firstName: string | undefined; lastName: string | undefined } {
+  // Try various field combinations - prioritize the main fields your webhook sends
   let firstName = normalizeName(data.firstname || data.first_name);
   let lastName = normalizeName(data.lastname || data.last_name);
 
@@ -110,15 +111,50 @@ function extractNames(data: Record<string, string | undefined>): { firstName: st
   return { firstName, lastName };
 }
 
+// Extract display name with fallback logic
+function extractDisplayName(data: Record<string, string | undefined>, firstName: string | undefined, lastName: string | undefined): string | undefined {
+  // Try displayname first, then display_name
+  let displayName = data.displayname?.trim() || data.display_name?.trim();
+  
+  // If no display name provided, construct one from first/last name
+  if (!displayName && firstName && lastName) {
+    if (firstName === 'N/A') {
+      displayName = lastName;
+    } else if (lastName === 'N/A') {
+      displayName = firstName;
+    } else {
+      displayName = `${firstName} ${lastName}`;
+    }
+  }
+  
+  // Clean up any malformed template artifacts
+  if (displayName) {
+    // Remove common template artifacts
+    displayName = displayName
+      .replace(/-, \( & \)$/, '') // Remove trailing ", ( & )"
+      .replace(/^-, /, '')        // Remove leading "-, "
+      .replace(/ & $/, '')        // Remove trailing " & "
+      .replace(/\(\s*&\s*\)/, '') // Remove empty "( & )"
+      .trim();
+      
+    // If after cleanup it's empty or just punctuation, return undefined
+    if (!displayName || displayName === '-' || displayName === ',' || displayName === '()') {
+      displayName = undefined;
+    }
+  }
+  
+  return displayName;
+}
+
 // Upsert contact by firstName + lastName only
 async function handleContactUpsert(data: {
   firstName: string;
   lastName: string;
   email: string | null;
   phone: string | null;
-  address: string | null;
-  displayName?: string;
-  title?: string;
+  address: string | undefined;
+  displayName?: string | undefined;
+  title?: string | undefined;
   externalContactId?: string;
 }) {
   const { firstName, lastName, email, phone, address, displayName, title, externalContactId } = data;
@@ -133,17 +169,17 @@ async function handleContactUpsert(data: {
     const updateData: {
       email?: string | null;
       phone?: string | null;
-      address?: string | null;
-      displayName?: string | null;
-      title?: string | null;
+      address?: string | undefined;
+      displayName?: string | undefined;
+      title?: string | undefined;
       updatedAt?: Date;
     } = { updatedAt: new Date() };
 
     if (email !== undefined) updateData.email = email;
     if (phone !== undefined) updateData.phone = phone;
     if (address !== undefined) updateData.address = address;
-    if (displayName !== undefined) updateData.displayName = displayName?.trim() || null;
-    if (title !== undefined) updateData.title = title?.trim() || null;
+    if (displayName !== undefined) updateData.displayName = displayName;
+    if (title !== undefined) updateData.title = title;
 
     const updatedContacts = await db
       .update(contact)
@@ -170,8 +206,8 @@ async function handleContactUpsert(data: {
         email,
         phone,
         address,
-        displayName: displayName?.trim() || null,
-        title: title?.trim() || null,
+        displayName: displayName,
+        title: title,
       })
       .returning();
 
@@ -273,11 +309,12 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    const displayName = validData.displayname?.trim();
-    const title = validData.title?.trim();
+    // Extract and clean display name
+    const displayName = extractDisplayName(validData, firstName, lastName);
+    const title = validData.title?.trim() || undefined;
     const email = normalizeEmail(validData.email);
     const phone = normalizePhone(validData.phone);
-    const address = validData.address?.trim() || null;
+    const address = validData.address?.trim() || undefined;
 
     const result = await handleContactUpsert({
       firstName,
