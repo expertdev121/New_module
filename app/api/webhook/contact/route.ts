@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contact } from '@/lib/db/schema';
-import { eq, or, and } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 
 // Helper: safely extract error message
@@ -27,17 +27,17 @@ function normalizeName(name: string | null | undefined): string | null {
   return name.toLowerCase().trim();
 }
 
-// Updated schema to match your webhook parameter names
+// Updated schema to match your webhook parameter names and include title
 const webhookQuerySchema = z.object({
   contact_id: z.string().optional(),
-  // Updated to match your webhook configuration
   firstname: z.string().min(1, "First name is required"),
   lastname: z.string().min(1, "Last name is required"),
   displayname: z.string().optional(),
+  title: z.string().optional(),
   full_name: z.string().optional(),
   email: z.string().email("Invalid email format").optional().or(z.literal("")),
   phone: z.string().optional().or(z.literal("")),
-  address: z.string().optional(), // Changed from full_address to address
+  address: z.string().optional(),
   tags: z.string().optional(),
   country: z.string().optional(),
   date_created: z.string().optional(),
@@ -50,7 +50,7 @@ const webhookQuerySchema = z.object({
   customData: z.string().optional(),
 }).catchall(z.string().optional());
 
-// Helper function to handle contact creation or update
+// Simplified helper function - only checks first name and last name
 async function handleContactUpsert(data: {
   firstName: string;
   lastName: string;
@@ -58,14 +58,12 @@ async function handleContactUpsert(data: {
   phone: string | null;
   address: string | null;
   displayName?: string;
+  title?: string;
   externalContactId?: string;
 }) {
-  const { firstName, lastName, email, phone, address, displayName, externalContactId } = data;
+  const { firstName, lastName, email, phone, address, displayName, title, externalContactId } = data;
   
-  // Check if contact exists by first and last name
-  const normalizedFirstName = normalizeName(firstName);
-  const normalizedLastName = normalizeName(lastName);
-  
+  // Check if contact exists ONLY by first and last name
   const existingContact = await db
     .select()
     .from(contact)
@@ -78,28 +76,46 @@ async function handleContactUpsert(data: {
     .limit(1);
 
   if (existingContact.length > 0) {
-    // Contact exists - update it (including display_name if provided)
+    // Contact exists - update it with all provided data
     const updateData: {
       email?: string | null;
       phone?: string | null;
       address?: string | null;
       displayName?: string | null;
+      title?: string | null;
+      updatedAt?: Date;
     } = {
-      email: email || existingContact[0].email,
-      phone: phone || existingContact[0].phone,
-      address: address || existingContact[0].address,
+      updatedAt: new Date(),
     };
 
-    // Always update display_name if provided, even if it's empty
+    // Update all fields if provided (allow overwriting with new data)
+    if (email !== undefined) {
+      updateData.email = email;
+    }
+
+    if (phone !== undefined) {
+      updateData.phone = phone;
+    }
+
+    if (address !== undefined) {
+      updateData.address = address;
+    }
+
     if (displayName !== undefined) {
       updateData.displayName = displayName.trim() || null;
     }
 
-    const [updatedContact] = await db
+    if (title !== undefined) {
+      updateData.title = title.trim() || null;
+    }
+
+    const updatedContacts = await db
       .update(contact)
       .set(updateData)
       .where(eq(contact.id, existingContact[0].id))
       .returning();
+
+    const updatedContact = updatedContacts[0];
 
     return {
       contact: {
@@ -110,31 +126,9 @@ async function handleContactUpsert(data: {
       action: 'updated' as const
     };
   } else {
-    // Check for email/phone duplicates only if contact doesn't exist by name
-    const whereConditions = [];
-    if (email) whereConditions.push(eq(contact.email, email));
-    if (phone) whereConditions.push(eq(contact.phone, phone));
-
-    if (whereConditions.length > 0) {
-      const duplicateContact = await db
-        .select({
-          id: contact.id,
-          firstName: contact.firstName,
-          lastName: contact.lastName,
-          email: contact.email,
-          phone: contact.phone
-        })
-        .from(contact)
-        .where(or(...whereConditions))
-        .limit(1);
-
-      if (duplicateContact.length > 0) {
-        throw new Error(`Contact with this ${email && duplicateContact[0].email === email ? 'email' : 'phone'} already exists with different name: ${duplicateContact[0].firstName} ${duplicateContact[0].lastName}`);
-      }
-    }
-
-    // Create new contact
-    const [newContact] = await db
+    // Contact doesn't exist - create new one
+    // No duplicate checking for email/phone - just create
+    const newContacts = await db
       .insert(contact)
       .values({
         firstName,
@@ -143,8 +137,11 @@ async function handleContactUpsert(data: {
         phone,
         address,
         displayName: displayName?.trim() || null,
+        title: title?.trim() || null,
       })
       .returning();
+
+    const newContact = newContacts[0];
 
     return {
       contact: {
@@ -164,18 +161,15 @@ export async function POST(request: NextRequest) {
     console.log('Method:', request.method);
     console.log('Content-Type:', request.headers.get('content-type'));
 
-    // Extract URL and query parameters
     const url = new URL(request.url);
     const queryParams = Object.fromEntries(url.searchParams.entries());
     
     console.log('Query parameters:', queryParams);
     console.log('Query param keys:', Object.keys(queryParams));
 
-    // Check if we have query parameters (primary method)
     if (Object.keys(queryParams).length > 0) {
       console.log('Using query parameters as data source');
       
-      // Validate query parameters
       const result = webhookQuerySchema.safeParse(queryParams);
       if (!result.success) {
         return NextResponse.json(
@@ -195,24 +189,24 @@ export async function POST(request: NextRequest) {
 
       const data = result.data;
       
-      // Extract and normalize contact information - updated field names
       const firstName = data.firstname?.trim();
       const lastName = data.lastname?.trim();
       const displayName = data.displayname?.trim();
+      const title = data.title?.trim();
       const email = normalizeEmail(data.email);
       const phone = normalizePhone(data.phone);
-      const address = data.address?.trim() || null; // Changed from full_address
+      const address = data.address?.trim() || null;
 
       console.log('Extracted from query params:', { 
         firstName, 
         lastName, 
-        displayName, 
+        displayName,
+        title,
         email, 
         phone, 
         address 
       });
 
-      // Validate required fields - only firstname and lastname are required
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -233,6 +227,7 @@ export async function POST(request: NextRequest) {
           phone,
           address,
           displayName,
+          title,
           externalContactId: data.contact_id
         });
 
@@ -254,54 +249,46 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             message: getErrorMessage(error),
-            code: 'DUPLICATE_CONTACT_ERROR',
+            code: 'UPSERT_ERROR',
           },
-          { status: 409 }
+          { status: 500 }
         );
       }
     }
 
-    // Fallback: try to parse request body if no query params
+    // Fallback body processing
     let body: Record<string, string> = {};
-    let parseMethod = 'none';
 
     const cloneForm = request.clone();
     const cloneJson = request.clone();
     const cloneText = request.clone();
 
-    // Try FormData
     try {
       const form = await request.formData();
       if (!form.entries().next().done) {
         for (const [k, v] of form.entries()) body[k] = v.toString();
-        parseMethod = 'formData';
         console.log('Parsed as formData:', Object.keys(body));
       } else {
         throw new Error('empty formData');
       }
     } catch (formErr: unknown) {
-      // Try JSON
       try {
         const json = await cloneJson.json();
         if (json && typeof json === 'object' && !Array.isArray(json)) {
-          // Convert JSON object to string values for consistency
           body = Object.fromEntries(
             Object.entries(json).map(([key, value]) => [key, String(value)])
           );
-          parseMethod = 'json';
           console.log('Parsed as JSON:', Object.keys(body));
         } else {
           throw new Error('invalid JSON');
         }
       } catch (jsonErr: unknown) {
-        // Try URL-encoded text
         try {
           const txt = await cloneText.text();
           if (txt.trim()) {
             const params = new URLSearchParams(txt);
             if ([...params].length) {
               for (const [k, v] of params.entries()) body[k] = v;
-              parseMethod = 'urlEncoded';
               console.log('Parsed as urlEncoded:', Object.keys(body));
             } else {
               const parsedJson = JSON.parse(txt);
@@ -309,7 +296,6 @@ export async function POST(request: NextRequest) {
                 body = Object.fromEntries(
                   Object.entries(parsedJson).map(([key, value]) => [key, String(value)])
                 );
-                parseMethod = 'textJson';
                 console.log('Parsed text as JSON:', Object.keys(body));
               } else {
                 throw new Error('Parsed JSON is not an object');
@@ -339,11 +325,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Process body data (similar logic as query params)
     if (Object.keys(body).length > 0) {
       console.log('Using request body as fallback');
       
-      // Validate body data using the same schema
       const bodyResult = webhookQuerySchema.safeParse(body);
       if (!bodyResult.success) {
         return NextResponse.json(
@@ -363,15 +347,14 @@ export async function POST(request: NextRequest) {
 
       const bodyData = bodyResult.data;
       
-      // Extract and normalize contact information from body - updated field names
       const firstName = bodyData.firstname?.trim();
       const lastName = bodyData.lastname?.trim();
       const displayName = bodyData.displayname?.trim();
+      const title = bodyData.title?.trim();
       const email = normalizeEmail(bodyData.email);
       const phone = normalizePhone(bodyData.phone);
-      const address = bodyData.address?.trim() || null; // Changed from full_address
+      const address = bodyData.address?.trim() || null;
 
-      // Validate required fields - only firstname and lastname are required
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -392,6 +375,7 @@ export async function POST(request: NextRequest) {
           phone,
           address,
           displayName,
+          title,
           externalContactId: bodyData.contact_id
         });
 
@@ -413,9 +397,9 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             message: getErrorMessage(error),
-            code: 'DUPLICATE_CONTACT_ERROR',
+            code: 'UPSERT_ERROR',
           },
-          { status: 409 }
+          { status: 500 }
         );
       }
     }
@@ -451,8 +435,8 @@ export async function GET() {
       success: true,
       message: 'Webhook endpoint is active',
       methods: ['POST'],
-      note: 'Accepts data via URL query parameters or request body. Only firstname and lastname are required. Checks for existing contacts by name and updates/creates accordingly. Always updates displayname if provided.',
-      example: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com&displayname=Johnny'
+      note: 'Accepts data via URL query parameters or request body. Only firstname and lastname are required. Checks for existing contacts by name only (no email/phone duplicate checking) and updates if found or creates new if not found.',
+      example: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com&displayname=Johnny&title=Manager'
     },
     { status: 200 }
   );
