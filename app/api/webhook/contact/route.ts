@@ -27,19 +27,20 @@ function normalizeName(name: string | null | undefined): string | null {
   return name.toLowerCase().trim();
 }
 
-// Schema for URL parameters (all strings from URL)
+// Updated schema to match your webhook parameter names
 const webhookQuerySchema = z.object({
   contact_id: z.string().optional(),
-  first_name: z.string().min(1, "First name is required"),
-  last_name: z.string().min(1, "Last name is required"),
-  display_name: z.string().optional(),
+  // Updated to match your webhook configuration
+  firstname: z.string().min(1, "First name is required"),
+  lastname: z.string().min(1, "Last name is required"),
+  displayname: z.string().optional(),
   full_name: z.string().optional(),
   email: z.string().email("Invalid email format").optional().or(z.literal("")),
   phone: z.string().optional().or(z.literal("")),
+  address: z.string().optional(), // Changed from full_address to address
   tags: z.string().optional(),
   country: z.string().optional(),
   date_created: z.string().optional(),
-  full_address: z.string().optional(),
   contact_type: z.string().optional(),
   location: z.string().optional(),
   workflow: z.string().optional(),
@@ -194,13 +195,13 @@ export async function POST(request: NextRequest) {
 
       const data = result.data;
       
-      // Extract and normalize contact information
-      const firstName = data.first_name?.trim();
-      const lastName = data.last_name?.trim();
-      const displayName = data.display_name?.trim();
+      // Extract and normalize contact information - updated field names
+      const firstName = data.firstname?.trim();
+      const lastName = data.lastname?.trim();
+      const displayName = data.displayname?.trim();
       const email = normalizeEmail(data.email);
       const phone = normalizePhone(data.phone);
-      const address = data.full_address?.trim() || null;
+      const address = data.address?.trim() || null; // Changed from full_address
 
       console.log('Extracted from query params:', { 
         firstName, 
@@ -211,7 +212,7 @@ export async function POST(request: NextRequest) {
         address 
       });
 
-      // Validate required fields - only first_name and last_name are required
+      // Validate required fields - only firstname and lastname are required
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -362,15 +363,15 @@ export async function POST(request: NextRequest) {
 
       const bodyData = bodyResult.data;
       
-      // Extract and normalize contact information from body
-      const firstName = bodyData.first_name?.trim();
-      const lastName = bodyData.last_name?.trim();
-      const displayName = bodyData.display_name?.trim();
+      // Extract and normalize contact information from body - updated field names
+      const firstName = bodyData.firstname?.trim();
+      const lastName = bodyData.lastname?.trim();
+      const displayName = bodyData.displayname?.trim();
       const email = normalizeEmail(bodyData.email);
       const phone = normalizePhone(bodyData.phone);
-      const address = bodyData.full_address?.trim() || null;
+      const address = bodyData.address?.trim() || null; // Changed from full_address
 
-      // Validate required fields - only first_name and last_name are required
+      // Validate required fields - only firstname and lastname are required
       if (!firstName || !lastName) {
         return NextResponse.json(
           {
@@ -450,8 +451,8 @@ export async function GET() {
       success: true,
       message: 'Webhook endpoint is active',
       methods: ['POST'],
-      note: 'Accepts data via URL query parameters or request body. Only first_name and last_name are required. Checks for existing contacts by name and updates/creates accordingly. Always updates display_name if provided.',
-      example: '/api/webhook/contact?first_name=John&last_name=Doe&email=john@test.com&display_name=Johnny'
+      note: 'Accepts data via URL query parameters or request body. Only firstname and lastname are required. Checks for existing contacts by name and updates/creates accordingly. Always updates displayname if provided.',
+      example: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com&displayname=Johnny'
     },
     { status: 200 }
   );
