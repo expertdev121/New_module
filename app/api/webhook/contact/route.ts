@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contact } from '@/lib/db/schema';
-import { eq, or, and } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
 
 // Helper: safely extract error message
@@ -50,7 +50,7 @@ const webhookQuerySchema = z.object({
   customData: z.string().optional(),
 }).catchall(z.string().optional());
 
-// Helper function to handle contact creation or update - FIXED FOR NEON/POSTGRESQL
+// Simplified helper function - only checks first name and last name
 async function handleContactUpsert(data: {
   firstName: string;
   lastName: string;
@@ -63,7 +63,7 @@ async function handleContactUpsert(data: {
 }) {
   const { firstName, lastName, email, phone, address, displayName, title, externalContactId } = data;
   
-  // Check if contact exists by first and last name
+  // Check if contact exists ONLY by first and last name
   const existingContact = await db
     .select()
     .from(contact)
@@ -76,7 +76,7 @@ async function handleContactUpsert(data: {
     .limit(1);
 
   if (existingContact.length > 0) {
-    // Contact exists - update it
+    // Contact exists - update it with all provided data
     const updateData: {
       email?: string | null;
       phone?: string | null;
@@ -85,11 +85,21 @@ async function handleContactUpsert(data: {
       title?: string | null;
       updatedAt?: Date;
     } = {
-      email: email || existingContact[0].email,
-      phone: phone || existingContact[0].phone,
-      address: address || existingContact[0].address,
       updatedAt: new Date(),
     };
+
+    // Update all fields if provided (allow overwriting with new data)
+    if (email !== undefined) {
+      updateData.email = email;
+    }
+
+    if (phone !== undefined) {
+      updateData.phone = phone;
+    }
+
+    if (address !== undefined) {
+      updateData.address = address;
+    }
 
     if (displayName !== undefined) {
       updateData.displayName = displayName.trim() || null;
@@ -99,7 +109,6 @@ async function handleContactUpsert(data: {
       updateData.title = title.trim() || null;
     }
 
-    // FOR NEON/POSTGRESQL: Use .returning()
     const updatedContacts = await db
       .update(contact)
       .set(updateData)
@@ -117,30 +126,8 @@ async function handleContactUpsert(data: {
       action: 'updated' as const
     };
   } else {
-    // Check for email/phone duplicates only if contact doesn't exist by name
-    const whereConditions = [];
-    if (email) whereConditions.push(eq(contact.email, email));
-    if (phone) whereConditions.push(eq(contact.phone, phone));
-
-    if (whereConditions.length > 0) {
-      const duplicateContact = await db
-        .select({
-          id: contact.id,
-          firstName: contact.firstName,
-          lastName: contact.lastName,
-          email: contact.email,
-          phone: contact.phone
-        })
-        .from(contact)
-        .where(or(...whereConditions))
-        .limit(1);
-
-      if (duplicateContact.length > 0) {
-        throw new Error(`Contact with this ${email && duplicateContact[0].email === email ? 'email' : 'phone'} already exists with different name: ${duplicateContact[0].firstName} ${duplicateContact[0].lastName}`);
-      }
-    }
-
-    // FOR NEON/POSTGRESQL: Use .returning() - this works correctly
+    // Contact doesn't exist - create new one
+    // No duplicate checking for email/phone - just create
     const newContacts = await db
       .insert(contact)
       .values({
@@ -262,9 +249,9 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             message: getErrorMessage(error),
-            code: 'DUPLICATE_CONTACT_ERROR',
+            code: 'UPSERT_ERROR',
           },
-          { status: 409 }
+          { status: 500 }
         );
       }
     }
@@ -410,9 +397,9 @@ export async function POST(request: NextRequest) {
           {
             success: false,
             message: getErrorMessage(error),
-            code: 'DUPLICATE_CONTACT_ERROR',
+            code: 'UPSERT_ERROR',
           },
-          { status: 409 }
+          { status: 500 }
         );
       }
     }
@@ -448,7 +435,7 @@ export async function GET() {
       success: true,
       message: 'Webhook endpoint is active',
       methods: ['POST'],
-      note: 'Accepts data via URL query parameters or request body. Only firstname and lastname are required. Works with Neon PostgreSQL using .returning().',
+      note: 'Accepts data via URL query parameters or request body. Only firstname and lastname are required. Checks for existing contacts by name only (no email/phone duplicate checking) and updates if found or creates new if not found.',
       example: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com&displayname=Johnny&title=Manager'
     },
     { status: 200 }
