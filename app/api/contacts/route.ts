@@ -23,6 +23,7 @@ interface ContactResponse {
   id: number;
   firstName: string;
   lastName: string;
+  displayName: string | null;
   email: string | null;
   phone: string | null;
   title: string | null;
@@ -44,7 +45,7 @@ const querySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(10),
   search: z.string().optional(),
   sortBy: z
-    .enum(["updatedAt", "firstName", "lastName", "totalPledgedUsd"])
+    .enum(["updatedAt", "firstName", "lastName", "displayName", "totalPledgedUsd"])
     .default("updatedAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
@@ -95,17 +96,19 @@ export async function GET(request: NextRequest) {
 
     const whereClause = search
       ? or(
-          ilike(contact.firstName, `%${search}%`),
-          ilike(contact.lastName, `%${search}%`),
-          ilike(contact.email, `%${search}%`),
-          like(contact.phone, `%${search}%`)
-        )
+        ilike(contact.firstName, `%${search}%`),
+        ilike(contact.lastName, `%${search}%`),
+        ilike(contact.displayName, `%${search}%`),
+        ilike(contact.email, `%${search}%`),
+        like(contact.phone, `%${search}%`)
+      )
       : undefined;
 
     const selectedFields = {
       id: contact.id,
       firstName: contact.firstName,
       lastName: contact.lastName,
+      displayName: contact.displayName,
       email: contact.email,
       phone: contact.phone,
       title: contact.title,
@@ -134,6 +137,7 @@ export async function GET(request: NextRequest) {
         contact.id,
         contact.firstName,
         contact.lastName,
+        contact.displayName,
         contact.email,
         contact.phone,
         contact.title,
@@ -154,6 +158,9 @@ export async function GET(request: NextRequest) {
     switch (sortBy) {
       case "updatedAt":
         orderByField = selectedFields.updatedAt;
+        break;
+      case "displayName":
+        orderByField = selectedFields.displayName;
         break;
       case "firstName":
         orderByField = selectedFields.firstName;

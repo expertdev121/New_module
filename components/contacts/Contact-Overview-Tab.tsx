@@ -32,10 +32,10 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   const paymentPercentage =
     financialSummary.totalPledgedUsd > 0
       ? Math.round(
-          (financialSummary.totalPaidUsd /
-            financialSummary.totalPledgedUsd) *
-            100
-        )
+        (financialSummary.totalPaidUsd /
+          financialSummary.totalPledgedUsd) *
+        100
+      )
       : 0;
 
   return (
@@ -53,8 +53,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <div className="grid grid-cols-2 gap-1 py-2">
               <dt className="text-muted-foreground font-medium">Full Name</dt>
               <dd className="text-right capitalize">
-                {contact.title ? `${contact.title}. ` : ""}
-                {contact.firstName} {contact.lastName}
+                {contact.displayName || `${contact.title ? `${contact.title}. ` : ""}${contact.firstName} ${contact.lastName}` || "N/A"}
               </dd>
             </div>
             <div className="grid grid-cols-2 gap-1 py-2">

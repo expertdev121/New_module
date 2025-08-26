@@ -17,6 +17,7 @@ interface ContactResponse {
   id: number;
   firstName: string;
   lastName: string;
+  displayName?:string;
   email: string | null;
   phone: string | null;
   title: string | null;

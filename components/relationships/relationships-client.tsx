@@ -111,7 +111,11 @@ function RelatedContactName({ contactId }: { contactId: number }) {
 
   // Assuming API returns ‘contact’ object with firstName and lastName fields
   return (
-    <span>{data.contact.firstName} {data.contact.lastName}</span>
+    <span>
+      {data.contact.displayName ||
+        `${data.contact.firstName} ${data.contact.lastName}` ||
+        "N/A"}
+    </span>
   );
 }
 
@@ -425,11 +429,10 @@ export default function RelationshipsTable({
                         </TableCell>
                         <TableCell>
                           <span
-                            className={`px-2 py-1 rounded-full text-xs ${
-                              relationship.isActive
+                            className={`px-2 py-1 rounded-full text-xs ${relationship.isActive
                                 ? "bg-green-100 text-green-800"
                                 : "bg-red-100 text-red-800"
-                            }`}
+                              }`}
                           >
                             {relationship.isActive ? "Active" : "Inactive"}
                           </span>
