@@ -61,13 +61,11 @@ const updatePaymentPlanSchema = z.object({
       })
     )
     .optional(),
-  // UPDATED: Add proper enum validation for paymentMethod
   paymentMethod: z.enum([
     "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
     "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
     "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer"
-  ]).optional(),
-  // UPDATED: Add proper enum validation for methodDetail
+  ]),
   methodDetail: z.enum([
     "achisomoch", "authorize", "bank_of_america_charitable", "banquest", "banquest_cm",
     "benevity", "chai_charitable", "charityvest_inc", "cjp", "donors_fund", "earthport",
@@ -77,7 +75,7 @@ const updatePaymentPlanSchema = z.object({
     "ojc", "paypal", "pelecard", "schwab_charitable", "stripe", "tiaa", "touro", "uktoremet",
     "vanguard_charitable", "venmo", "vmm", "wise", "worldline", "yaadpay", "yaadpay_cm",
     "yourcause", "yu", "zelle"
-  ]).optional(),
+  ]),
 }).refine((data) => {
   if (data.distributionType === "fixed") {
     return (
@@ -504,14 +502,13 @@ export async function PATCH(
         paymentUpdates.methodDetail = validatedData.methodDetail;
       }
 
-      // Update all pending payments for this payment plan
       await db
         .update(payment)
         .set(paymentUpdates)
         .where(
           and(
             eq(payment.paymentPlanId, planId),
-            eq(payment.paymentStatus, "pending") // Only update pending payments
+            eq(payment.paymentStatus, "pending") 
           )
         );
     }
