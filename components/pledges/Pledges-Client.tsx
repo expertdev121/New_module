@@ -75,7 +75,6 @@ interface PledgeFormData {
   id?: number;
   contactId: number;
   categoryId?: number;
-  relationshipId?: number;
   description: string;
   pledgeDate: string;
   currency: string;
@@ -86,11 +85,10 @@ interface PledgeFormData {
   notes?: string;
 }
 
-// Updated interface that includes relationship data
+// Updated interface without relationship data
 interface PledgeApiResponse {
   id: number;
   categoryId?: number;
-  relationshipId?: number;
   description?: string | null;
   pledgeDate: string;
   currency: string;
@@ -106,22 +104,6 @@ interface PledgeApiResponse {
   balance: string;
   scheduledAmount?: string | null;
   unscheduledAmount?: string | null;
-  // Relationship data from backend
-  relationship?: {
-    id: number;
-    type?: string | null;
-    isActive?: boolean;
-    notes?: string | null;
-    relatedContact?: {
-      id: number;
-      firstName?: string | null;
-      lastName?: string | null;
-      email?: string | null;
-      phone?: string | null;
-      fullName?: string | null;
-    } | null;
-    label?: string | null;
-  } | null;
   // Payment plan is optional and may not be provided by API
   paymentPlan?: {
     planName?: string | null;
@@ -156,7 +138,6 @@ export default function PledgesTable() {
     id: number;
     description: string;
   } | null>(null);
-
   // Add state for edit dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingPledge, setEditingPledge] = useState<PledgeFormData | null>(null);
@@ -226,33 +207,11 @@ export default function PledgesTable() {
 
   const { data, isLoading, error, refetch } = usePledgesQuery(pledgeQueryParams);
 
-  // Debug logging - ADD THIS
+  // Debug logging
   useEffect(() => {
     if (data?.pledges) {
       console.log("=== PLEDGES TABLE DEBUG ===");
       console.log("Total pledges received:", data.pledges.length);
-      
-      const pledgesWithRelationships = data.pledges.filter(p => p.relationship);
-      console.log("Pledges with relationships:", pledgesWithRelationships.length);
-      
-      if (pledgesWithRelationships.length > 0) {
-        console.log("First pledge with relationship:", {
-          id: pledgesWithRelationships[0].id,
-          relationship: pledgesWithRelationships[0].relationship,
-        });
-      }
-      
-      // Log all relationships
-      data.pledges.forEach((pledge, index) => {
-        if (pledge.relationship) {
-          console.log(`Pledge ${index + 1} relationship:`, {
-            pledgeId: pledge.id,
-            relationshipType: pledge.relationship.type,
-            relatedContact: pledge.relationship.relatedContact?.fullName,
-            isActive: pledge.relationship.isActive,
-          });
-        }
-      });
     }
   }, [data]);
 
@@ -274,7 +233,7 @@ export default function PledgesTable() {
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
     }).format(rounded);
-
+    
     const currencySymbol = formatted.replace(/[\d,.\s]/g, "");
     const numericAmount = formatted.replace(/[^\d,.\s]/g, "").trim();
 
@@ -396,7 +355,6 @@ export default function PledgesTable() {
       id: pledge.id,
       contactId: contactId, // Use contactId from query params instead of pledge response
       categoryId: pledge.categoryId,
-      relationshipId: pledge.relationshipId,
       description: pledge.description || "",
       pledgeDate: pledge.pledgeDate,
       currency: pledge.currency,
@@ -479,12 +437,6 @@ export default function PledgesTable() {
                   <TableHead className="font-semibold text-gray-900">
                     Pledge Detail
                   </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Relationship
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Related Contact
-                  </TableHead>
                   <TableHead className="font-semibold text-gray-900 text-center">
                     Pledge Amount
                   </TableHead>
@@ -522,8 +474,6 @@ export default function PledgesTable() {
                       <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-20" /></TableCell>
                       <TableCell><Skeleton className="h-4 w-32" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
                       <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                       <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
                       <TableCell className="text-center"><Skeleton className="h-4 w-20 ml-auto" /></TableCell>
@@ -539,7 +489,7 @@ export default function PledgesTable() {
                 ) : data?.pledges.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={15}
+                      colSpan={13}
                       className="text-center py-8 text-gray-500"
                     >
                       No pledges found
@@ -574,14 +524,6 @@ export default function PledgesTable() {
                           <TableCell>
                             {pledge.categoryName?.split(" ")[0]} {">"}{" "}
                             {pledge.description || "-"}
-                          </TableCell>
-                          <TableCell>
-                            {pledge.relationship?.type ?? "-"}
-                          </TableCell>
-                          <TableCell>
-                            {pledge.relationship?.relatedContact
-                              ? `${pledge.relationship.relatedContact.fullName ?? "-"}`
-                              : "-"}
                           </TableCell>
                           <TableCell className="text-center">
                             <div className="flex justify-end items-center gap-1">
@@ -679,11 +621,11 @@ export default function PledgesTable() {
                           </TableCell>
                         </TableRow>
 
-                        {/* Expanded Row Content with Relationship Data */}
+                        {/* Expanded Row Content without Relationship Data */}
                         {expandedRows.has(pledge.id) && (
                           <TableRow>
-                            <TableCell colSpan={15} className="bg-gray-50 p-6">
-                              <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                            <TableCell colSpan={13} className="bg-gray-50 p-6">
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {/* Column 1: Pledge Details (all in pledge currency) */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
@@ -761,66 +703,7 @@ export default function PledgesTable() {
                                   </div>
                                 </div>
 
-                                {/* Column 3: Relationship Details */}
-                                <div className="space-y-3">
-                                  <h4 className="font-semibold text-gray-900">
-                                    Relationship
-                                  </h4>
-                                  <div className="space-y-2 text-sm">
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Type:
-                                      </span>
-                                      <span className="font-medium">
-                                        {pledge.relationship?.type ?? "-"}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Status:
-                                      </span>
-                                      <span className={`font-medium ${pledge.relationship?.isActive 
-                                        ? "text-green-600" 
-                                        : "text-red-600"}`}>
-                                        {pledge.relationship?.isActive 
-                                          ? "Active" 
-                                          : pledge.relationship ? "Inactive" : "-"}
-                                      </span>
-                                    </div>
-                                    <div className="space-y-1">
-                                      <span className="text-gray-600">
-                                        Related Contact:
-                                      </span>
-                                      {pledge.relationship?.relatedContact ? (
-                                        <div className="text-sm">
-                                          <p className="font-medium">
-                                            {pledge.relationship.relatedContact.fullName ?? "-"}
-                                          </p>
-                                          <p className="text-gray-500">
-                                            {pledge.relationship.relatedContact.email ?? "-"}
-                                          </p>
-                                          {pledge.relationship.relatedContact.phone && (
-                                            <p className="text-gray-500">
-                                              {pledge.relationship.relatedContact.phone}
-                                            </p>
-                                          )}
-                                        </div>
-                                      ) : (
-                                        <span className="font-medium">-</span>
-                                      )}
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-600">
-                                        Relationship Notes:
-                                      </span>
-                                      <p className="mt-1 text-gray-900 text-sm">
-                                        {pledge.relationship?.notes || "-"}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
-
-                                {/* Column 4: Payment Plan */}
+                                {/* Column 3: Payment Plan */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
                                     Payment Plan
