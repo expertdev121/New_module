@@ -36,9 +36,9 @@ const QueryParamsSchema = z.object({
   limit: z.number().min(1).max(100).default(10),
   search: z.string().optional(),
   sortBy: z
-    .enum(["updatedAt", "firstName", "lastName", "totalPledgedUsd"])
-    .default("updatedAt"),
-  sortOrder: z.enum(["asc", "desc"]).default("desc"),
+    .enum(["updatedAt", "firstName", "lastName", "displayName", "totalPledgedUsd"])
+    .default("displayName"),
+  sortOrder: z.enum(["asc", "desc"]).default("asc"),
 });
 
 export default function ContactsTable() {
@@ -53,13 +53,13 @@ export default function ContactsTable() {
   const [search, setSearch] = useQueryState("search");
   const [sortBy, setSortBy] = useQueryState("sortBy", {
     parse: (value) =>
-      ["updatedAt", "firstName", "lastName", "totalPledgedUsd"].includes(value)
+      ["updatedAt", "firstName", "lastName", "displayName", "totalPledgedUsd"].includes(value)
         ? value
-        : "updatedAt",
+        : "displayName",
     serialize: (value) => value,
   });
   const [sortOrder, setSortOrder] = useQueryState("sortOrder", {
-    parse: (value) => (value === "asc" || value === "desc" ? value : "desc"),
+    parse: (value) => (value === "asc" || value === "desc" ? value : "asc"),
     serialize: (value) => value,
   });
 
@@ -72,8 +72,8 @@ export default function ContactsTable() {
     page: currentPage,
     limit: currentLimit,
     search: search || undefined,
-    sortBy: sortBy || "updatedAt",
-    sortOrder: sortOrder || "desc",
+    sortBy: sortBy || "displayName",
+    sortOrder: sortOrder || "asc",
   });
 
   const { data, isLoading, error } = useGetContacts(queryParams);
@@ -163,6 +163,7 @@ export default function ContactsTable() {
               <SelectItem value="updatedAt">Updated At</SelectItem>
               <SelectItem value="firstName">First Name</SelectItem>
               <SelectItem value="lastName">Last Name</SelectItem>
+              <SelectItem value="displayName">Full Name</SelectItem>
               <SelectItem value="totalPledgedUsd">Total Pledged</SelectItem>
             </SelectGroup>
           </SelectContent>
@@ -171,7 +172,6 @@ export default function ContactsTable() {
         <Select
           value={sortOrder as string | undefined}
           onValueChange={(value) => setSortOrder(value as "asc" | "desc")}
-          defaultValue="asc"
         >
           <SelectTrigger className="w-full sm:w-36">
             <SelectValue placeholder="Sort Order" />
@@ -255,9 +255,9 @@ export default function ContactsTable() {
                     router.push(`/contacts/${contact.id}`);
                   }}
                 >
-                 <TableCell className="font-medium">
-  {contact.displayName || `${contact.firstName} ${contact.lastName}` || "N/A"}
-</TableCell>
+                  <TableCell className="font-medium">
+                    {contact.displayName || `${contact.firstName} ${contact.lastName}` || "N/A"}
+                  </TableCell>
                   <TableCell>{contact.email || "N/A"}</TableCell>
                   <TableCell>{contact.phone || "N/A"}</TableCell>
                   <TableCell>
