@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule, solicitor } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule, solicitor, bonusCalculation, contact } from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
 import { eq, desc, or, ilike, and, SQL, sql } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
@@ -35,10 +35,13 @@ const QueryParamsSchema = z.object({
   paymentStatus: PaymentStatusEnum.optional(),
 });
 
+// Updated schema to handle both field names with backward compatibility
 const allocationUpdateSchema = z.object({
   id: z.number().optional(),
   pledgeId: z.number().positive(),
-  allocatedAmount: z.number().positive(),
+  // Support both field names for backward compatibility
+  allocatedAmount: z.number().positive().optional(),
+  amount: z.number().positive().optional(),
   notes: z.string().optional().nullable(),
   installmentScheduleId: z.number().optional().nullable(),
   currency: z.enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"]).optional(),
@@ -46,6 +49,18 @@ const allocationUpdateSchema = z.object({
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(["invoice", "confirmation", "receipt", "other"]).optional().nullable(),
   receiptIssued: z.boolean().optional(),
+}).refine((data) => {
+  // Ensure at least one amount field is provided
+  return data.allocatedAmount !== undefined || data.amount !== undefined;
+}, {
+  message: "Either allocatedAmount or amount must be provided",
+}).transform((data) => {
+  // Normalize to use allocatedAmount consistently
+  return {
+    ...data,
+    allocatedAmount: data.allocatedAmount ?? data.amount!,
+    amount: undefined, // Remove amount after transformation
+  };
 });
 
 const updatePaymentSchema = z.object({
@@ -79,9 +94,10 @@ const updatePaymentSchema = z.object({
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
   installmentScheduleId: z.number().positive("Installment schedule ID must be positive").optional().nullable(),
   
-  // Third-party payment fields from your schema
+  // Third-party payment fields - Updated to match your form
   payerContactId: z.number().positive("Payer contact ID must be positive").optional().nullable(),
   isThirdPartyPayment: z.boolean().optional(),
+  thirdPartyContactId: z.number().positive("Third-party contact ID must be positive").optional().nullable(),
   
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationUpdateSchema).optional(),
@@ -97,6 +113,15 @@ const updatePaymentSchema = z.object({
   return true;
 }, {
   message: "Total allocation amount must equal the payment amount for split payments",
+}).refine((data) => {
+  // Third-party payment validation - Updated to match form logic
+  if (data.isThirdPartyPayment && !data.thirdPartyContactId) {
+    return false;
+  }
+  return true;
+}, {
+  message: "Third-party contact must be selected for third-party payments",
+  path: ["thirdPartyContactId"],
 });
 
 type AllocationResponse = {
@@ -112,7 +137,6 @@ type AllocationResponse = {
   createdAt: Date;
   updatedAt: string | null;
 };
-
 
 async function updatePaymentPlanTotals(paymentPlanId: number) {
   const payments = await db
@@ -294,16 +318,25 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    const pledgeId = parseInt(id, 10);
+    
+    if (isNaN(pledgeId) || pledgeId <= 0) {
+      return NextResponse.json(
+        { error: "Invalid pledge ID" }, 
+        { status: 400 }
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const queryParams = QueryParamsSchema.parse({
-      pledgeId: parseInt(id, 10),
+      pledgeId,
       page: parseInt(searchParams.get("page") || "1", 10),
       limit: parseInt(searchParams.get("limit") || "10", 10),
       search: searchParams.get("search") || undefined,
       paymentStatus: searchParams.get("paymentStatus") || undefined,
     });
 
-    const { pledgeId, page, limit, search, paymentStatus } = queryParams;
+    const { page, limit, search, paymentStatus } = queryParams;
 
     let query = db
       .select({
@@ -347,6 +380,21 @@ export async function GET(
         pledgeDescription: pledge.description,
         contactId: pledge.contactId,
         
+        // Third-party contact information - Fixed SQL expression
+        thirdPartyContactName: sql<string>`(
+          SELECT CONCAT(first_name, ' ', last_name) 
+          FROM ${contact} 
+          WHERE id = ${payment.payerContactId}
+        )`.as("thirdPartyContactName"),
+        
+        payerContactName: sql<string>`(
+          SELECT CONCAT(first_name, ' ', last_name) 
+          FROM ${contact} 
+          WHERE id = (
+            SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId}
+          )
+        )`.as("payerContactName"),
+        
         // Computed fields
         isSplitPayment: sql<boolean>`(
           SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
@@ -356,8 +404,9 @@ export async function GET(
         )`.as("allocationCount"),
         solicitorName: sql<string>`(
           SELECT CONCAT(first_name, ' ', last_name) 
-          FROM ${solicitor} 
-          WHERE id = ${payment.solicitorId}
+          FROM ${contact} c
+          INNER JOIN ${solicitor} s ON c.id = s.contact_id
+          WHERE s.id = ${payment.solicitorId}
         )`.as("solicitorName"),
       })
       .from(payment)
@@ -391,6 +440,12 @@ export async function GET(
 
     const paymentsWithAllocations = await Promise.all(
       paymentsResult.map(async (paymentItem) => {
+        // Add third-party contact ID for form compatibility
+        const enhancedPayment = {
+          ...paymentItem,
+          thirdPartyContactId: paymentItem.isThirdPartyPayment ? paymentItem.payerContactId : null,
+        };
+
         if (paymentItem.isSplitPayment) {
           const allocationsRaw = await db
             .select({
@@ -404,6 +459,7 @@ export async function GET(
               receiptNumber: paymentAllocations.receiptNumber,
               receiptType: paymentAllocations.receiptType,
               receiptIssued: paymentAllocations.receiptIssued,
+              payerContactId: paymentAllocations.payerContactId,
               pledgeDescription: sql<string>`(
                 SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
               )`.as("pledgeDescription"),
@@ -418,9 +474,9 @@ export async function GET(
               typeof alloc.allocatedAmount === "string" ? parseFloat(alloc.allocatedAmount) : alloc.allocatedAmount,
           }));
 
-          return { ...paymentItem, allocations };
+          return { ...enhancedPayment, allocations };
         }
-        return paymentItem;
+        return enhancedPayment;
       })
     );
 
@@ -443,68 +499,169 @@ export async function DELETE(
 ) {
   try {
     const { pledgeId } = await params;
-    const paymentId = parseInt(pledgeId);
+    const paymentId = parseInt(pledgeId, 10);
 
     if (isNaN(paymentId) || paymentId <= 0) {
       return NextResponse.json({ error: "Invalid payment ID" }, { status: 400 });
     }
 
-    // Get payment before deleting
+    // Get payment with all related data before deleting
     const existingPayment = await db
-      .select()
+      .select({
+        id: payment.id,
+        pledgeId: payment.pledgeId,
+        paymentPlanId: payment.paymentPlanId,
+        installmentScheduleId: payment.installmentScheduleId,
+        amount: payment.amount,
+        paymentStatus: payment.paymentStatus,
+        paymentDate: payment.paymentDate,
+        solicitorId: payment.solicitorId,
+      })
       .from(payment)
       .where(eq(payment.id, paymentId))
       .limit(1);
 
     if (existingPayment.length === 0) {
-      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+      throw new AppError("Payment not found", 404);
     }
 
     const currentPayment = existingPayment[0];
 
-    // Get allocations if it's a split payment
+    // Get allocations if it's a split payment (before deletion)
     const existingAllocations = await db
-      .select()
+      .select({
+        id: paymentAllocations.id,
+        pledgeId: paymentAllocations.pledgeId,
+        allocatedAmount: paymentAllocations.allocatedAmount,
+        installmentScheduleId: paymentAllocations.installmentScheduleId,
+      })
       .from(paymentAllocations)
       .where(eq(paymentAllocations.paymentId, paymentId));
 
-    // Delete payment
-    await db.delete(payment).where(eq(payment.id, paymentId));
+    // Get bonus calculations before deletion
+    const bonusCalculations = await db
+      .select({ id: bonusCalculation.id })
+      .from(bonusCalculation)
+      .where(eq(bonusCalculation.paymentId, paymentId));
 
-    // Update related pledge totals
+    // 1. Clear any installment schedule references to this payment
+    if (currentPayment.installmentScheduleId) {
+      await db
+        .update(installmentSchedule)
+        .set({
+          paymentId: null,
+          status: "pending",
+          paidDate: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(installmentSchedule.id, currentPayment.installmentScheduleId));
+    }
+
+    // 2. Clear any installment schedule references from allocations
     if (existingAllocations.length > 0) {
-      // Split payment: update each unique pledge in allocations
-      const uniquePledgeIds = [
-        ...new Set(existingAllocations.map(a => a.pledgeId))
-      ];
-      for (const pledgeId of uniquePledgeIds) {
-        await updatePledgeTotals(pledgeId);
+      const allocationInstallmentIds = existingAllocations
+        .filter(a => a.installmentScheduleId)
+        .map(a => a.installmentScheduleId!);
+
+      if (allocationInstallmentIds.length > 0) {
+        // Update each installment schedule individually to avoid complex array queries
+        for (const installmentId of allocationInstallmentIds) {
+          await db
+            .update(installmentSchedule)
+            .set({
+              status: "pending",
+              paidDate: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(installmentSchedule.id, installmentId));
+        }
       }
-    } else if (currentPayment.pledgeId) {
-      // Regular payment: update its single pledge
-      await updatePledgeTotals(currentPayment.pledgeId);
+    }
+
+    // 3. Delete bonus calculations (if any)
+    if (bonusCalculations.length > 0) {
+      await db
+        .delete(bonusCalculation)
+        .where(eq(bonusCalculation.paymentId, paymentId));
+    }
+
+    // 4. Delete payment allocations explicitly (even though they should cascade)
+    if (existingAllocations.length > 0) {
+      await db
+        .delete(paymentAllocations)
+        .where(eq(paymentAllocations.paymentId, paymentId));
+    }
+
+    // 5. Delete the payment itself
+    await db
+      .delete(payment)
+      .where(eq(payment.id, paymentId));
+
+    const deletionResult = {
+      deletedPayment: currentPayment,
+      allocations: existingAllocations,
+      bonusCalculationsDeleted: bonusCalculations.length,
+    };
+
+    // After successful deletion, update all related totals
+    const { deletedPayment, allocations } = deletionResult;
+
+    // Update pledge totals for split payments
+    if (allocations.length > 0) {
+      const uniquePledgeIds = [...new Set(allocations.map(a => a.pledgeId))];
+      for (const pledgeId of uniquePledgeIds) {
+        try {
+          await updatePledgeTotals(pledgeId);
+        } catch (error) {
+          console.error(`Failed to update pledge ${pledgeId} totals:`, error);
+          // Continue with other updates even if one fails
+        }
+      }
+    }
+
+    // Update pledge totals for regular payment
+    if (deletedPayment.pledgeId && allocations.length === 0) {
+      try {
+        await updatePledgeTotals(deletedPayment.pledgeId);
+      } catch (error) {
+        console.error(`Failed to update pledge ${deletedPayment.pledgeId} totals:`, error);
+      }
     }
 
     // Update payment plan totals if applicable
-    if (currentPayment.paymentPlanId) {
-      await updatePaymentPlanTotals(currentPayment.paymentPlanId);
-    }
-
-    // Update installment schedule status if applicable
-    if (currentPayment.installmentScheduleId) {
-      await updateInstallmentScheduleStatus(
-        currentPayment.installmentScheduleId,
-        "pending", // Because deleting means it's unpaid now
-        null
-      );
+    if (deletedPayment.paymentPlanId) {
+      try {
+        await updatePaymentPlanTotals(deletedPayment.paymentPlanId);
+      } catch (error) {
+        console.error(`Failed to update payment plan ${deletedPayment.paymentPlanId} totals:`, error);
+      }
     }
 
     return NextResponse.json({
-      message: "Payment deleted successfully"
+      message: "Payment deleted successfully",
+      details: {
+        paymentId: deletedPayment.id,
+        amount: deletedPayment.amount,
+        wasAllocated: allocations.length > 0,
+        allocationsDeleted: allocations.length,
+        bonusCalculationsDeleted: deletionResult.bonusCalculationsDeleted,
+        pledgesUpdated: allocations.length > 0 
+          ? [...new Set(allocations.map(a => a.pledgeId))] 
+          : deletedPayment.pledgeId ? [deletedPayment.pledgeId] : [],
+        paymentPlanUpdated: deletedPayment.paymentPlanId,
+      }
     });
 
   } catch (error) {
     console.error("Error deleting payment:", error);
+    
+    if (error instanceof AppError) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: error.statusCode }
+      );
+    }
+    
     return ErrorHandler.handle(error);
   }
 }
@@ -517,7 +674,7 @@ export async function PATCH(
   try {
     const resolvedParams = await params;
     const rawPledgeId = resolvedParams.pledgeId;
-    const pledgeId = parseInt(rawPledgeId);
+    const pledgeId = parseInt(rawPledgeId, 10);
 
     if (isNaN(pledgeId) || pledgeId <= 0) {
       throw new AppError(
@@ -549,30 +706,264 @@ export async function PATCH(
     }
 
     const paymentId = validatedData.paymentId;
-    const existingPayment = await db.select().from(payment).where(eq(payment.id, paymentId)).limit(1);
+    
+    // Get existing payment with comprehensive data including third-party fields
+    const existingPayment = await db
+      .select({
+        id: payment.id,
+        pledgeId: payment.pledgeId,
+        paymentPlanId: payment.paymentPlanId,
+        installmentScheduleId: payment.installmentScheduleId,
+        amount: payment.amount,
+        paymentStatus: payment.paymentStatus,
+        solicitorId: payment.solicitorId,
+        bonusRuleId: payment.bonusRuleId,
+        currency: payment.currency,
+        exchangeRate: payment.exchangeRate,
+        // Third-party fields
+        payerContactId: payment.payerContactId,
+        isThirdPartyPayment: payment.isThirdPartyPayment,
+      })
+      .from(payment)
+      .where(eq(payment.id, paymentId))
+      .limit(1);
 
     if (existingPayment.length === 0) {
       throw new AppError("Payment not found.", 404);
     }
     const currentPayment = existingPayment[0];
 
-    if (validatedData.isSplitPayment) {
-      const existingAllocations = await db
-        .select()
-        .from(paymentAllocations)
-        .where(eq(paymentAllocations.paymentId, paymentId));
+    // Get existing allocations
+    const existingAllocations = await db
+      .select({
+        id: paymentAllocations.id,
+        pledgeId: paymentAllocations.pledgeId,
+        allocatedAmount: paymentAllocations.allocatedAmount,
+        installmentScheduleId: paymentAllocations.installmentScheduleId,
+        payerContactId: paymentAllocations.payerContactId,
+      })
+      .from(paymentAllocations)
+      .where(eq(paymentAllocations.paymentId, paymentId));
 
-      if (existingAllocations.length === 0) {
-        // Converting to split payment
-        if (!Array.isArray(validatedData.allocations) || validatedData.allocations.length === 0) {
+    const isCurrentlySplit = existingAllocations.length > 0;
+    const willBeSplit = validatedData.isSplitPayment === true;
+
+    // Track pledges that need total updates
+    const pledgesToUpdate = new Set<number>();
+    
+    // Always add the current main pledge
+    if (currentPayment.pledgeId) {
+      pledgesToUpdate.add(currentPayment.pledgeId);
+    }
+    
+    // Add existing allocation pledges
+    existingAllocations.forEach(alloc => pledgesToUpdate.add(alloc.pledgeId));
+
+    // Build the update data object with third-party payment support
+    const buildUpdateData = (data: typeof validatedData) => {
+      const { 
+        paymentId: _, 
+        allocations: __, 
+        isSplitPayment: ___, 
+        autoAdjustAllocations: ____, 
+        redistributionMethod: _____, 
+        thirdPartyContactId: ______, // Remove from base update
+        ...dataToUpdate 
+      } = data;
+      
+      // Handle third-party payment logic
+      const isThirdParty = data.isThirdPartyPayment && data.thirdPartyContactId;
+      
+      const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
+        ...dataToUpdate,
+        // Third-party payment fields
+        isThirdPartyPayment: data.isThirdPartyPayment || false,
+        payerContactId: isThirdParty ? data.thirdPartyContactId : null,
+        updatedAt: new Date(),
+      };
+
+      // Convert numeric fields to strings
+      ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
+        (f) => {
+          if (updateData[f] !== undefined && updateData[f] !== null)
+            updateData[f] = updateData[f].toString();
+        }
+      );
+
+      return updateData;
+    };
+
+    // SCENARIO 1: Converting split payment to regular payment
+    if (isCurrentlySplit && !willBeSplit) {
+      console.log("Converting split payment to regular payment");
+      
+      // Validate that we have a target pledgeId
+      const targetPledgeId = validatedData.pledgeId || currentPayment.pledgeId;
+      if (!targetPledgeId) {
+        throw new AppError("Target pledge ID is required when converting split payment to regular payment", 400);
+      }
+
+      // Verify target pledge exists
+      const targetPledgeExists = await db
+        .select({ id: pledge.id })
+        .from(pledge)
+        .where(eq(pledge.id, targetPledgeId))
+        .limit(1);
+      if (targetPledgeExists.length === 0) {
+        throw new AppError(`Target pledge with ID ${targetPledgeId} does not exist`, 400);
+      }
+
+      // Clear old installment schedule references from allocations
+      const allocationInstallmentIds = existingAllocations
+        .filter(a => a.installmentScheduleId)
+        .map(a => a.installmentScheduleId!);
+
+      if (allocationInstallmentIds.length > 0) {
+        for (const installmentId of allocationInstallmentIds) {
+          await db
+            .update(installmentSchedule)
+            .set({
+              status: "pending",
+              paidDate: null,
+              updatedAt: new Date(),
+            })
+            .where(eq(installmentSchedule.id, installmentId));
+        }
+      }
+
+      // Delete all existing allocations
+      await db.delete(paymentAllocations).where(eq(paymentAllocations.paymentId, paymentId));
+
+      // Update the payment as regular payment
+      const updateData = buildUpdateData(validatedData);
+      updateData.pledgeId = targetPledgeId;
+
+      await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
+
+      pledgesToUpdate.add(targetPledgeId);
+    }
+    
+    // SCENARIO 2: Converting regular payment to split payment
+    else if (!isCurrentlySplit && willBeSplit) {
+      console.log("Converting regular payment to split payment");
+      
+      if (!Array.isArray(validatedData.allocations) || validatedData.allocations.length === 0) {
+        throw new AppError("Allocations must be provided when converting to split payment.", 400);
+      }
+
+      const totalAllocated = validatedData.allocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
+      const paymentAmount = validatedData.amount ?? parseFloat(currentPayment.amount);
+      
+      if (Math.abs(totalAllocated - paymentAmount) > 0.01) {
+        throw new AppError(
+          "Invalid allocation amounts",
+          400,
+          {
+            details: `Total allocated amount (${totalAllocated.toFixed(2)}) must equal payment amount (${paymentAmount.toFixed(2)}).`,
+            totalAllocated,
+            paymentAmount,
+            difference: Math.abs(totalAllocated - paymentAmount),
+          }
+        );
+      }
+
+      // Validate all allocations
+      for (const allocation of validatedData.allocations) {
+        if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
           throw new AppError(
-            "Allocations must be provided when converting to split payment.",
-            400
+            "Invalid allocation amount",
+            400,
+            { details: `Allocated amount must be positive. Found: ${allocation.allocatedAmount || 0} for pledge ${allocation.pledgeId}` }
           );
         }
 
+        const pledgeExists = await db
+          .select({ id: pledge.id })
+          .from(pledge)
+          .where(eq(pledge.id, allocation.pledgeId))
+          .limit(1);
+        if (pledgeExists.length === 0) {
+          throw new AppError(
+            "Invalid pledge ID in allocation",
+            400,
+            { details: `Pledge with ID ${allocation.pledgeId} does not exist.` }
+          );
+        }
+        
+        pledgesToUpdate.add(allocation.pledgeId);
+      }
+
+      // Clear old installment schedule reference if exists
+      if (currentPayment.installmentScheduleId) {
+        await db
+          .update(installmentSchedule)
+          .set({
+            status: "pending",
+            paidDate: null,
+            updatedAt: new Date(),
+          })
+          .where(eq(installmentSchedule.id, currentPayment.installmentScheduleId));
+      }
+
+      // Update payment (remove pledge assignment for split payments)
+      const updateData = buildUpdateData(validatedData);
+      updateData.pledgeId = null; // Split payments don't have a main pledgeId
+      updateData.installmentScheduleId = null; // Clear installment reference
+
+      await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
+
+      // Create new allocations
+      for (const alloc of validatedData.allocations) {
+        let allocatedAmountUsd: string | null = null;
+
+        if (alloc.currency === 'USD') {
+          allocatedAmountUsd = alloc.allocatedAmount.toString();
+        } else {
+          const rate = typeof alloc.exchangeRate === 'number'
+            ? alloc.exchangeRate
+            : (typeof validatedData.exchangeRate === 'number' ? validatedData.exchangeRate : null);
+          allocatedAmountUsd =
+            rate !== null
+              ? (alloc.allocatedAmount * rate).toFixed(2)
+              : null;
+        }
+
+        const allocationToInsert: NewPaymentAllocation = {
+          paymentId: paymentId,
+          pledgeId: alloc.pledgeId,
+          allocatedAmount: alloc.allocatedAmount.toString(),
+          allocatedAmountUsd,
+          currency: alloc.currency ?? validatedData.currency ?? currentPayment.currency,
+          installmentScheduleId: alloc.installmentScheduleId ?? null,
+          receiptNumber: alloc.receiptNumber ?? null,
+          receiptType: alloc.receiptType ?? null,
+          receiptIssued: alloc.receiptIssued ?? false,
+          notes: alloc.notes ?? null,
+          // Add third-party contact tracking for allocations
+          payerContactId: validatedData.isThirdPartyPayment ? validatedData.thirdPartyContactId : null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+        await db.insert(paymentAllocations).values(allocationToInsert);
+
+        if (alloc.installmentScheduleId && validatedData.paymentStatus) {
+          await updateInstallmentScheduleStatus(
+            alloc.installmentScheduleId,
+            validatedData.paymentStatus,
+            validatedData.receivedDate || validatedData.paymentDate
+          );
+        }
+      }
+    }
+    
+    // SCENARIO 3: Updating existing split payment
+    else if (isCurrentlySplit && willBeSplit) {
+      console.log("Updating existing split payment");
+      
+      if (Array.isArray(validatedData.allocations) && validatedData.allocations.length > 0) {
         const totalAllocated = validatedData.allocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
         const paymentAmount = validatedData.amount ?? parseFloat(currentPayment.amount);
+
         if (Math.abs(totalAllocated - paymentAmount) > 0.01) {
           throw new AppError(
             "Invalid allocation amounts",
@@ -586,8 +977,19 @@ export async function PATCH(
           );
         }
 
-        // Validate all allocations
+        // Validate allocations
         for (const allocation of validatedData.allocations) {
+          if (allocation.id) {
+            const existingAllocation = existingAllocations.find((existing) => existing.id === allocation.id);
+            if (!existingAllocation) {
+              throw new AppError(
+                "Invalid allocation ID",
+                400,
+                { details: `Allocation with ID ${allocation.id} does not exist for this payment.` }
+              );
+            }
+          }
+
           if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
             throw new AppError(
               "Invalid allocation amount",
@@ -608,176 +1010,70 @@ export async function PATCH(
               { details: `Pledge with ID ${allocation.pledgeId} does not exist.` }
             );
           }
+          
+          pledgesToUpdate.add(allocation.pledgeId);
         }
 
-        // Filter out form-only fields and update payment
-        const { 
-          paymentId: _, 
-          allocations: __, 
-          isSplitPayment: ___, 
-          autoAdjustAllocations: ____, 
-          redistributionMethod: _____, 
-          ...dataToUpdate 
-        } = validatedData;
-        
-        const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
-          ...dataToUpdate,
-          updatedAt: new Date(),
-        };
-        
-        // Convert numeric fields to strings for database storage
-        ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
-          (f) => {
-            if (updateData[f] !== undefined && updateData[f] !== null)
-              updateData[f] = updateData[f].toString();
-          }
+        // Find allocations to delete (exist in DB but not in new data)
+        const newAllocationIds = validatedData.allocations.filter(a => a.id).map(a => a.id!);
+        const allocationsToDelete = existingAllocations.filter(
+          existing => !newAllocationIds.includes(existing.id)
         );
 
+        // Clear installment schedule references for allocations being deleted
+        for (const allocation of allocationsToDelete) {
+          if (allocation.installmentScheduleId) {
+            await db
+              .update(installmentSchedule)
+              .set({
+                status: "pending",
+                paidDate: null,
+                updatedAt: new Date(),
+              })
+              .where(eq(installmentSchedule.id, allocation.installmentScheduleId));
+          }
+        }
+
+        // Delete removed allocations
+        if (allocationsToDelete.length > 0) {
+          for (const allocationToDelete of allocationsToDelete) {
+            await db
+              .delete(paymentAllocations)
+              .where(eq(paymentAllocations.id, allocationToDelete.id));
+          }
+        }
+
+        // Update payment
+        const updateData = buildUpdateData(validatedData);
         await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
 
-        // Create new allocations
-        for (const alloc of validatedData.allocations) {
+        // Process allocations (update existing, create new)
+        for (const allocation of validatedData.allocations) {
           let allocatedAmountUsd: string | null = null;
 
-          if (alloc.currency === 'USD') {
-            allocatedAmountUsd = alloc.allocatedAmount.toString();
+          if (allocation.currency === 'USD') {
+            allocatedAmountUsd = allocation.allocatedAmount.toString();
           } else {
-            const rate = typeof alloc.exchangeRate === 'number'
-              ? alloc.exchangeRate
+            const rate = typeof allocation.exchangeRate === 'number'
+              ? allocation.exchangeRate
               : (typeof validatedData.exchangeRate === 'number' ? validatedData.exchangeRate : null);
+
             allocatedAmountUsd =
               rate !== null
-                ? (alloc.allocatedAmount * rate).toFixed(2)
+                ? (allocation.allocatedAmount * rate).toFixed(2)
                 : null;
           }
 
-          const allocationToInsert: NewPaymentAllocation = {
-            paymentId: paymentId,
-            pledgeId: alloc.pledgeId,
-            allocatedAmount: alloc.allocatedAmount.toString(),
-            allocatedAmountUsd,
-            currency: alloc.currency ?? validatedData.currency ?? currentPayment.currency,
-            installmentScheduleId: alloc.installmentScheduleId ?? null,
-            receiptNumber: alloc.receiptNumber ?? null,
-            receiptType: alloc.receiptType ?? null,
-            receiptIssued: alloc.receiptIssued ?? false,
-            notes: alloc.notes ?? null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          };
-          await db.insert(paymentAllocations).values(allocationToInsert);
-
-          if (alloc.installmentScheduleId && validatedData.paymentStatus) {
-            await updateInstallmentScheduleStatus(
-              alloc.installmentScheduleId,
-              validatedData.paymentStatus,
-              validatedData.receivedDate || validatedData.paymentDate
-            );
-          }
-        }
-      } else {
-        // Updating existing split payment
-        if (Array.isArray(validatedData.allocations) && validatedData.allocations.length > 0) {
-          const totalAllocated = validatedData.allocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
-          const paymentAmount = validatedData.amount ?? parseFloat(currentPayment.amount);
-
-          if (Math.abs(totalAllocated - paymentAmount) > 0.01) {
-            throw new AppError(
-              "Invalid allocation amounts",
-              400,
-              {
-                details: `Total allocated amount (${totalAllocated.toFixed(2)}) must equal payment amount (${paymentAmount.toFixed(2)}).`,
-                totalAllocated,
-                paymentAmount,
-                difference: Math.abs(totalAllocated - paymentAmount),
-              }
-            );
-          }
-
-          // Validate allocations
-          for (const allocation of validatedData.allocations) {
-            if (allocation.id) {
-              const existingAllocation = existingAllocations.find((existing) => existing.id === allocation.id);
-              if (!existingAllocation) {
-                throw new AppError(
-                  "Invalid allocation ID",
-                  400,
-                  { details: `Allocation with ID ${allocation.id} does not exist for this payment.` }
-                );
-              }
-            }
-
-            if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
-              throw new AppError(
-                "Invalid allocation amount",
-                400,
-                { details: `Allocated amount must be positive. Found: ${allocation.allocatedAmount || 0} for pledge ${allocation.pledgeId}` }
-              );
-            }
-
-            const pledgeExists = await db
-              .select({ id: pledge.id })
-              .from(pledge)
-              .where(eq(pledge.id, allocation.pledgeId))
-              .limit(1);
-            if (pledgeExists.length === 0) {
-              throw new AppError(
-                "Invalid pledge ID in allocation",
-                400,
-                { details: `Pledge with ID ${allocation.pledgeId} does not exist.` }
-              );
-            }
-          }
-
-          // Update payment
-          const { 
-            paymentId: _, 
-            allocations: __, 
-            isSplitPayment: ___, 
-            autoAdjustAllocations: ____, 
-            redistributionMethod: _____, 
-            ...dataToUpdate 
-          } = validatedData;
-          
-          const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
-            ...dataToUpdate,
-            updatedAt: new Date(),
-          };
-
-          ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
-            (f) => {
-              if (updateData[f] !== undefined && updateData[f] !== null)
-                updateData[f] = updateData[f].toString();
-            }
-          );
-
-          await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
-
-          // Update existing allocations
-          for (const allocation of validatedData.allocations) {
-            if (!allocation?.id) continue;
-
-            let allocatedAmountUsd: string | null = null;
-
-            if (allocation.currency === 'USD') {
-              allocatedAmountUsd = allocation.allocatedAmount.toString();
-            } else {
-              const rate = typeof allocation.exchangeRate === 'number'
-                ? allocation.exchangeRate
-                : (typeof validatedData.exchangeRate === 'number' ? validatedData.exchangeRate : null);
-
-              allocatedAmountUsd =
-                rate !== null
-                  ? (allocation.allocatedAmount * rate).toFixed(2)
-                  : null;
-            }
-
+          if (allocation.id) {
+            // Update existing allocation
             const allocationUpdateData: Record<string, string | boolean | number | null | undefined | Date> = {
               pledgeId: allocation.pledgeId,
               allocatedAmount: allocation.allocatedAmount.toString(),
               allocatedAmountUsd,
               notes: allocation.notes ?? null,
               installmentScheduleId: allocation.installmentScheduleId ?? null,
+              // Update third-party contact tracking
+              payerContactId: validatedData.isThirdPartyPayment ? validatedData.thirdPartyContactId : null,
               updatedAt: new Date(),
             };
 
@@ -798,59 +1094,46 @@ export async function PATCH(
               .update(paymentAllocations)
               .set(allocationUpdateData)
               .where(eq(paymentAllocations.id, allocation.id));
-
-            if (allocation.installmentScheduleId && validatedData.paymentStatus) {
-              await updateInstallmentScheduleStatus(
-                allocation.installmentScheduleId,
-                validatedData.paymentStatus,
-                validatedData.receivedDate || validatedData.paymentDate
-              );
-            }
+          } else {
+            // Create new allocation
+            const allocationToInsert: NewPaymentAllocation = {
+              paymentId: paymentId,
+              pledgeId: allocation.pledgeId,
+              allocatedAmount: allocation.allocatedAmount.toString(),
+              allocatedAmountUsd,
+              currency: allocation.currency ?? validatedData.currency ?? currentPayment.currency,
+              installmentScheduleId: allocation.installmentScheduleId ?? null,
+              receiptNumber: allocation.receiptNumber ?? null,
+              receiptType: allocation.receiptType ?? null,
+              receiptIssued: allocation.receiptIssued ?? false,
+              notes: allocation.notes ?? null,
+              // Add third-party contact tracking
+              payerContactId: validatedData.isThirdPartyPayment ? validatedData.thirdPartyContactId : null,
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            };
+            await db.insert(paymentAllocations).values(allocationToInsert);
           }
-        } else {
-          // Update payment without changing allocations
-          const { 
-            paymentId: _, 
-            allocations: __, 
-            isSplitPayment: ___, 
-            autoAdjustAllocations: ____, 
-            redistributionMethod: _____, 
-            ...dataToUpdate 
-          } = validatedData;
-          
-          const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
-            ...dataToUpdate,
-            updatedAt: new Date(),
-          };
 
-          ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
-            (f) => {
-              if (updateData[f] !== undefined && updateData[f] !== null)
-                updateData[f] = updateData[f].toString();
-            }
-          );
-
-          await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
+          if (allocation.installmentScheduleId && validatedData.paymentStatus) {
+            await updateInstallmentScheduleStatus(
+              allocation.installmentScheduleId,
+              validatedData.paymentStatus,
+              validatedData.receivedDate || validatedData.paymentDate
+            );
+          }
         }
+      } else {
+        // Update payment without changing allocations
+        const updateData = buildUpdateData(validatedData);
+        await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
       }
-    } else {
-      // Regular (non-split) payment update
-      const existingAllocations = await db
-        .select()
-        .from(paymentAllocations)
-        .where(eq(paymentAllocations.paymentId, paymentId));
+    }
+    
+    // SCENARIO 4: Updating regular payment
+    else {
+      console.log("Updating regular payment");
       
-      if (existingAllocations.length > 0) {
-        throw new AppError(
-          "Cannot update split payment as regular payment",
-          400,
-          {
-            details: `This payment has ${existingAllocations.length} allocations and must be updated as a split payment.`,
-            allocationCount: existingAllocations.length,
-          }
-        );
-      }
-
       if (validatedData.pledgeId && validatedData.pledgeId !== pledgeId) {
         const newPledgeExists = await db
           .select({ id: pledge.id })
@@ -865,36 +1148,57 @@ export async function PATCH(
             { details: `Pledge with ID ${validatedData.pledgeId} does not exist.` }
           );
         }
+        
+        pledgesToUpdate.add(validatedData.pledgeId);
       }
 
-      const { 
-        paymentId: _, 
-        allocations: __, 
-        isSplitPayment: ___, 
-        autoAdjustAllocations: ____, 
-        redistributionMethod: _____, 
-        ...dataToUpdate 
-      } = validatedData;
-      
-      const updateData: Record<string, string | number | boolean | null | undefined | Date> = {
-        ...dataToUpdate,
-        pledgeId: validatedData.pledgeId || currentPayment.pledgeId,
-        updatedAt: new Date(),
-      };
-
-      ["amount", "amountUsd", "amountInPledgeCurrency", "exchangeRate", "bonusPercentage", "bonusAmount"].forEach(
-        (f) => {
-          if (updateData[f] !== undefined && updateData[f] !== null)
-            updateData[f] = updateData[f].toString();
-        }
-      );
+      const updateData = buildUpdateData(validatedData);
+      updateData.pledgeId = validatedData.pledgeId || currentPayment.pledgeId;
 
       await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
     }
 
-    // Get updated payment
+    // Get updated payment with third-party information for response - FIXED SELECT STATEMENT
     const updatedPaymentRows = await db
-      .select()
+      .select({
+        id: payment.id,
+        pledgeId: payment.pledgeId,
+        paymentPlanId: payment.paymentPlanId,
+        installmentScheduleId: payment.installmentScheduleId,
+        relationshipId: payment.relationshipId,
+        payerContactId: payment.payerContactId,
+        isThirdPartyPayment: payment.isThirdPartyPayment,
+        amount: payment.amount,
+        currency: payment.currency,
+        amountUsd: payment.amountUsd,
+        amountInPledgeCurrency: payment.amountInPledgeCurrency,
+        exchangeRate: payment.exchangeRate,
+        paymentDate: payment.paymentDate,
+        receivedDate: payment.receivedDate,
+        paymentMethod: payment.paymentMethod,
+        methodDetail: payment.methodDetail,
+        paymentStatus: payment.paymentStatus,
+        referenceNumber: payment.referenceNumber,
+        checkNumber: payment.checkNumber,
+        checkDate: payment.checkDate,
+        account: payment.account,
+        receiptNumber: payment.receiptNumber,
+        receiptType: payment.receiptType,
+        receiptIssued: payment.receiptIssued,
+        solicitorId: payment.solicitorId,
+        bonusPercentage: payment.bonusPercentage,
+        bonusAmount: payment.bonusAmount,
+        bonusRuleId: payment.bonusRuleId,
+        notes: payment.notes,
+        createdAt: payment.createdAt,
+        updatedAt: payment.updatedAt,
+        // Third-party contact name - Fixed SQL expression
+        thirdPartyContactName: sql<string>`(
+          SELECT CONCAT(first_name, ' ', last_name) 
+          FROM ${contact} 
+          WHERE id = ${payment.payerContactId}
+        )`.as("thirdPartyContactName"),
+      })
       .from(payment)
       .where(eq(payment.id, validatedData.paymentId))
       .limit(1);
@@ -906,40 +1210,38 @@ export async function PATCH(
 
     // Update related entities
     if (updatedPayment.paymentPlanId) {
-      await updatePaymentPlanTotals(updatedPayment.paymentPlanId);
-    }
-
-    if (updatedPayment.installmentScheduleId && validatedData.paymentStatus) {
-      await updateInstallmentScheduleStatus(
-        updatedPayment.installmentScheduleId,
-        validatedData.paymentStatus,
-        validatedData.receivedDate || validatedData.paymentDate
-      );
-    }
-
-    // Update pledge totals for the main pledge
-    if (updatedPayment.pledgeId) {
-      await updatePledgeTotals(updatedPayment.pledgeId);
-    }
-
-    // Update pledge totals for any allocated pledges (in case of split payments)
-    if (validatedData.isSplitPayment && validatedData.allocations) {
-      const uniquePledgeIds = [...new Set(validatedData.allocations.map(a => a.pledgeId))];
-      for (const pledgeId of uniquePledgeIds) {
-        if (pledgeId !== updatedPayment.pledgeId) {
-          await updatePledgeTotals(pledgeId);
-        }
+      try {
+        await updatePaymentPlanTotals(updatedPayment.paymentPlanId);
+      } catch (error) {
+        console.error(`Failed to update payment plan ${updatedPayment.paymentPlanId}:`, error);
       }
     }
 
-    // If the payment was moved from one pledge to another, update the old pledge too
-    if (validatedData.pledgeId && validatedData.pledgeId !== currentPayment.pledgeId && currentPayment.pledgeId) {
-      await updatePledgeTotals(currentPayment.pledgeId);
+    if (updatedPayment.installmentScheduleId && validatedData.paymentStatus) {
+      try {
+        await updateInstallmentScheduleStatus(
+          updatedPayment.installmentScheduleId,
+          validatedData.paymentStatus,
+          validatedData.receivedDate || validatedData.paymentDate
+        );
+      } catch (error) {
+        console.error(`Failed to update installment schedule ${updatedPayment.installmentScheduleId}:`, error);
+      }
+    }
+
+    // Update pledge totals for all affected pledges
+    for (const pledgeId of pledgesToUpdate) {
+      try {
+        await updatePledgeTotals(pledgeId);
+      } catch (error) {
+        console.error(`Failed to update pledge ${pledgeId} totals:`, error);
+      }
     }
 
     // Get allocations for response
-   let allocations: AllocationResponse[] | null = null;
-    if (validatedData.isSplitPayment) {
+    let allocations: AllocationResponse[] | null = null;
+    const finalIsSplit = willBeSplit;
+    if (finalIsSplit) {
       const rawAllocations = await db
         .select({
           id: paymentAllocations.id,
@@ -973,15 +1275,20 @@ export async function PATCH(
         .limit(1))[0]?.description : null;
 
     return NextResponse.json({
-      message: `${validatedData.isSplitPayment ? "Split payment" : "Payment"} updated successfully`,
+      message: `${finalIsSplit ? "Split payment" : "Payment"} updated successfully`,
       payment: {
         ...updatedPayment,
         allocations,
-        isSplitPayment: validatedData.isSplitPayment ?? false,
+        isSplitPayment: finalIsSplit,
         allocationCount: allocations?.length ?? 0,
         pledgeDescription,
+        // Include third-party information in response for form compatibility
+        isThirdPartyPayment: updatedPayment.isThirdPartyPayment,
+        thirdPartyContactId: updatedPayment.payerContactId,
+        thirdPartyContactName: updatedPayment.thirdPartyContactName,
       },
     });
+    
   } catch (err: unknown) {
     if (err instanceof AppError) {
       return NextResponse.json(

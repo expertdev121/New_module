@@ -776,7 +776,7 @@ export default function EditPaymentDialog({
         if (selectedDate > today) {
           toast.info(`Using today's exchange rate (payment date is in future)`);
         } else {
-          toast.info(`Exchange rate updated based on payment date (no received date set)`);
+          toast.info(`Using today's exchange rate (no received date set)`);
         }
       }
     }
@@ -1412,7 +1412,7 @@ export default function EditPaymentDialog({
                             </span>
                           ) : watchedPaymentDate ? (
                             <span className="text-sm text-orange-600 ml-2">
-                              (Based on payment date - no received date set)
+                              (Based on today date - no received date set)
                             </span>
                           ) : null}
                         </FormLabel>
