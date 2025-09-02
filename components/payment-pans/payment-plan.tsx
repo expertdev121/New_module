@@ -24,8 +24,19 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Search, ChevronDown, ChevronRight, Edit } from "lucide-react";
-import { usePaymentPlans } from "@/lib/query/usePaymentPlan";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Search, ChevronDown, ChevronRight, Edit, Trash2 } from "lucide-react";
+import { usePaymentPlansQuery, useDeletePaymentPlanMutation } from "@/lib/query/payment-plans/usePaymentPlanQuery";
 import PaymentPlanDialog from "../forms/payment-plan-dialog";
 
 const PlanStatusEnum = z.enum([
@@ -95,7 +106,8 @@ export default function PaymentPlansTable({
     planStatus: planStatus || undefined,
   };
 
-  const { data, isLoading, error, refetch } = usePaymentPlans(queryParams);
+  const { data, isLoading, error, refetch } = usePaymentPlansQuery(queryParams);
+  const deletePaymentPlanMutation = useDeletePaymentPlanMutation();
 
   const toggleRowExpansion = (planId: number) => {
     const newExpanded = new Set(expandedRows);
@@ -105,6 +117,22 @@ export default function PaymentPlansTable({
       newExpanded.add(planId);
     }
     setExpandedRows(newExpanded);
+  };
+
+  const handleDeletePaymentPlan = async (planId: number) => {
+    try {
+      await deletePaymentPlanMutation.mutateAsync(planId);
+      // Close expanded row if it was open
+      setExpandedRows(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(planId);
+        return newSet;
+      });
+      refetch();
+    } catch (error) {
+      // Error handling is done in the mutation
+      console.error("Delete failed:", error);
+    }
   };
 
   const formatCurrency = (amount: string, currency: string) => {
@@ -555,7 +583,7 @@ export default function PaymentPlansTable({
                           </TableCell>
                         </TableRow>
 
-                        {/* UPDATED Expanded Row Content - Only requested fields */}
+                        {/* Expanded Row Content */}
                         {expandedRows.has(plan.id) && (
                           <TableRow>
                             <TableCell colSpan={13} className="bg-gray-50 p-6">
@@ -638,29 +666,6 @@ export default function PaymentPlansTable({
                                         ).amount}
                                       </span>
                                     </div>
-                                    {/* <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Total Scheduled (USD):
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatCurrency(
-                                          totalScheduledUSD || "0",
-                                          "USD"
-                                        ).symbol}
-                                        {formatCurrency(
-                                          totalScheduledUSD || "0",
-                                          "USD"
-                                        ).amount}
-                                      </span>
-                                    </div> */}
-                                    {/* <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Total Scheduled in USD Curr:
-                                      </span>
-                                      <span className="font-medium">
-                                        ${Math.round(parseFloat(totalScheduledUSD || "0")).toLocaleString("en-US")}
-                                      </span>
-                                    </div> */}
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
                                         Installment Amount:
@@ -724,14 +729,6 @@ export default function PaymentPlansTable({
                                         {formatDate(plan.updatedAt)}
                                       </span>
                                     </div>
-                                    {/* <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Last Updated By:
-                                      </span>
-                                      <span className="font-medium">
-                                        {plan.lastUpdatedBy || "N/A"}
-                                      </span>
-                                    </div> */}
                                     <div>
                                       <span className="text-gray-600">
                                         Notes:
@@ -758,6 +755,50 @@ export default function PaymentPlansTable({
                                     </Button>
                                   }
                                 />
+
+                                {/* Delete Button with Confirmation Dialog */}
+                                <AlertDialog>
+                                  <AlertDialogTrigger asChild>
+                                    <Button 
+                                      size="sm" 
+                                      variant="outline" 
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      disabled={deletePaymentPlanMutation.isPending}
+                                    >
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Delete Plan
+                                    </Button>
+                                  </AlertDialogTrigger>
+                                  <AlertDialogContent>
+                                    <AlertDialogHeader>
+                                      <AlertDialogTitle>Delete Payment Plan</AlertDialogTitle>
+                                      <AlertDialogDescription>
+                                        Are you sure you want to delete this payment plan? This action cannot be undone and will remove:
+                                        <ul className="mt-2 ml-4 list-disc text-sm">
+                                          <li>The payment plan record</li>
+                                          <li>All associated installment schedules</li>
+                                          <li>Any pending payment records</li>
+                                        </ul>
+                                        <div className="mt-3 p-3 bg-gray-50 rounded-md">
+                                          <div className="text-sm font-medium">Plan Details:</div>
+                                          <div className="text-sm text-gray-600">
+                                            {plan.planName || `${plan.frequency} plan`} - {formatCurrency(plan.totalPlannedAmount || "0", plan.currency).symbol}{formatCurrency(plan.totalPlannedAmount || "0", plan.currency).amount}
+                                          </div>
+                                        </div>
+                                      </AlertDialogDescription>
+                                    </AlertDialogHeader>
+                                    <AlertDialogFooter>
+                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                      <AlertDialogAction
+                                        onClick={() => handleDeletePaymentPlan(plan.id)}
+                                        className="bg-red-600 hover:bg-red-700"
+                                        disabled={deletePaymentPlanMutation.isPending}
+                                      >
+                                        {deletePaymentPlanMutation.isPending ? "Deleting..." : "Delete Plan"}
+                                      </AlertDialogAction>
+                                    </AlertDialogFooter>
+                                  </AlertDialogContent>
+                                </AlertDialog>
 
                                 <Button
                                   size="sm"

@@ -236,7 +236,7 @@ export const paymentPlanSchema = z.object({
   ], { 
     required_error: "Payment method is required",
     invalid_type_error: "Please select a valid payment method"
-  }).optional(), // Make optional for edit mode
+  }).optional(), 
   methodDetail: z.enum([
     "achisomoch", "authorize", "bank_of_america_charitable", "banquest", "banquest_cm",
     "benevity", "chai_charitable", "charityvest_inc", "cjp", "donors_fund", "earthport",

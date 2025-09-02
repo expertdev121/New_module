@@ -536,3 +536,85 @@ export async function PATCH(
     return ErrorHandler.handle(error);
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: planIdString } = await params;
+    const planId = parseInt(planIdString, 10);
+
+    if (isNaN(planId) || planId <= 0) {
+      return NextResponse.json(
+        { error: "Invalid payment plan ID" },
+        { status: 400 }
+      );
+    }
+
+    // Check if payment plan exists
+    const [existingPlan] = await db
+      .select()
+      .from(paymentPlan)
+      .where(eq(paymentPlan.id, planId))
+      .limit(1);
+
+    if (!existingPlan) {
+      return NextResponse.json(
+        { error: "Payment plan not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if there are any completed payments for this plan
+    const existingPayments = await db
+      .select()
+      .from(payment)
+      .where(
+        and(
+          eq(payment.paymentPlanId, planId),
+          eq(payment.paymentStatus, "completed")
+        )
+      )
+      .limit(1);
+
+    if (existingPayments.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Cannot delete payment plan with completed payments. Consider cancelling instead.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Delete related records in sequence (no transaction support in neon-http)
+    // Delete installment schedules first (foreign key constraint)
+    await db
+      .delete(installmentSchedule)
+      .where(eq(installmentSchedule.paymentPlanId, planId));
+
+    // Delete any pending payments
+    await db
+      .delete(payment)
+      .where(
+        and(
+          eq(payment.paymentPlanId, planId),
+          eq(payment.paymentStatus, "pending")
+        )
+      );
+
+    // Finally delete the payment plan
+    await db
+      .delete(paymentPlan)
+      .where(eq(paymentPlan.id, planId));
+
+    return NextResponse.json({
+      message: "Payment plan deleted successfully",
+      deletedPlanId: planId,
+    });
+
+  } catch (error) {
+    console.error("Error deleting payment plan:", error);
+    return ErrorHandler.handle(error);
+  }
+}
