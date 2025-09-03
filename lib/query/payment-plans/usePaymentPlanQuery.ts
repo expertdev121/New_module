@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 export interface PaymentPlanFormData {
   pledgeId: number;
+  relationshipId?: number;
   planName?: string;
   frequency:
     | "weekly"
@@ -12,19 +13,25 @@ export interface PaymentPlanFormData {
     | "annual"
     | "one_time"
     | "custom";
+  distributionType?: "fixed" | "custom";
   totalPlannedAmount: number;
   currency: "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR";
+  totalPlannedAmountUsd?: number;
   installmentAmount: number;
+  installmentAmountUsd?: number;
   numberOfInstallments: number;
+  exchangeRate?: number;
   startDate: string;
   endDate?: string;
   nextPaymentDate?: string;
+  currencyPriority?: number;
   autoRenew: boolean;
   notes?: string;
   internalNotes?: string;
   customInstallments?: Array<{
     date: string;
     amount: number;
+    amountUsd?: number;
     notes?: string;
     isPaid?: boolean;
     paidDate?: string;
@@ -38,6 +45,7 @@ export interface InstallmentSchedule {
   installmentDate: string; 
   installmentAmount: string;
   currency: string;
+  installmentAmountUsd?: string;
   status: "pending" | "paid" | "overdue" | "cancelled";
   paidDate?: string | null;
   paymentId?: number | null;
@@ -54,59 +62,52 @@ export interface PaymentPlanUpdateData
 export interface PaymentPlan {
   id: number;
   pledgeId: number;
+  relationshipId?: number;
   planName?: string;
   frequency: string;
   distributionType: "fixed" | "custom";
   totalPlannedAmount: number;
   currency: string;
+  totalPlannedAmountUsd?: number;
   installmentAmount: number;
+  installmentAmountUsd?: number;
   numberOfInstallments: number;
+  exchangeRate?: number;
   startDate: string;
   endDate?: string;
   nextPaymentDate?: string;
   installmentsPaid: number;
   totalPaid: number;
+  totalPaidUsd?: number;
   remainingAmount: number;
+  remainingAmountUsd?: number;
   planStatus: "active" | "completed" | "cancelled" | "paused" | "overdue";
   autoRenew: boolean;
+  remindersSent: number;
+  lastReminderDate?: string;
+  currencyPriority: number;
   isActive: boolean;
   notes?: string;
   internalNotes?: string;
   createdAt: string;
   updatedAt: string;
   pledgeDescription?: string;
-  pledgeContact?:string;
+  pledgeContact?: string;
   pledgeOriginalAmount?: string;
+  pledgeOriginalAmountUsd?: string;
+  pledgeCurrency?: string;
+  pledgeExchangeRate?: string;
   contactId?: number;
   installmentSchedule?: InstallmentSchedule[];
   customInstallments?: Array<{
     date: string;
     amount: number;
+    amountUsd?: number;
     notes?: string;
     isPaid?: boolean;
     paidDate?: string;
     paidAmount?: number;
   }>;
-  paymentMethod: | "ach"
-    | "bill_pay"
-    | "cash"
-    | "check"
-    | "credit"
-    | "credit_card"
-    | "expected"
-    | "goods_and_services"
-    | "matching_funds"
-    | "money_order"
-    | "p2p"
-    | "pending"
-    | "refund"
-    | "scholarship"
-    | "stock"
-    | "student_portion"
-    | "unknown"
-    | "wire"
-    | "xfer";
-  methodDetail:string;
 }
 
 export interface PledgeDetails {
@@ -121,6 +122,7 @@ export interface PledgeDetails {
     originalAmountUsd?: number;
     totalPaidUsd?: number;
     balanceUsd?: number;
+    exchangeRate?: number;
     isActive: boolean;
     notes?: string;
     createdAt: string;
@@ -142,6 +144,17 @@ export interface PledgeDetails {
     name: string;
     description?: string;
   };
+  relationship?: {
+    id: number;
+    relationshipType: string;
+    relatedContactId: number;
+    relatedContact?: {
+      id: number;
+      firstName: string;
+      lastName: string;
+      fullName: string;
+    };
+  };
   paymentSummary: {
     totalPayments: number;
     lastPaymentDate?: string;
@@ -160,11 +173,21 @@ const cleanPaymentPlanData = (data: PaymentPlanFormData): PaymentPlanFormData =>
     totalPlannedAmount: roundMoney(data.totalPlannedAmount)
   };
 
+  // Clean USD amounts if provided
+  if (data.totalPlannedAmountUsd) {
+    cleanedData.totalPlannedAmountUsd = roundMoney(data.totalPlannedAmountUsd);
+  }
+
+  if (data.installmentAmountUsd) {
+    cleanedData.installmentAmountUsd = roundMoney(data.installmentAmountUsd);
+  }
+
   if (data.customInstallments && data.customInstallments.length > 0) {
     // For custom installments, clean each amount and recalculate total if needed
     cleanedData.customInstallments = data.customInstallments.map(installment => ({
       ...installment,
       amount: roundMoney(installment.amount),
+      amountUsd: installment.amountUsd ? roundMoney(installment.amountUsd) : installment.amountUsd,
       paidAmount: installment.paidAmount ? roundMoney(installment.paidAmount) : installment.paidAmount
     }));
     
@@ -172,10 +195,22 @@ const cleanPaymentPlanData = (data: PaymentPlanFormData): PaymentPlanFormData =>
     const customTotal = cleanedData.customInstallments.reduce((sum, inst) => sum + inst.amount, 0);
     cleanedData.totalPlannedAmount = roundMoney(customTotal);
     
+    // Recalculate USD total if exchange rate is available
+    if (data.exchangeRate && cleanedData.customInstallments.every(inst => inst.amountUsd)) {
+      const customTotalUsd = cleanedData.customInstallments.reduce((sum, inst) => sum + (inst.amountUsd || 0), 0);
+      cleanedData.totalPlannedAmountUsd = roundMoney(customTotalUsd);
+    }
+    
   } else if (data.numberOfInstallments > 0) {
     // For fixed installments, ensure the math works out
     const exactInstallmentAmount = cleanedData.totalPlannedAmount / data.numberOfInstallments;
     cleanedData.installmentAmount = roundMoney(exactInstallmentAmount);
+    
+    // Handle USD installment amount if provided
+    if (cleanedData.totalPlannedAmountUsd && data.numberOfInstallments > 0) {
+      const exactInstallmentAmountUsd = cleanedData.totalPlannedAmountUsd / data.numberOfInstallments;
+      cleanedData.installmentAmountUsd = roundMoney(exactInstallmentAmountUsd);
+    }
     
     // Double-check that installments * amount = total (accounting for rounding)
     const calculatedTotal = cleanedData.installmentAmount * data.numberOfInstallments;
@@ -188,6 +223,9 @@ const cleanPaymentPlanData = (data: PaymentPlanFormData): PaymentPlanFormData =>
   } else {
     // Single payment
     cleanedData.installmentAmount = cleanedData.totalPlannedAmount;
+    if (cleanedData.totalPlannedAmountUsd) {
+      cleanedData.installmentAmountUsd = cleanedData.totalPlannedAmountUsd;
+    }
   }
 
   return cleanedData;
@@ -204,14 +242,23 @@ const cleanPaymentPlanUpdateData = (data: PaymentPlanUpdateData): PaymentPlanUpd
     cleanedData.totalPlannedAmount = roundMoney(data.totalPlannedAmount);
   }
   
+  if (data.totalPlannedAmountUsd) {
+    cleanedData.totalPlannedAmountUsd = roundMoney(data.totalPlannedAmountUsd);
+  }
+  
   if (data.installmentAmount) {
     cleanedData.installmentAmount = roundMoney(data.installmentAmount);
+  }
+
+  if (data.installmentAmountUsd) {
+    cleanedData.installmentAmountUsd = roundMoney(data.installmentAmountUsd);
   }
 
   if (data.customInstallments && data.customInstallments.length > 0) {
     cleanedData.customInstallments = data.customInstallments.map(installment => ({
       ...installment,
       amount: roundMoney(installment.amount),
+      amountUsd: installment.amountUsd ? roundMoney(installment.amountUsd) : installment.amountUsd,
       paidAmount: installment.paidAmount ? roundMoney(installment.paidAmount) : installment.paidAmount
     }));
   }
@@ -220,6 +267,12 @@ const cleanPaymentPlanUpdateData = (data: PaymentPlanUpdateData): PaymentPlanUpd
   if (cleanedData.totalPlannedAmount && cleanedData.numberOfInstallments && cleanedData.numberOfInstallments > 0) {
     const exactInstallmentAmount = cleanedData.totalPlannedAmount / cleanedData.numberOfInstallments;
     cleanedData.installmentAmount = roundMoney(exactInstallmentAmount);
+    
+    // Handle USD consistency
+    if (cleanedData.totalPlannedAmountUsd) {
+      const exactInstallmentAmountUsd = cleanedData.totalPlannedAmountUsd / cleanedData.numberOfInstallments;
+      cleanedData.installmentAmountUsd = roundMoney(exactInstallmentAmountUsd);
+    }
     
     const calculatedTotal = cleanedData.installmentAmount * cleanedData.numberOfInstallments;
     const difference = Math.abs(cleanedData.totalPlannedAmount - calculatedTotal);
@@ -291,10 +344,12 @@ export const useCreatePaymentPlanMutation = () => {
 export const usePaymentPlansQuery = (params?: {
   pledgeId?: number;
   contactId?: number;
+  relationshipId?: number;
   page?: number;
   limit?: number;
   planStatus?: string;
   frequency?: string;
+  currency?: string;
 }) => {
   const searchParams = new URLSearchParams();
 
@@ -302,10 +357,13 @@ export const usePaymentPlansQuery = (params?: {
     searchParams.append("pledgeId", params.pledgeId.toString());
   if (params?.contactId)
     searchParams.append("contactId", params.contactId.toString());
+  if (params?.relationshipId)
+    searchParams.append("relationshipId", params.relationshipId.toString());
   if (params?.page) searchParams.append("page", params.page.toString());
   if (params?.limit) searchParams.append("limit", params.limit.toString());
   if (params?.planStatus) searchParams.append("planStatus", params.planStatus);
   if (params?.frequency) searchParams.append("frequency", params.frequency);
+  if (params?.currency) searchParams.append("currency", params.currency);
 
   return useQuery({
     queryKey: ["paymentPlans", params],

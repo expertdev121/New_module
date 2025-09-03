@@ -43,23 +43,15 @@ const paymentPlanSchema = z.object({
   nextPaymentDate: z.string().optional(),
   autoRenew: z.boolean().default(false),
   planStatus: z.enum(["active", "completed", "cancelled", "paused", "overdue"]).optional(),
-  // UPDATED: paymentMethod enum values
+  // Updated paymentMethod to match schema enum
   paymentMethod: z.enum([
     "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
-    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer"
+    "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
+    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
   ]).optional(),
-  // UPDATED: methodDetail enum values
-  methodDetail: z.enum([
-    "achisomoch", "authorize", "bank_of_america_charitable", "banquest", "banquest_cm",
-    "benevity", "chai_charitable", "charityvest_inc", "cjp", "donors_fund", "earthport",
-    "e_transfer", "facts", "fidelity", "fjc", "foundation", "goldman_sachs", "htc", "jcf",
-    "jcf_san_diego", "jgive", "keshet", "masa", "masa_old", "matach", "matching_funds",
-    "mizrachi_canada", "mizrachi_olami", "montrose", "morgan_stanley_gift", "ms", "mt",
-    "ojc", "paypal", "pelecard", "schwab_charitable", "stripe", "tiaa", "touro", "uktoremet",
-    "vanguard_charitable", "venmo", "vmm", "wise", "worldline", "yaadpay", "yaadpay_cm",
-    "yourcause", "yu", "zelle"
-  ]).optional(),
+  // methodDetail is text in schema, not enum
+  methodDetail: z.string().optional(),
+  currencyPriority: z.number().int().positive().default(1),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
   customInstallments: z.array(installmentSchema).optional(),
@@ -115,6 +107,16 @@ function calculateInstallmentDates(startDate: string, frequency: string, numberO
   }
 
   return dates;
+}
+
+/**
+ * Helper function to calculate USD conversions
+ */
+function calculateUsdConversions(amount: number, currency: string, exchangeRate: number | null) {
+  if (!exchangeRate || currency === "USD") {
+    return currency === "USD" ? amount : null;
+  }
+  return amount * exchangeRate;
 }
 
 /**
@@ -278,6 +280,7 @@ export async function POST(request: NextRequest) {
       .select({
         id: pledge.id,
         exchangeRate: pledge.exchangeRate,
+        currency: pledge.currency,
       })
       .from(pledge)
       .where(eq(pledge.id, validatedData.pledgeId))
@@ -288,6 +291,7 @@ export async function POST(request: NextRequest) {
     }
 
     const pledgeExchangeRate = currentPledge[0].exchangeRate;
+    const pledgeCurrency = currentPledge[0].currency;
 
     // Calculate values based on distribution type
     let finalInstallmentAmount: string;
@@ -316,6 +320,21 @@ export async function POST(request: NextRequest) {
       finalTotalPlannedAmount = fromCents(exactTotalCents).toFixed(2);
     }
 
+    // Calculate USD conversions
+    const totalPlannedAmountUsd = calculateUsdConversions(
+      parseFloat(finalTotalPlannedAmount), 
+      validatedData.currency, 
+      pledgeExchangeRate ? parseFloat(pledgeExchangeRate.toString()) : null
+    );
+    
+    const installmentAmountUsd = calculateUsdConversions(
+      parseFloat(finalInstallmentAmount), 
+      validatedData.currency, 
+      pledgeExchangeRate ? parseFloat(pledgeExchangeRate.toString()) : null
+    );
+
+    const remainingAmountUsd = totalPlannedAmountUsd;
+
     // Prepare data for inserting into the paymentPlan table
     const newPaymentPlanData: NewPaymentPlan = {
       pledgeId: validatedData.pledgeId,
@@ -324,14 +343,18 @@ export async function POST(request: NextRequest) {
       distributionType: validatedData.distributionType,
       totalPlannedAmount: finalTotalPlannedAmount,
       currency: validatedData.currency,
+      totalPlannedAmountUsd: totalPlannedAmountUsd?.toFixed(2) || null,
       installmentAmount: finalInstallmentAmount,
+      installmentAmountUsd: installmentAmountUsd?.toFixed(2) || null,
       numberOfInstallments: finalNumberOfInstallments,
       startDate: validatedData.startDate,
       endDate: validatedData.endDate || null,
       nextPaymentDate: validatedData.nextPaymentDate || validatedData.startDate,
       remainingAmount: finalTotalPlannedAmount,
+      remainingAmountUsd: remainingAmountUsd?.toFixed(2) || null,
       planStatus: "active",
       autoRenew: validatedData.autoRenew,
+      currencyPriority: validatedData.currencyPriority,
       remindersSent: 0,
       lastReminderDate: null,
       isActive: true,
@@ -363,6 +386,11 @@ export async function POST(request: NextRequest) {
         installmentDate: inst.date,
         installmentAmount: inst.amount.toFixed(2),
         currency: createdPaymentPlan!.currency,
+        installmentAmountUsd: calculateUsdConversions(
+          inst.amount, 
+          validatedData.currency, 
+          pledgeExchangeRate ? parseFloat(pledgeExchangeRate.toString()) : null
+        )?.toFixed(2) || null,
         notes: inst.notes || null,
       }));
 
@@ -370,31 +398,62 @@ export async function POST(request: NextRequest) {
       createdInstallmentIds = installmentResults.map(inst => inst.id);
 
       // Create scheduled payments for each custom installment
-      const scheduledPayments: NewPayment[] = installmentResults.map((installmentRecord, index) => ({
-        pledgeId: validatedData.pledgeId,
-        paymentPlanId: createdPaymentPlan!.id,
-        installmentScheduleId: installmentRecord.id,
-        amount: validatedData.customInstallments![index].amount.toFixed(2),
-        currency: validatedData.currency,
-        amountUsd: pledgeExchangeRate ? (validatedData.customInstallments![index].amount * parseFloat(pledgeExchangeRate.toString())).toFixed(2) : null,
-        amountInPledgeCurrency: validatedData.customInstallments![index].amount.toFixed(2),
-        exchangeRate: pledgeExchangeRate,
-        paymentDate: installmentRecord.installmentDate,
-        receivedDate: null, 
-        paymentMethod: (validatedData.paymentMethod || "other") as NewPayment['paymentMethod'],
-        methodDetail: validatedData.methodDetail || null,
-        paymentStatus: "pending",
-        referenceNumber: null,
-        checkNumber: null,
-        receiptNumber: null,
-        receiptType: null,
-        receiptIssued: false,
-        solicitorId: null,
-        bonusPercentage: null,
-        bonusAmount: null,
-        bonusRuleId: null,
-        notes: validatedData.customInstallments![index].notes || null,
-      }));
+      const scheduledPayments: NewPayment[] = installmentResults.map((installmentRecord, index) => {
+        const installmentAmount = validatedData.customInstallments![index].amount;
+        const amountUsd = calculateUsdConversions(
+          installmentAmount, 
+          validatedData.currency, 
+          pledgeExchangeRate ? parseFloat(pledgeExchangeRate.toString()) : null
+        );
+        
+        // Calculate pledge currency conversion
+        let amountInPledgeCurrency = installmentAmount;
+        let pledgeCurrencyExchangeRate = null;
+        
+        if (validatedData.currency !== pledgeCurrency && pledgeExchangeRate) {
+          // Convert from plan currency to pledge currency
+          if (pledgeCurrency === "USD") {
+            amountInPledgeCurrency = installmentAmount * parseFloat(pledgeExchangeRate.toString());
+          } else if (validatedData.currency === "USD") {
+            amountInPledgeCurrency = installmentAmount / parseFloat(pledgeExchangeRate.toString());
+          } else {
+            // Both are non-USD currencies - convert through USD
+            const usdAmount = installmentAmount * parseFloat(pledgeExchangeRate.toString());
+            // Would need pledge currency exchange rate to USD for this conversion
+            amountInPledgeCurrency = installmentAmount; // Fallback to original amount
+          }
+          pledgeCurrencyExchangeRate = pledgeExchangeRate;
+        }
+
+        return {
+          pledgeId: validatedData.pledgeId,
+          paymentPlanId: createdPaymentPlan!.id,
+          installmentScheduleId: installmentRecord.id,
+          amount: installmentAmount.toFixed(2),
+          currency: validatedData.currency,
+          amountUsd: amountUsd?.toFixed(2) || null,
+          amountInPledgeCurrency: amountInPledgeCurrency.toFixed(2),
+          exchangeRate: pledgeExchangeRate,
+          pledgeCurrencyExchangeRate: pledgeCurrencyExchangeRate,
+          amountInPlanCurrency: installmentAmount.toFixed(2), // Same as amount since it's the plan currency
+          planCurrencyExchangeRate: validatedData.currency === "USD" ? null : pledgeExchangeRate,
+          paymentDate: installmentRecord.installmentDate,
+          receivedDate: null, 
+          paymentMethod: (validatedData.paymentMethod || "other") as NewPayment['paymentMethod'],
+          methodDetail: validatedData.methodDetail || null,
+          paymentStatus: "pending",
+          referenceNumber: null,
+          checkNumber: null,
+          receiptNumber: null,
+          receiptType: null,
+          receiptIssued: false,
+          solicitorId: null,
+          bonusPercentage: null,
+          bonusAmount: null,
+          bonusRuleId: null,
+          notes: validatedData.customInstallments![index].notes || null,
+        };
+      });
 
       const paymentResults = await db.insert(payment).values(scheduledPayments).returning();
       createdPaymentIds = paymentResults.map(p => p.id);
@@ -407,11 +466,18 @@ export async function POST(request: NextRequest) {
         finalNumberOfInstallments
       );
 
+      const installmentAmountUsdForFixed = calculateUsdConversions(
+        parseFloat(finalInstallmentAmount), 
+        validatedData.currency, 
+        pledgeExchangeRate ? parseFloat(pledgeExchangeRate.toString()) : null
+      );
+
       const installmentsToInsert = installmentDates.map((date) => ({
         paymentPlanId: createdPaymentPlan!.id,
         installmentDate: date,
         installmentAmount: finalInstallmentAmount,
         currency: createdPaymentPlan!.currency,
+        installmentAmountUsd: installmentAmountUsdForFixed?.toFixed(2) || null,
         notes: null,
       }));
 
@@ -419,31 +485,58 @@ export async function POST(request: NextRequest) {
       createdInstallmentIds = installmentResults.map(inst => inst.id);
 
       // Create scheduled payments for each fixed installment
-      const scheduledPayments: NewPayment[] = installmentResults.map((installmentRecord) => ({
-        pledgeId: validatedData.pledgeId,
-        paymentPlanId: createdPaymentPlan!.id,
-        installmentScheduleId: installmentRecord.id,
-        amount: finalInstallmentAmount,
-        currency: validatedData.currency,
-        amountUsd: pledgeExchangeRate ? (parseFloat(finalInstallmentAmount) * parseFloat(pledgeExchangeRate.toString())).toFixed(2) : null,
-        amountInPledgeCurrency: finalInstallmentAmount,
-        exchangeRate: pledgeExchangeRate,
-        paymentDate: installmentRecord.installmentDate,
-        receivedDate: null,
-        paymentMethod: (validatedData.paymentMethod || "other") as NewPayment['paymentMethod'],
-        methodDetail: validatedData.methodDetail || null,
-        paymentStatus: "pending",
-        referenceNumber: null,
-        checkNumber: null,
-        receiptNumber: null,
-        receiptType: null,
-        receiptIssued: false,
-        solicitorId: null,
-        bonusPercentage: null,
-        bonusAmount: null,
-        bonusRuleId: null,
-        notes: null,
-      }));
+      const scheduledPayments: NewPayment[] = installmentResults.map((installmentRecord) => {
+        const installmentAmount = parseFloat(finalInstallmentAmount);
+        const amountUsd = calculateUsdConversions(
+          installmentAmount, 
+          validatedData.currency, 
+          pledgeExchangeRate ? parseFloat(pledgeExchangeRate.toString()) : null
+        );
+        
+        // Calculate pledge currency conversion
+        let amountInPledgeCurrency = installmentAmount;
+        let pledgeCurrencyExchangeRate = null;
+        
+        if (validatedData.currency !== pledgeCurrency && pledgeExchangeRate) {
+          if (pledgeCurrency === "USD") {
+            amountInPledgeCurrency = installmentAmount * parseFloat(pledgeExchangeRate.toString());
+          } else if (validatedData.currency === "USD") {
+            amountInPledgeCurrency = installmentAmount / parseFloat(pledgeExchangeRate.toString());
+          } else {
+            amountInPledgeCurrency = installmentAmount; // Fallback
+          }
+          pledgeCurrencyExchangeRate = pledgeExchangeRate;
+        }
+
+        return {
+          pledgeId: validatedData.pledgeId,
+          paymentPlanId: createdPaymentPlan!.id,
+          installmentScheduleId: installmentRecord.id,
+          amount: finalInstallmentAmount,
+          currency: validatedData.currency,
+          amountUsd: amountUsd?.toFixed(2) || null,
+          amountInPledgeCurrency: amountInPledgeCurrency.toFixed(2),
+          exchangeRate: pledgeExchangeRate,
+          pledgeCurrencyExchangeRate: pledgeCurrencyExchangeRate,
+          amountInPlanCurrency: finalInstallmentAmount,
+          planCurrencyExchangeRate: validatedData.currency === "USD" ? null : pledgeExchangeRate,
+          paymentDate: installmentRecord.installmentDate,
+          receivedDate: null,
+          paymentMethod: (validatedData.paymentMethod || "other") as NewPayment['paymentMethod'],
+          methodDetail: validatedData.methodDetail || null,
+          paymentStatus: "pending",
+          referenceNumber: null,
+          checkNumber: null,
+          receiptNumber: null,
+          receiptType: null,
+          receiptIssued: false,
+          solicitorId: null,
+          bonusPercentage: null,
+          bonusAmount: null,
+          bonusRuleId: null,
+          notes: null,
+        };
+      });
 
       const paymentResults = await db.insert(payment).values(scheduledPayments).returning();
       createdPaymentIds = paymentResults.map(p => p.id);
@@ -552,8 +645,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-
-// --- GET Endpoint (unchanged) ---
+// --- GET Endpoint ---
 const querySchema = z.object({
   pledgeId: z.coerce.number().positive().optional(),
   contactId: z.coerce.number().positive().optional(),
@@ -644,7 +736,9 @@ export async function GET(request: NextRequest) {
         distributionType: paymentPlan.distributionType,
         totalPlannedAmount: paymentPlan.totalPlannedAmount,
         currency: paymentPlan.currency,
+        totalPlannedAmountUsd: paymentPlan.totalPlannedAmountUsd,
         installmentAmount: paymentPlan.installmentAmount,
+        installmentAmountUsd: paymentPlan.installmentAmountUsd,
         numberOfInstallments: paymentPlan.numberOfInstallments,
         startDate: paymentPlan.startDate,
         endDate: paymentPlan.endDate,
@@ -653,16 +747,16 @@ export async function GET(request: NextRequest) {
         totalPaid: paymentPlan.totalPaid,
         totalPaidUsd: paymentPlan.totalPaidUsd,
         remainingAmount: paymentPlan.remainingAmount,
+        remainingAmountUsd: paymentPlan.remainingAmountUsd,
         planStatus: paymentPlan.planStatus,
         autoRenew: paymentPlan.autoRenew,
+        currencyPriority: paymentPlan.currencyPriority,
         isActive: paymentPlan.isActive,
         notes: paymentPlan.notes,
         internalNotes: paymentPlan.internalNotes,
         createdAt: paymentPlan.createdAt,
         updatedAt: paymentPlan.updatedAt,
-        exchangeRate: sql<string>`(
-          SELECT exchange_rate FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-        )`.as("exchangeRate"),
+        exchangeRate: paymentPlan.exchangeRate,
         pledgeDescription: sql<string>`(
           SELECT description FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
         )`.as("pledgeDescription"),

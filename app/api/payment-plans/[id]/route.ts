@@ -16,6 +16,7 @@ const PlanStatusEnum = z.enum([
 
 const updatePaymentPlanSchema = z.object({
   pledgeId: z.number().positive().optional(),
+  relationshipId: z.number().positive().optional(),
   planName: z.string().optional(),
   frequency: z
     .enum([
@@ -36,18 +37,32 @@ const updatePaymentPlanSchema = z.object({
   currency: z
     .enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"])
     .optional(),
+  totalPlannedAmountUsd: z
+    .number()
+    .positive("Total planned amount USD must be positive")
+    .optional(),
   installmentAmount: z
     .number()
     .positive("Installment amount must be positive")
+    .optional(),
+  installmentAmountUsd: z
+    .number()
+    .positive("Installment amount USD must be positive")
     .optional(),
   numberOfInstallments: z
     .number()
     .int()
     .positive("Number of installments must be positive")
     .optional(),
+  exchangeRate: z
+    .number()
+    .positive("Exchange rate must be positive")
+    .optional(),
   startDate: z.string().min(1, "Start date is required").optional(),
   endDate: z.string().optional(),
   nextPaymentDate: z.string().optional(),
+  remainingAmountUsd: z.number().optional(),
+  currencyPriority: z.number().int().positive().optional(),
   autoRenew: z.boolean().optional(),
   planStatus: PlanStatusEnum.optional(),
   notes: z.string().optional(),
@@ -61,21 +76,6 @@ const updatePaymentPlanSchema = z.object({
       })
     )
     .optional(),
-  paymentMethod: z.enum([
-    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
-    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer"
-  ]),
-  methodDetail: z.enum([
-    "achisomoch", "authorize", "bank_of_america_charitable", "banquest", "banquest_cm",
-    "benevity", "chai_charitable", "charityvest_inc", "cjp", "donors_fund", "earthport",
-    "e_transfer", "facts", "fidelity", "fjc", "foundation", "goldman_sachs", "htc", "jcf",
-    "jcf_san_diego", "jgive", "keshet", "masa", "masa_old", "matach", "matching_funds",
-    "mizrachi_canada", "mizrachi_olami", "montrose", "morgan_stanley_gift", "ms", "mt",
-    "ojc", "paypal", "pelecard", "schwab_charitable", "stripe", "tiaa", "touro", "uktoremet",
-    "vanguard_charitable", "venmo", "vmm", "wise", "worldline", "yaadpay", "yaadpay_cm",
-    "yourcause", "yu", "zelle"
-  ]),
 }).refine((data) => {
   if (data.distributionType === "fixed") {
     return (
@@ -114,12 +114,16 @@ export async function GET(
         id: paymentPlan.id,
         planName: paymentPlan.planName,
         pledgeId: paymentPlan.pledgeId,
+        relationshipId: paymentPlan.relationshipId,
         frequency: paymentPlan.frequency,
         distributionType: paymentPlan.distributionType,
         totalPlannedAmount: paymentPlan.totalPlannedAmount,
         currency: paymentPlan.currency,
+        totalPlannedAmountUsd: paymentPlan.totalPlannedAmountUsd,
         installmentAmount: paymentPlan.installmentAmount,
+        installmentAmountUsd: paymentPlan.installmentAmountUsd,
         numberOfInstallments: paymentPlan.numberOfInstallments,
+        exchangeRate: paymentPlan.exchangeRate,
         startDate: paymentPlan.startDate,
         endDate: paymentPlan.endDate,
         nextPaymentDate: paymentPlan.nextPaymentDate,
@@ -127,19 +131,17 @@ export async function GET(
         totalPaid: paymentPlan.totalPaid,
         totalPaidUsd: paymentPlan.totalPaidUsd,
         remainingAmount: paymentPlan.remainingAmount,
+        remainingAmountUsd: paymentPlan.remainingAmountUsd,
         planStatus: paymentPlan.planStatus,
         autoRenew: paymentPlan.autoRenew,
         remindersSent: paymentPlan.remindersSent,
         lastReminderDate: paymentPlan.lastReminderDate,
+        currencyPriority: paymentPlan.currencyPriority,
         isActive: paymentPlan.isActive,
         notes: paymentPlan.notes,
         internalNotes: paymentPlan.internalNotes,
         createdAt: paymentPlan.createdAt,
         updatedAt: paymentPlan.updatedAt,
-        exchangeRate: paymentPlan.exchangeRate,
-
-        paymentMethod: sql<string>`(SELECT ${payment.paymentMethod} FROM ${payment} WHERE ${payment.paymentPlanId} = ${paymentPlan.id} LIMIT 1)`.as("paymentMethod"),
-    methodDetail: sql<string>`(SELECT ${payment.methodDetail} FROM ${payment} WHERE ${payment.paymentPlanId} = ${paymentPlan.id} LIMIT 1)`.as("methodDetail"),
     
         // Pledge related - subqueries:
         pledgeOriginalAmount: sql<string>`(SELECT ${pledge.originalAmount} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmount"),
@@ -169,6 +171,7 @@ export async function GET(
           id: installmentSchedule.id,
           installmentDate: installmentSchedule.installmentDate,
           installmentAmount: installmentSchedule.installmentAmount,
+          installmentAmountUsd: installmentSchedule.installmentAmountUsd,
           notes: installmentSchedule.notes,
           status: installmentSchedule.status,
           paidDate: installmentSchedule.paidDate,
@@ -180,6 +183,7 @@ export async function GET(
       customInstallments = installmentSchedules.map((schedule) => ({
         date: schedule.installmentDate,
         amount: Number.parseFloat(schedule.installmentAmount.toString()),
+        amountUsd: schedule.installmentAmountUsd ? Number.parseFloat(schedule.installmentAmountUsd.toString()) : undefined,
         notes: schedule.notes || "",
         isPaid: schedule.status === "paid",
         paidDate: schedule.paidDate,
@@ -425,18 +429,22 @@ export async function PATCH(
       ...(validatedData.distributionType !== undefined && { distributionType: validatedData.distributionType }),
       ...(validatedData.totalPlannedAmount !== undefined && { totalPlannedAmount: validatedData.totalPlannedAmount.toString() }),
       ...(validatedData.currency !== undefined && { currency: validatedData.currency }),
+      ...(validatedData.totalPlannedAmountUsd !== undefined && { totalPlannedAmountUsd: validatedData.totalPlannedAmountUsd.toString() }),
       ...(validatedData.installmentAmount !== undefined && { installmentAmount: validatedData.installmentAmount.toString() }),
+      ...(validatedData.installmentAmountUsd !== undefined && { installmentAmountUsd: validatedData.installmentAmountUsd.toString() }),
       ...(validatedData.numberOfInstallments !== undefined && { numberOfInstallments: validatedData.numberOfInstallments }),
+      ...(validatedData.exchangeRate !== undefined && { exchangeRate: validatedData.exchangeRate.toString() }),
       ...(validatedData.startDate !== undefined && { startDate: validatedData.startDate }),
       ...(validatedData.endDate !== undefined && { endDate: validatedData.endDate }),
       ...(validatedData.nextPaymentDate !== undefined && { nextPaymentDate: validatedData.nextPaymentDate }),
+      ...(validatedData.remainingAmountUsd !== undefined && { remainingAmountUsd: validatedData.remainingAmountUsd.toString() }),
+      ...(validatedData.currencyPriority !== undefined && { currencyPriority: validatedData.currencyPriority }),
       ...(validatedData.autoRenew !== undefined && { autoRenew: validatedData.autoRenew }),
       ...(validatedData.planStatus !== undefined && { planStatus: validatedData.planStatus }),
       ...(validatedData.notes !== undefined && { notes: validatedData.notes }),
       ...(validatedData.internalNotes !== undefined && { internalNotes: validatedData.internalNotes }),
       ...(validatedData.pledgeId !== undefined && { pledgeId: validatedData.pledgeId }),
-      ...(validatedData.paymentMethod !== undefined && { paymentMethod: validatedData.paymentMethod }),
-      ...(validatedData.methodDetail !== undefined && { methodDetail: validatedData.methodDetail }),
+      ...(validatedData.relationshipId !== undefined && { relationshipId: validatedData.relationshipId }),
     };
 
     // Handle installment schedule update
@@ -446,6 +454,10 @@ export async function PATCH(
           // Remove old installments
           await db.delete(installmentSchedule).where(eq(installmentSchedule.paymentPlanId, planId));
 
+          // Calculate USD amounts for installments if exchange rate is available
+          const exchangeRateValue = validatedData.exchangeRate || 
+            (existingPlan.exchangeRate ? Number.parseFloat(existingPlan.exchangeRate.toString()) : undefined);
+
           // Insert new custom installments
           await db.insert(installmentSchedule).values(
             validatedData.customInstallments.map((inst) => ({
@@ -453,6 +465,7 @@ export async function PATCH(
               installmentDate: inst.date,
               installmentAmount: inst.amount.toString(),
               currency: validatedData.currency || existingPlan.currency,
+              installmentAmountUsd: exchangeRateValue ? (inst.amount * exchangeRateValue).toString() : null,
               notes: inst.notes || null,
             }))
           );
@@ -467,6 +480,11 @@ export async function PATCH(
             )
           );
           dataToUpdate.totalPlannedAmount = exactTotal.toString();
+
+          // Calculate USD total if exchange rate is available
+          if (exchangeRateValue) {
+            dataToUpdate.totalPlannedAmountUsd = (exactTotal * exchangeRateValue).toString();
+          }
         }
       } else if (validatedData.distributionType === "fixed") {
         // Remove any custom installments if switching to fixed
@@ -477,6 +495,12 @@ export async function PATCH(
             toCents(validatedData.installmentAmount) * validatedData.numberOfInstallments
           );
           dataToUpdate.totalPlannedAmount = exactTotal.toString();
+
+          // Calculate USD amounts if exchange rate is provided
+          if (validatedData.exchangeRate) {
+            dataToUpdate.totalPlannedAmountUsd = (exactTotal * validatedData.exchangeRate).toString();
+            dataToUpdate.installmentAmountUsd = (validatedData.installmentAmount * validatedData.exchangeRate).toString();
+          }
         }
       }
     }
@@ -487,31 +511,6 @@ export async function PATCH(
       .set(dataToUpdate)
       .where(eq(paymentPlan.id, planId))
       .returning();
-
-    // related payment records if payment method or method detail changed
-    if (validatedData.paymentMethod !== undefined || validatedData.methodDetail !== undefined) {
-      const paymentUpdates: any = {
-        updatedAt: new Date(),
-      };
-      
-      if (validatedData.paymentMethod !== undefined) {
-        paymentUpdates.paymentMethod = validatedData.paymentMethod;
-      }
-      
-      if (validatedData.methodDetail !== undefined) {
-        paymentUpdates.methodDetail = validatedData.methodDetail;
-      }
-
-      await db
-        .update(payment)
-        .set(paymentUpdates)
-        .where(
-          and(
-            eq(payment.paymentPlanId, planId),
-            eq(payment.paymentStatus, "pending") 
-          )
-        );
-    }
 
     return NextResponse.json({
       message: "Payment plan updated successfully",
