@@ -1,19 +1,25 @@
+// lib/query/payment-plans/usePaymentPlanQuery.ts
 import { useMutation, useQuery, useQueryClient, UseQueryOptions } from "@tanstack/react-query";
 import { toast } from "sonner";
+
+// Update the interfaces to match your form schema exactly
+export interface CustomInstallment {
+  installmentDate: string;
+  installmentAmount: number;
+  currency: string;
+  installmentAmountUsd?: number;
+  status: "pending" | "paid" | "overdue" | "cancelled";
+  paidDate?: string;
+  notes?: string;
+  paymentId?: number;
+}
 
 export interface PaymentPlanFormData {
   pledgeId: number;
   relationshipId?: number;
   planName?: string;
-  frequency:
-    | "weekly"
-    | "monthly"
-    | "quarterly"
-    | "biannual"
-    | "annual"
-    | "one_time"
-    | "custom";
-  distributionType?: "fixed" | "custom";
+  frequency: "weekly" | "monthly" | "quarterly" | "biannual" | "annual" | "one_time" | "custom";
+  distributionType: "fixed" | "custom";
   totalPlannedAmount: number;
   currency: "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR";
   totalPlannedAmountUsd?: number;
@@ -24,25 +30,31 @@ export interface PaymentPlanFormData {
   startDate: string;
   endDate?: string;
   nextPaymentDate?: string;
-  currencyPriority?: number;
+  installmentsPaid?: number;
+  totalPaid?: number;
+  totalPaidUsd?: number;
+  remainingAmount?: number;
+  remainingAmountUsd?: number;
+  planStatus: "active" | "completed" | "cancelled" | "paused" | "overdue";
   autoRenew: boolean;
+  remindersSent?: number;
+  lastReminderDate?: string;
+  currencyPriority?: number;
+  isActive?: boolean;
   notes?: string;
   internalNotes?: string;
-  customInstallments?: Array<{
-    date: string;
-    amount: number;
-    amountUsd?: number;
-    notes?: string;
-    isPaid?: boolean;
-    paidDate?: string;
-    paidAmount?: number;
-  }>;
+  customInstallments?: CustomInstallment[];
+  paymentMethod: "ach" | "bill_pay" | "cash" | "check" | "credit" | "credit_card" | "expected" | 
+                 "goods_and_services" | "matching_funds" | "money_order" | "p2p" | "pending" | 
+                 "bank_transfer" | "refund" | "scholarship" | "stock" | "student_portion" | 
+                 "unknown" | "wire" | "xfer" | "other";
+  methodDetail: string;
 }
 
 export interface InstallmentSchedule {
   id: number;
   paymentPlanId: number;
-  installmentDate: string; 
+  installmentDate: string;
   installmentAmount: string;
   currency: string;
   installmentAmountUsd?: string;
@@ -54,9 +66,8 @@ export interface InstallmentSchedule {
   updatedAt: string;
 }
 
-export interface PaymentPlanUpdateData
-  extends Omit<Partial<PaymentPlanFormData>, "pledgeId"> {
-  planStatus?: "active" | "completed" | "cancelled" | "paused" | "overdue";
+export interface PaymentPlanUpdateData extends Partial<PaymentPlanFormData> {
+  id: number;
 }
 
 export interface PaymentPlan {
@@ -89,6 +100,8 @@ export interface PaymentPlan {
   isActive: boolean;
   notes?: string;
   internalNotes?: string;
+  paymentMethod?: string;
+  methodDetail?: string;
   createdAt: string;
   updatedAt: string;
   pledgeDescription?: string;
@@ -99,15 +112,7 @@ export interface PaymentPlan {
   pledgeExchangeRate?: string;
   contactId?: number;
   installmentSchedule?: InstallmentSchedule[];
-  customInstallments?: Array<{
-    date: string;
-    amount: number;
-    amountUsd?: number;
-    notes?: string;
-    isPaid?: boolean;
-    paidDate?: string;
-    paidAmount?: number;
-  }>;
+  customInstallments?: CustomInstallment[];
 }
 
 export interface PledgeDetails {
@@ -168,9 +173,20 @@ export interface PledgeDetails {
 const cleanPaymentPlanData = (data: PaymentPlanFormData): PaymentPlanFormData => {
   const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
   
-  const cleanedData = {
+  const cleanedData: PaymentPlanFormData = {
     ...data,
-    totalPlannedAmount: roundMoney(data.totalPlannedAmount)
+    totalPlannedAmount: roundMoney(data.totalPlannedAmount),
+    installmentAmount: roundMoney(data.installmentAmount),
+    pledgeId: data.pledgeId,
+    frequency: data.frequency,
+    distributionType: data.distributionType,
+    currency: data.currency,
+    numberOfInstallments: data.numberOfInstallments,
+    startDate: data.startDate,
+    planStatus: data.planStatus || "active",
+    autoRenew: data.autoRenew || false,
+    paymentMethod: data.paymentMethod,
+    methodDetail: data.methodDetail
   };
 
   // Clean USD amounts if provided
@@ -182,104 +198,49 @@ const cleanPaymentPlanData = (data: PaymentPlanFormData): PaymentPlanFormData =>
     cleanedData.installmentAmountUsd = roundMoney(data.installmentAmountUsd);
   }
 
+  // Handle custom installments
   if (data.customInstallments && data.customInstallments.length > 0) {
-    // For custom installments, clean each amount and recalculate total if needed
     cleanedData.customInstallments = data.customInstallments.map(installment => ({
       ...installment,
-      amount: roundMoney(installment.amount),
-      amountUsd: installment.amountUsd ? roundMoney(installment.amountUsd) : installment.amountUsd,
-      paidAmount: installment.paidAmount ? roundMoney(installment.paidAmount) : installment.paidAmount
+      installmentAmount: roundMoney(installment.installmentAmount),
+      installmentAmountUsd: installment.installmentAmountUsd ? 
+        roundMoney(installment.installmentAmountUsd) : undefined
     }));
-    
-    // Optionally recalculate total from custom installments
-    const customTotal = cleanedData.customInstallments.reduce((sum, inst) => sum + inst.amount, 0);
-    cleanedData.totalPlannedAmount = roundMoney(customTotal);
-    
-    // Recalculate USD total if exchange rate is available
-    if (data.exchangeRate && cleanedData.customInstallments.every(inst => inst.amountUsd)) {
-      const customTotalUsd = cleanedData.customInstallments.reduce((sum, inst) => sum + (inst.amountUsd || 0), 0);
-      cleanedData.totalPlannedAmountUsd = roundMoney(customTotalUsd);
-    }
-    
-  } else if (data.numberOfInstallments > 0) {
-    // For fixed installments, ensure the math works out
-    const exactInstallmentAmount = cleanedData.totalPlannedAmount / data.numberOfInstallments;
-    cleanedData.installmentAmount = roundMoney(exactInstallmentAmount);
-    
-    // Handle USD installment amount if provided
-    if (cleanedData.totalPlannedAmountUsd && data.numberOfInstallments > 0) {
-      const exactInstallmentAmountUsd = cleanedData.totalPlannedAmountUsd / data.numberOfInstallments;
-      cleanedData.installmentAmountUsd = roundMoney(exactInstallmentAmountUsd);
-    }
-    
-    // Double-check that installments * amount = total (accounting for rounding)
-    const calculatedTotal = cleanedData.installmentAmount * data.numberOfInstallments;
-    const difference = Math.abs(cleanedData.totalPlannedAmount - calculatedTotal);
-    
-    // If difference is more than a penny, adjust
-    if (difference > 0.01) {
-      cleanedData.installmentAmount = roundMoney(cleanedData.totalPlannedAmount / data.numberOfInstallments);
-    }
-  } else {
-    // Single payment
-    cleanedData.installmentAmount = cleanedData.totalPlannedAmount;
-    if (cleanedData.totalPlannedAmountUsd) {
-      cleanedData.installmentAmountUsd = cleanedData.totalPlannedAmountUsd;
-    }
   }
 
   return cleanedData;
 };
 
 // Utility function to clean update data
-const cleanPaymentPlanUpdateData = (data: PaymentPlanUpdateData): PaymentPlanUpdateData => {
+const cleanPaymentPlanUpdateData = (data: Partial<PaymentPlanFormData>): Partial<PaymentPlanFormData> => {
   const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
   
-  const cleanedData = { ...data };
+  const cleanedData: Partial<PaymentPlanFormData> = { ...data };
 
   // Clean monetary values if they exist
-  if (data.totalPlannedAmount) {
+  if (data.totalPlannedAmount !== undefined) {
     cleanedData.totalPlannedAmount = roundMoney(data.totalPlannedAmount);
   }
   
-  if (data.totalPlannedAmountUsd) {
+  if (data.totalPlannedAmountUsd !== undefined) {
     cleanedData.totalPlannedAmountUsd = roundMoney(data.totalPlannedAmountUsd);
   }
   
-  if (data.installmentAmount) {
+  if (data.installmentAmount !== undefined) {
     cleanedData.installmentAmount = roundMoney(data.installmentAmount);
   }
 
-  if (data.installmentAmountUsd) {
+  if (data.installmentAmountUsd !== undefined) {
     cleanedData.installmentAmountUsd = roundMoney(data.installmentAmountUsd);
   }
 
   if (data.customInstallments && data.customInstallments.length > 0) {
     cleanedData.customInstallments = data.customInstallments.map(installment => ({
       ...installment,
-      amount: roundMoney(installment.amount),
-      amountUsd: installment.amountUsd ? roundMoney(installment.amountUsd) : installment.amountUsd,
-      paidAmount: installment.paidAmount ? roundMoney(installment.paidAmount) : installment.paidAmount
+      installmentAmount: roundMoney(installment.installmentAmount),
+      installmentAmountUsd: installment.installmentAmountUsd !== undefined ? 
+        roundMoney(installment.installmentAmountUsd) : undefined
     }));
-  }
-
-  // If we have both total and installment info, ensure consistency
-  if (cleanedData.totalPlannedAmount && cleanedData.numberOfInstallments && cleanedData.numberOfInstallments > 0) {
-    const exactInstallmentAmount = cleanedData.totalPlannedAmount / cleanedData.numberOfInstallments;
-    cleanedData.installmentAmount = roundMoney(exactInstallmentAmount);
-    
-    // Handle USD consistency
-    if (cleanedData.totalPlannedAmountUsd) {
-      const exactInstallmentAmountUsd = cleanedData.totalPlannedAmountUsd / cleanedData.numberOfInstallments;
-      cleanedData.installmentAmountUsd = roundMoney(exactInstallmentAmountUsd);
-    }
-    
-    const calculatedTotal = cleanedData.installmentAmount * cleanedData.numberOfInstallments;
-    const difference = Math.abs(cleanedData.totalPlannedAmount - calculatedTotal);
-    
-    if (difference > 0.01) {
-      cleanedData.installmentAmount = roundMoney(cleanedData.totalPlannedAmount / cleanedData.numberOfInstallments);
-    }
   }
 
   return cleanedData;
@@ -407,10 +368,9 @@ export const usePaymentPlanQuery = (planId: number) => {
 
 export const usePledgeDetailsQuery = (
   pledgeId: number,
-  // Add a second optional argument for useQuery options
   options?: Omit<UseQueryOptions<PledgeDetails, Error>, 'queryKey' | 'queryFn'>
 ) => {
-  return useQuery<PledgeDetails, Error>({ // Added generic types for better type inference
+  return useQuery<PledgeDetails, Error>({
     queryKey: ["pledge-details", pledgeId],
     queryFn: async (): Promise<PledgeDetails> => {
       const response = await fetch(`/api/pledges/${pledgeId}`);
@@ -437,7 +397,7 @@ export const useUpdatePaymentPlanMutation = () => {
       data,
     }: {
       id: number;
-      data: PaymentPlanUpdateData;
+      data: Partial<PaymentPlanFormData>;
     }) => {
       const cleanedData = cleanPaymentPlanUpdateData(data);
 

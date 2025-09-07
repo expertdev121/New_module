@@ -207,6 +207,7 @@ export const paymentStatusEnum = pgEnum("payment_status", [
   "cancelled",
   "refunded",
   "processing",
+  "expected"
 ]);
 
 export const frequencyEnum = pgEnum("frequency", [

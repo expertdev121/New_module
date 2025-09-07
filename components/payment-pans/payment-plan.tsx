@@ -122,7 +122,6 @@ export default function PaymentPlansTable({
   const handleDeletePaymentPlan = async (planId: number) => {
     try {
       await deletePaymentPlanMutation.mutateAsync(planId);
-      // Close expanded row if it was open
       setExpandedRows(prev => {
         const newSet = new Set(prev);
         newSet.delete(planId);
@@ -130,48 +129,130 @@ export default function PaymentPlansTable({
       });
       refetch();
     } catch (error) {
-      // Error handling is done in the mutation
       console.error("Delete failed:", error);
     }
   };
 
-  const formatCurrency = (amount: string, currency: string) => {
-    const formatted = new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(parseFloat(amount));
+  // Fixed formatCurrency function
+  const formatCurrency = (amount: string | null | undefined, currency: string) => {
+    if (!amount || amount === "0" || amount === "") {
+      return { symbol: getCurrencySymbol(currency), amount: '0.00' };
+    }
+    const value = Number(amount);
+    if (isNaN(value)) {
+      return { symbol: getCurrencySymbol(currency), amount: '0.00' };
+    }
 
-    const currencySymbol = formatted.replace(/[\d,.\s]/g, "");
-    const numericAmount = formatted.replace(/[^\d,.\s]/g, "").trim();
+    // Format the number with proper decimal places
+    const formatted = value.toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
 
-    return { symbol: currencySymbol, amount: numericAmount };
+    return {
+      symbol: getCurrencySymbol(currency),
+      amount: formatted,
+    };
   };
 
-  const convertToUSD = (amount: string, exchangeRate: string | null) => {
-    if (!exchangeRate || exchangeRate === "0" || !amount) return null;
-    const convertedAmount = parseFloat(amount) / parseFloat(exchangeRate);
-    return convertedAmount.toString();
+  // Helper function to get currency symbol
+  const getCurrencySymbol = (currency: string) => {
+    const symbols: { [key: string]: string } = {
+      'USD': '$',
+      'GBP': '£',
+      'EUR': '€',
+      'ILS': '₪',
+      'JPY': '¥',
+      'AUD': 'A$',
+      'CAD': 'C$',
+      'ZAR': 'R',
+    };
+    return symbols[currency] || currency;
   };
 
-  const getUSDAmount = (
-    originalAmount: string,
-    usdAmount: string | null,
-    exchangeRate: string | null
+  // Fixed convertToUSD function - corrected exchange rate logic
+  const convertToUSD = (amount: string | null | undefined, exchangeRate: string | null | undefined) => {
+    if (!exchangeRate || exchangeRate === '0' || !amount || amount === '0') return null;
+    const value = Number(amount);
+    const rate = Number(exchangeRate);
+    if (isNaN(value) || isNaN(rate) || rate === 0) return null;
+
+    // Fixed: The exchange rate should convert foreign currency TO USD
+    // So if we have 1 GBP = 0.7407 USD rate, then 478.90 GBP * 0.7407 = USD amount
+    const converted = value * rate;
+    return converted.toFixed(2);
+  };
+
+  // Helper function to display amount with USD equivalent
+  const displayAmountWithUSD = (
+    amount: string | null | undefined,
+    currency: string,
+    exchangeRate: string | null | undefined,
+    showUSDBelow = false
   ) => {
+    const formatted = formatCurrency(amount, currency);
+    const usdValue = convertToUSD(amount, exchangeRate);
+
+    if (showUSDBelow && usdValue && currency !== 'USD') {
+      return (
+        <div className="text-center">
+          <div>{formatted.symbol}{formatted.amount}</div>
+          <div className="text-xs text-gray-500">(~${usdValue})</div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex justify-between items-center">
+        <span className="text-xs text-gray-500">{formatted.symbol}</span>
+        <span>{formatted.amount}</span>
+      </div>
+    );
+  };
+
+  // Fixed getUSDAmount function
+  const getUSDAmount = (
+    originalAmount: string | null | undefined,
+    usdAmount: string | null | undefined,
+    exchangeRate: string | null | undefined,
+    currency: string
+  ) => {
+    // If currency is already USD, return the original amount
+    if (currency === 'USD') {
+      return originalAmount || '0';
+    }
+
+    // If USD amount is explicitly provided and not zero, use it
     if (usdAmount && usdAmount !== "0") {
       return usdAmount;
     }
+
+    // Otherwise convert using exchange rate
     const converted = convertToUSD(originalAmount, exchangeRate);
-    return converted || originalAmount; // Fallback to original if conversion fails
+    return converted || '0';
+  };
+
+  // NEW: Helper function to calculate correct installment amount
+  const calculateInstallmentAmount = (plan: any) => {
+    const totalAmount = Number(plan.totalPlannedAmount || 0);
+    const numInstallments = Number(plan.numberOfInstallments || 0);
+    
+    // Handle edge cases
+    if (numInstallments === 0) {
+      return totalAmount.toFixed(2); // Single payment
+    }
+    
+    if (totalAmount > 0 && numInstallments > 0) {
+      return (totalAmount / numInstallments).toFixed(2);
+    }
+    
+    return "0.00";
   };
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return "N/A";
     const date = new Date(dateString);
 
-    // Array of 3-letter uppercase month strings
     const months = [
       "JAN", "FEB", "MAR", "APR", "MAY", "JUN",
       "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"
@@ -201,29 +282,32 @@ export default function PaymentPlansTable({
 
   // Helper functions to get installment dates
   const getFirstInstallmentDate = (plan: any) => {
-    // If we have installment schedule, get first date
     if (plan.installmentSchedule && plan.installmentSchedule.length > 0) {
       return formatDate(plan.installmentSchedule[0].installmentDate);
     }
-    // Fallback to start date
     return formatDate(plan.startDate);
   };
 
   const getLastInstallmentDate = (plan: any) => {
-    // If we have installment schedule, get last date
     if (plan.installmentSchedule && plan.installmentSchedule.length > 0) {
       const lastIndex = plan.installmentSchedule.length - 1;
       return formatDate(plan.installmentSchedule[lastIndex].installmentDate);
     }
-    // Fallback to end date
     return formatDate(plan.endDate);
   };
 
-  // Helper function to calculate installments remaining
   const getInstallmentsRemaining = (plan: any) => {
     const total = plan.numberOfInstallments || 0;
     const paid = plan.installmentsPaid || 0;
     return total - paid;
+  };
+
+  // Fixed exchange rate display
+  const formatExchangeRate = (rate: string | null | undefined, currency: string) => {
+    if (!rate || currency === 'USD') return "N/A";
+    const rateNum = Number(rate);
+    if (isNaN(rateNum)) return "N/A";
+    return `1 ${currency} = ${rateNum.toFixed(4)} USD`;
   };
 
   const handleSuccess = () => {
@@ -240,7 +324,6 @@ export default function PaymentPlansTable({
     );
   }
 
-  // Show message if neither pledgeId nor contactId is provided
   if (!pledgeId && !contactId) {
     return (
       <Alert className="mx-4 my-6">
@@ -254,14 +337,12 @@ export default function PaymentPlansTable({
 
   return (
     <div className="space-y-6 p-4">
-      {/* Filters */}
       <Card>
         <CardHeader>
           <CardTitle>Payment Plans</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
-            {/* Search */}
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
@@ -300,7 +381,6 @@ export default function PaymentPlansTable({
               </SelectContent>
             </Select>
 
-            {/* Create Payment Plan Button */}
             <PaymentPlanDialog
               mode="create"
               pledgeId={pledgeId ?? undefined}
@@ -310,133 +390,78 @@ export default function PaymentPlansTable({
             />
           </div>
 
-          {/* Table */}
           <div className="border rounded-lg overflow-hidden">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Pledge Date
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Pledge Detail
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    1st Inst
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Next Inst
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Last Inst
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Pledge Amount
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Paid USD
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Paid
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Balance
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Scheduled
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Unscheduled
-                  </TableHead>
-                  <TableHead className="font-semibold text-gray-900">
-                    Notes
-                  </TableHead>
-                </TableRow>
+                  <TableHead className="font-semibold text-gray-900">Pledge Date</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Pledge Detail</TableHead>
+                  <TableHead className="font-semibold text-gray-900">1st Inst</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Next Inst</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Last Inst</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Applied Pledge Amount</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Paid USD</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Paid</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Balance</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Scheduled</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Unscheduled</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Status</TableHead>
+                </TableRow> 
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  // Loading skeleton with safe limit value
                   Array.from({ length: currentLimit }).map((_, index) => (
                     <TableRow key={index}>
-                      <TableCell>
-                        <Skeleton className="h-4 w-4" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-20" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-24" />
-                      </TableCell>
-                      <TableCell>
-                        <Skeleton className="h-4 w-32" />
-                      </TableCell>
+                      {Array.from({ length: 13 }).map((_, cellIndex) => (
+                        <TableCell key={cellIndex}>
+                          <Skeleton className="h-4 w-20" />
+                        </TableCell>
+                      ))}
                     </TableRow>
                   ))
                 ) : data?.paymentPlans.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={13}
-                      className="text-center py-8 text-gray-500"
-                    >
+                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                       No payment plans found
                     </TableCell>
                   </TableRow>
                 ) : (
                   data?.paymentPlans.map((plan: any) => {
-                    const pledgeUSD = getUSDAmount(
+                    // Get the correct currency for pledge vs plan
+                    const pledgeCurrency = plan.currency;
+                    const planCurrency = plan.currency;
+
+                    // Get pledge original amount (this should be the full pledge amount)
+                    const pledgeOriginalAmount = plan.totalPlannedAmount;
+
+                    // Calculate USD amounts with corrected logic
+                    const totalPlannedUSD = getUSDAmount(
                       plan.totalPlannedAmount,
-                      plan.totalPaidUsd,
-                      plan.exchangeRate
+                      plan.totalPlannedAmountUsd,
+                      plan.exchangeRate,
+                      planCurrency
                     );
-                    const paidUSD = getUSDAmount(
+                    const totalPaidUSD = getUSDAmount(
                       plan.totalPaid,
                       plan.totalPaidUsd,
-                      plan.exchangeRate
+                      plan.exchangeRate,
+                      planCurrency
                     );
-                    const remainingUSD =
-                      pledgeUSD && paidUSD
-                        ? (
-                          parseFloat(pledgeUSD) - parseFloat(paidUSD)
-                        ).toString()
-                        : getUSDAmount(
-                          plan.remainingAmount,
-                          null,
-                          plan.exchangeRate
-                        );
 
-                    // Calculate Total Scheduled USD using exchange rate
-                    const totalScheduledUSD = convertToUSD(
-                      plan.totalPlannedAmount,
-                      plan.exchangeRate
-                    );
+                    // Calculate remaining amount correctly
+                    const remainingAmount = plan.remainingAmount || (
+                      Number(plan.totalPlannedAmount || 0) - Number(plan.totalPaid || 0)
+                    ).toFixed(2);
+
+                    const remainingUSD = planCurrency === 'USD'
+                      ? remainingAmount
+                      : convertToUSD(remainingAmount, plan.exchangeRate) || '0';
+
+                    // Calculate unscheduled amount (difference between pledge and planned)
+                    const unscheduledAmount = (
+                      Number(pledgeOriginalAmount || 0) - Number(plan.totalPlannedAmount || 0)
+                    ).toFixed(2);
 
                     return (
                       <React.Fragment key={plan.id}>
@@ -455,131 +480,67 @@ export default function PaymentPlansTable({
                               )}
                             </Button>
                           </TableCell>
+
                           {/* Pledge Date */}
                           <TableCell className="font-medium">
-                            {formatDate(plan.pledgeDate || plan.startDate)}
+                            {formatDate(plan.pledge?.pledgeDate || plan.pledgeDate || plan.startDate)}
                           </TableCell>
+
                           {/* Pledge Detail */}
-                          <TableCell>{plan.pledgeDescription || plan.notes || "N/A"}</TableCell>
+                          <TableCell>{plan.pledge?.description || plan.pledgeDescription || plan.planName || "N/A"}</TableCell>
+
                           {/* 1st Inst */}
                           <TableCell>{getFirstInstallmentDate(plan)}</TableCell>
+
                           {/* Next Inst */}
-                          <TableCell>
-                            {formatDate(plan.nextPaymentDate)}
-                          </TableCell>
+                          <TableCell>{formatDate(plan.nextPaymentDate)}</TableCell>
+
                           {/* Last Inst */}
                           <TableCell>{getLastInstallmentDate(plan)}</TableCell>
-                          {/* Pledge Amount (in original pledge currency) */}
+
+                          {/* Pledge Amount (original pledge amount in pledge currency) */}
                           <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>{plan.pledgeCurrency || plan.currency}</span>
-                              <span>
-                                {Math.round(
-                                  Number(plan.originalAmount || plan.totalPlannedAmount)
-                                ).toLocaleString("en-US")}
-                              </span>
-                            </div>
+                            {displayAmountWithUSD(
+                              pledgeOriginalAmount,
+                              pledgeCurrency,
+                              plan.exchangeRate,
+                              true
+                            )}
                           </TableCell>
+
                           {/* Paid USD */}
                           <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>
-                                {formatCurrency(paidUSD || "0", "USD").symbol}
-                              </span>
-                              <span>
-                                {formatCurrency(paidUSD || "0", "USD").amount}
-                              </span>
+                            <div className="flex justify-between items-center">
+                              <span className="text-xs text-gray-500">$</span>
+                              <span>{formatCurrency(totalPaidUSD, "USD").amount}</span>
                             </div>
                           </TableCell>
-                          {/* Paid (in pledge currency) */}
+
+                          {/* Paid (in plan currency) */}
                           <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>
-                                {
-                                  formatCurrency(plan.totalPaid, plan.currency)
-                                    .symbol
-                                }
-                              </span>
-                              <span>
-                                {
-                                  formatCurrency(plan.totalPaid, plan.currency)
-                                    .amount
-                                }
-                              </span>
-                            </div>
+                            {displayAmountWithUSD(plan.totalPaid || "0", planCurrency, plan.exchangeRate)}
                           </TableCell>
-                          {/* Balance (in pledge currency) */}
+
+                          {/* Balance (remaining in plan currency) */}
                           <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>
-                                {
-                                  formatCurrency(
-                                    plan.remainingAmount,
-                                    plan.currency
-                                  ).symbol
-                                }
-                              </span>
-                              <span>
-                                {
-                                  formatCurrency(
-                                    plan.remainingAmount,
-                                    plan.currency
-                                  ).amount
-                                }
-                              </span>
-                            </div>
+                            {displayAmountWithUSD(remainingAmount, planCurrency, plan.exchangeRate)}
                           </TableCell>
-                          {/* Scheduled (in pledge currency) */}
+
+                          {/* Scheduled (total planned amount in plan currency) */}
                           <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>
-                                {
-                                  formatCurrency(
-                                    plan.totalPlannedAmount || plan.installmentAmount,
-                                    plan.currency
-                                  ).symbol
-                                }
-                              </span>
-                              <span>
-                                {
-                                  formatCurrency(
-                                    plan.totalPlannedAmount || plan.installmentAmount,
-                                    plan.currency
-                                  ).amount
-                                }
-                              </span>
-                            </div>
+                            {displayAmountWithUSD(plan.totalPlannedAmount || "0", planCurrency, plan.exchangeRate)}
                           </TableCell>
-                          {/* Unscheduled (in pledge currency) */}
+
+                          {/* Unscheduled (difference between pledge and planned) */}
                           <TableCell>
-                            <div className="flex justify-evenly">
-                              <span>
-                                {
-                                  formatCurrency(
-                                    (
-                                      parseFloat(plan.remainingAmount) -
-                                      parseFloat(plan.totalPlannedAmount || plan.installmentAmount)
-                                    ).toString(),
-                                    plan.currency
-                                  ).symbol
-                                }
-                              </span>
-                              <span>
-                                {
-                                  formatCurrency(
-                                    (
-                                      parseFloat(plan.remainingAmount) -
-                                      parseFloat(plan.totalPlannedAmount || plan.installmentAmount)
-                                    ).toString(),
-                                    plan.currency
-                                  ).amount
-                                }
-                              </span>
-                            </div>
+                            {displayAmountWithUSD(unscheduledAmount, pledgeCurrency, plan.exchangeRate)}
                           </TableCell>
-                          {/* Notes */}
+
+                          {/* Status */}
                           <TableCell>
-                            {plan.notes || plan.internalNotes || "-"}
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(plan.planStatus)}`}>
+                              {plan.planStatus || 'active'}
+                            </span>
                           </TableCell>
                         </TableRow>
 
@@ -590,158 +551,92 @@ export default function PaymentPlansTable({
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {/* Column 1: Schedule */}
                                 <div className="space-y-3">
-                                  <h4 className="font-semibold text-gray-900">
-                                    Schedule
-                                  </h4>
+                                  <h4 className="font-semibold text-gray-900">Schedule</h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Frequency:
-                                      </span>
-                                      <span className="font-medium capitalize">
-                                        {plan.frequency || "N/A"}
-                                      </span>
+                                      <span className="text-gray-600">Frequency:</span>
+                                      <span className="font-medium capitalize">{plan.frequency || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Number of Installments:
-                                      </span>
-                                      <span className="font-medium">
-                                        {plan.numberOfInstallments || "N/A"}
-                                      </span>
+                                      <span className="text-gray-600">Total Installments:</span>
+                                      <span className="font-medium">{plan.numberOfInstallments || "N/A"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Installments Paid:
-                                      </span>
-                                      <span className="font-medium">
-                                        {plan.installmentsPaid || 0}
-                                      </span>
+                                      <span className="text-gray-600">Installments Paid:</span>
+                                      <span className="font-medium">{plan.installmentsPaid || 0}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Installments Remaining:
-                                      </span>
-                                      <span className="font-medium">
-                                        {getInstallmentsRemaining(plan)}
-                                      </span>
+                                      <span className="text-gray-600">Installments Remaining:</span>
+                                      <span className="font-medium">{getInstallmentsRemaining(plan)}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Next Installment:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatDate(plan.nextPaymentDate)}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Last Installment:
-                                      </span>
-                                      <span className="font-medium">
-                                        {getLastInstallmentDate(plan)}
-                                      </span>
+                                      <span className="text-gray-600">Next Payment:</span>
+                                      <span className="font-medium">{formatDate(plan.nextPaymentDate)}</span>
                                     </div>
                                   </div>
                                 </div>
 
                                 {/* Column 2: Financial Details */}
                                 <div className="space-y-3">
-                                  <h4 className="font-semibold text-gray-900">
-                                    Financial Details
-                                  </h4>
+                                  <h4 className="font-semibold text-gray-900">Financial Details</h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Total Scheduled:
-                                      </span>
+                                      <span className="text-gray-600">Total Planned ({planCurrency}):</span>
+                                      <span className="font-medium">{formatCurrency(plan.totalPlannedAmount || "0", planCurrency).symbol}{formatCurrency(plan.totalPlannedAmount || "0", planCurrency).amount}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Total Planned (USD):</span>
+                                      <span className="font-medium">${formatCurrency(convertToUSD(plan.totalPlannedAmount || "0", plan.exchangeRate) || "0", "USD").amount}</span>
+                                    </div>
+                                    {/* FIXED: Use calculated installment amount */}
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Installment Amount:</span>
                                       <span className="font-medium">
-                                        {formatCurrency(
-                                          plan.totalPlannedAmount || "0",
-                                          plan.currency
-                                        ).symbol}
-                                        {formatCurrency(
-                                          plan.totalPlannedAmount || "0",
-                                          plan.currency
-                                        ).amount}
+                                        {(() => {
+                                          const calculatedAmount = calculateInstallmentAmount(plan);
+                                          const formatted = formatCurrency(calculatedAmount, planCurrency);
+                                          return `${formatted.symbol}${formatted.amount}`;
+                                        })()}
                                       </span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Installment Amount:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatCurrency(
-                                          plan.installmentAmount || "0",
-                                          plan.currency
-                                        ).symbol}
-                                        {formatCurrency(
-                                          plan.installmentAmount || "0",
-                                          plan.currency
-                                        ).amount}
-                                      </span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Remaining Amount:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatCurrency(
-                                          plan.remainingAmount || "0",
-                                          plan.currency
-                                        ).symbol}
-                                        {formatCurrency(
-                                          plan.remainingAmount || "0",
-                                          plan.currency
-                                        ).amount}
-                                      </span>
+                                      <span className="text-gray-600">Exchange Rate:</span>
+                                      <span className="font-medium">{formatExchangeRate(plan.exchangeRate, planCurrency)}</span>
                                     </div>
                                   </div>
                                 </div>
 
                                 {/* Column 3: Additional Details */}
                                 <div className="space-y-3">
-                                  <h4 className="font-semibold text-gray-900">
-                                    Additional Details
-                                  </h4>
+                                  <h4 className="font-semibold text-gray-900">Additional Details</h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Last Reminder:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatDate(plan.lastReminderDate)}
-                                      </span>
+                                      <span className="text-gray-600">Distribution Type:</span>
+                                      <span className="font-medium capitalize">{plan.distributionType || "fixed"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Created:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatDate(plan.createdAt)}
-                                      </span>
+                                      <span className="text-gray-600">Auto Renew:</span>
+                                      <span className="font-medium">{plan.autoRenew ? "Yes" : "No"}</span>
                                     </div>
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">
-                                        Last Updated:
-                                      </span>
-                                      <span className="font-medium">
-                                        {formatDate(plan.updatedAt)}
-                                      </span>
+                                      <span className="text-gray-600">Created:</span>
+                                      <span className="font-medium">{formatDate(plan.createdAt)}</span>
                                     </div>
-                                    <div>
-                                      <span className="text-gray-600">
-                                        Notes:
-                                      </span>
-                                      <p className="mt-1 text-gray-900 text-sm">
-                                        {plan.notes || "No notes available"}
-                                      </p>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">Last Updated:</span>
+                                      <span className="font-medium">{formatDate(plan.updatedAt)}</span>
                                     </div>
+                                    {plan.notes && (
+                                      <div>
+                                        <span className="text-gray-600">Notes:</span>
+                                        <p className="mt-1 text-gray-900 text-sm">{plan.notes}</p>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Quick Actions in Expanded Row */}
+                              {/* Quick Actions */}
                               <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200">
                                 <PaymentPlanDialog
                                   mode="edit"
@@ -756,12 +651,11 @@ export default function PaymentPlansTable({
                                   }
                                 />
 
-                                {/* Delete Button with Confirmation Dialog */}
                                 <AlertDialog>
                                   <AlertDialogTrigger asChild>
-                                    <Button 
-                                      size="sm" 
-                                      variant="outline" 
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
                                       className="text-red-600 hover:text-red-700 hover:bg-red-50"
                                       disabled={deletePaymentPlanMutation.isPending}
                                     >
@@ -773,18 +667,7 @@ export default function PaymentPlansTable({
                                     <AlertDialogHeader>
                                       <AlertDialogTitle>Delete Payment Plan</AlertDialogTitle>
                                       <AlertDialogDescription>
-                                        Are you sure you want to delete this payment plan? This action cannot be undone and will remove:
-                                        <ul className="mt-2 ml-4 list-disc text-sm">
-                                          <li>The payment plan record</li>
-                                          <li>All associated installment schedules</li>
-                                          <li>Any pending payment records</li>
-                                        </ul>
-                                        <div className="mt-3 p-3 bg-gray-50 rounded-md">
-                                          <div className="text-sm font-medium">Plan Details:</div>
-                                          <div className="text-sm text-gray-600">
-                                            {plan.planName || `${plan.frequency} plan`} - {formatCurrency(plan.totalPlannedAmount || "0", plan.currency).symbol}{formatCurrency(plan.totalPlannedAmount || "0", plan.currency).amount}
-                                          </div>
-                                        </div>
+                                        Are you sure you want to delete this payment plan? This action cannot be undone.
                                       </AlertDialogDescription>
                                     </AlertDialogHeader>
                                     <AlertDialogFooter>
@@ -819,7 +702,7 @@ export default function PaymentPlansTable({
             </Table>
           </div>
 
-          {/* Pagination with safe values */}
+          {/* Pagination */}
           {data && data.paymentPlans.length > 0 && (
             <div className="flex items-center justify-between mt-6">
               <div className="text-sm text-gray-600">
@@ -837,9 +720,7 @@ export default function PaymentPlansTable({
                   Previous
                 </Button>
                 <div className="flex items-center gap-1">
-                  <span className="text-sm text-gray-600">
-                    Page {currentPage}
-                  </span>
+                  <span className="text-sm text-gray-600">Page {currentPage}</span>
                 </div>
                 <Button
                   variant="outline"
