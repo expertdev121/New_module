@@ -21,7 +21,20 @@ export async function GET(
   try {
     const [contactData] = await db
       .select({
-        contact: contact,
+        contact: {
+          id: contact.id,
+          firstName: contact.firstName,
+          lastName: contact.lastName,
+          displayName: contact.displayName,
+          email: contact.email,
+          phone: contact.phone,
+          title: contact.title,
+          gender: contact.gender,
+          address: contact.address,
+          createdAt: contact.createdAt,
+          updatedAt: contact.updatedAt,
+          fullName: sql<string>`concat(${contact.firstName}, ' ', ${contact.lastName})`.as('fullName'),
+        },
         contactRoles: sql<unknown[]>`COALESCE(
           (SELECT ARRAY_AGG(row_to_json(${contactRoles}))
            FROM ${contactRoles}

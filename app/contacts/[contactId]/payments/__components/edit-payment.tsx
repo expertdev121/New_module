@@ -164,6 +164,20 @@ const useContacts = (search?: string) =>
     enabled: !!search && search.length >= 2,
   });
 
+
+const useContactById = (contactId?: number | null) =>
+  useQuery<{ contact: Contact }>({
+    queryKey: ["contact", contactId],
+    queryFn: async () => {
+      if (!contactId) throw new Error("Contact ID is required");
+      const response = await fetch(`/api/contacts/${contactId}`);
+      if (!response.ok) throw new Error("Failed to fetch contact");
+      const data = await response.json();
+      return { contact: data.contact };
+    },
+    enabled: !!contactId,
+  });
+
 const supportedCurrencies = [
   "USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR",
 ] as const;
@@ -507,33 +521,40 @@ export default function EditPaymentDialog({
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
 
   // Effect to load existing third-party contact if editing a third-party payment
+  const { data: existingThirdPartyContactData } = useContactById(
+    isExistingThirdPartyPayment ? existingThirdPartyContactId : null
+  );
+
   useEffect(() => {
-    if (isExistingThirdPartyPayment && existingThirdPartyContactId && contactsData?.contacts) {
-      const existingContact = contactsData.contacts.find(c => c.id === existingThirdPartyContactId);
-      if (existingContact) {
-        setSelectedThirdPartyContact(existingContact);
-      }
+    if (isExistingThirdPartyPayment && existingThirdPartyContactData?.contact) {
+      setSelectedThirdPartyContact(existingThirdPartyContactData.contact);
+      // Also set the form field value to ensure it's properly bound
+      form.setValue("thirdPartyContactId", existingThirdPartyContactData.contact.id);
+      // Set the search input to show the selected contact's name for better UX
+      setContactSearch(existingThirdPartyContactData.contact.fullName);
     }
-  }, [isExistingThirdPartyPayment, existingThirdPartyContactId, contactsData]);
+  }, [isExistingThirdPartyPayment, existingThirdPartyContactData, form]);
 
   // Effect to clear pledge selection when third-party contact changes
   useEffect(() => {
     if (watchedIsThirdParty) {
-      // Reset pledge selection when changing third-party contact
-      form.setValue("pledgeId", null);
-      if (watchedIsSplitPayment) {
-        form.setValue("allocations", [{
-          pledgeId: 0,
-          allocatedAmount: 0,
-          notes: null,
-          currency: payment.currency,
-          receiptNumber: null,
-          receiptType: null,
-          receiptIssued: false,
-        }]);
+      // Reset pledge selection when changing third-party contact, except if editing existing third-party payment
+      if (!isExistingThirdPartyPayment) {
+        form.setValue("pledgeId", null);
+        if (watchedIsSplitPayment) {
+          form.setValue("allocations", [{
+            pledgeId: 0,
+            allocatedAmount: 0,
+            notes: null,
+            currency: payment.currency,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          }]);
+        }
       }
     }
-  }, [selectedThirdPartyContact, watchedIsThirdParty, watchedIsSplitPayment, form, payment.currency]);
+  }, [selectedThirdPartyContact, watchedIsThirdParty, watchedIsSplitPayment, form, payment.currency, isExistingThirdPartyPayment]);
 
   // Check if payment can be converted to split
   useEffect(() => {
@@ -1015,12 +1036,23 @@ export default function EditPaymentDialog({
   const contactOptions = useMemo(() => {
     if (!contactsData?.contacts) return [];
 
-    return contactsData.contacts.map((contact: Contact) => ({
+    const options = contactsData.contacts.map((contact: Contact) => ({
       label: contact.fullName,
       value: contact.id,
       ...contact,
     }));
-  }, [contactsData?.contacts]);
+
+    // Include the selected third-party contact if it's not already in the list
+    if (selectedThirdPartyContact && !options.find(option => option.value === selectedThirdPartyContact.id)) {
+      options.unshift({
+        label: selectedThirdPartyContact.fullName,
+        value: selectedThirdPartyContact.id,
+        ...selectedThirdPartyContact,
+      });
+    }
+
+    return options;
+  }, [contactsData?.contacts, selectedThirdPartyContact]);
 
   const effectivePledgeDescription = pledgeData?.pledge?.description || payment.pledgeDescription || "N/A";
 

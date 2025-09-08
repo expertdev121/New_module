@@ -167,6 +167,32 @@ const studentRoleSchema = z
       message: "End date must be after start date",
       path: ["endDate"],
     }
+  )
+  .refine(
+    (data) => {
+      if (data.startDate) {
+        const parts = data.startDate.split("-");
+        return parts[0] && parts[0].length === 4;
+      }
+      return true;
+    },
+    {
+      message: "Start date year must be 4 digits",
+      path: ["startDate"],
+    }
+  )
+  .refine(
+    (data) => {
+      if (data.endDate) {
+        const parts = data.endDate.split("-");
+        return parts[0] && parts[0].length === 4;
+      }
+      return true;
+    },
+    {
+      message: "End date year must be 4 digits",
+      path: ["endDate"],
+    }
   );
 
 type StudentRoleFormData = z.infer<typeof studentRoleSchema>;
