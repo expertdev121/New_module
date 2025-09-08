@@ -519,8 +519,8 @@ export async function PATCH(
     }
 
     // Helper functions for currency precision
-    const toCents = (amount: number) => Math.round(amount * 100);
-    const fromCents = (cents: number) => Math.round(cents) / 100;
+    const toCents = (amount: number) => amount * 100;
+    const fromCents = (cents: number) => cents / 100;
 
     // Validate custom installments
     if (validatedData.distributionType === "custom" && validatedData.customInstallments) {

@@ -277,7 +277,7 @@ export default function PaymentDialog({
     !watchedIsSplitPayment || Math.abs(totalAllocated - (watchedAmount || 0)) < 0.01;
 
   // Sanitize nullable string fields before submit
-  const sanitizeNullable = (value: any) => (value === null ? undefined : value);
+  const sanitizeNullable = (value: any) => (value === null || value === "" ? undefined : value);
 
   // Submit handler
   const onSubmit = async (data: PaymentFormData) => {

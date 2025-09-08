@@ -563,8 +563,8 @@ export async function POST(request: NextRequest) {
     }
 
     const paymentDate = validatedData.paymentDate;
-    const receivedDate = validatedData.receivedDate || paymentDate;
-    const checkDate = validatedData.checkDate || null;
+    const receivedDate = validatedData.receivedDate ?? null;
+    const checkDate = validatedData.checkDate ?? null;
 
     const commonPaymentData = {
       currency: validatedData.currency,

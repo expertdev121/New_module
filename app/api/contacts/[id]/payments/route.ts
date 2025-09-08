@@ -11,6 +11,7 @@ const PaymentStatusEnum = z.enum([
   "cancelled",
   "refunded",
   "processing",
+  "expected"
 ]);
 
 const QueryParamsSchema = z.object({

@@ -192,12 +192,13 @@ export default function PaymentPlansTable({
   ) => {
     const formatted = formatCurrency(amount, currency);
     const usdValue = convertToUSD(amount, exchangeRate);
+    const formattedUsd = usdValue ? parseFloat(usdValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
 
-    if (showUSDBelow && usdValue && currency !== 'USD') {
+    if (showUSDBelow && formattedUsd && currency !== 'USD') {
       return (
         <div className="text-center">
           <div>{formatted.symbol}{formatted.amount}</div>
-          <div className="text-xs text-gray-500">(~${usdValue})</div>
+          <div className="text-xs text-gray-500">(~${formattedUsd})</div>
         </div>
       );
     }
@@ -404,8 +405,7 @@ export default function PaymentPlansTable({
                   <TableHead className="font-semibold text-gray-900">Paid USD</TableHead>
                   <TableHead className="font-semibold text-gray-900">Paid</TableHead>
                   <TableHead className="font-semibold text-gray-900">Balance</TableHead>
-                  <TableHead className="font-semibold text-gray-900">Scheduled</TableHead>
-                  <TableHead className="font-semibold text-gray-900">Unscheduled</TableHead>
+                  
                   <TableHead className="font-semibold text-gray-900">Status</TableHead>
                 </TableRow> 
               </TableHeader>
@@ -413,7 +413,7 @@ export default function PaymentPlansTable({
                 {isLoading ? (
                   Array.from({ length: currentLimit }).map((_, index) => (
                     <TableRow key={index}>
-                      {Array.from({ length: 13 }).map((_, cellIndex) => (
+                      {Array.from({ length: 11 }).map((_, cellIndex) => (
                         <TableCell key={cellIndex}>
                           <Skeleton className="h-4 w-20" />
                         </TableCell>
@@ -422,7 +422,7 @@ export default function PaymentPlansTable({
                   ))
                 ) : data?.paymentPlans.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
                       No payment plans found
                     </TableCell>
                   </TableRow>
@@ -526,15 +526,7 @@ export default function PaymentPlansTable({
                             {displayAmountWithUSD(remainingAmount, planCurrency, plan.exchangeRate)}
                           </TableCell>
 
-                          {/* Scheduled (total planned amount in plan currency) */}
-                          <TableCell>
-                            {displayAmountWithUSD(plan.totalPlannedAmount || "0", planCurrency, plan.exchangeRate)}
-                          </TableCell>
-
-                          {/* Unscheduled (difference between pledge and planned) */}
-                          <TableCell>
-                            {displayAmountWithUSD(unscheduledAmount, pledgeCurrency, plan.exchangeRate)}
-                          </TableCell>
+                          
 
                           {/* Status */}
                           <TableCell>
@@ -547,7 +539,7 @@ export default function PaymentPlansTable({
                         {/* Expanded Row Content */}
                         {expandedRows.has(plan.id) && (
                           <TableRow>
-                            <TableCell colSpan={13} className="bg-gray-50 p-6">
+                            <TableCell colSpan={11} className="bg-gray-50 p-6">
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {/* Column 1: Schedule */}
                                 <div className="space-y-3">

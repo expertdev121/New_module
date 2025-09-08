@@ -1,13 +1,15 @@
 import { db } from "@/lib/db";
-import { 
-  pledge, 
-  category, 
-  contact, 
-  paymentPlan, 
+import {
+  pledge,
+  category,
+  contact,
+  paymentPlan,
   installmentSchedule,
-  relationships 
+  relationships,
+  payment,
+  paymentAllocations
 } from "@/lib/db/schema";
-import { sql, eq, and, or, gte, lte, ilike, SQL } from "drizzle-orm";
+import { sql, eq, and, or, gte, lte, ilike, SQL, not, isNull } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { alias } from "drizzle-orm/pg-core";
 
@@ -83,9 +85,61 @@ export async function GET(
       return NextResponse.json({ error: "Invalid category ID" }, { status: 400 });
     }
 
-    // Get payment plan data with more detailed information
+    // Get scheduled amounts - only payments without receive date and status expected/pending/processing
+    let scheduledPaymentsMap: Map<number, string> = new Map();
+    let scheduledAllocationsMap: Map<number, string> = new Map();
+
+    try {
+      // Get scheduled payments
+      const scheduledPayments = await db
+        .select({
+          pledgeId: payment.pledgeId,
+          totalScheduled: sql<string>`COALESCE(SUM(${payment.amountInPledgeCurrency}::numeric), 0)`.as("totalScheduled"),
+        })
+        .from(payment)
+        .where(and(
+          not(isNull(payment.pledgeId)),
+          isNull(payment.receivedDate), // No receive date
+          or(
+            eq(payment.paymentStatus, "pending"),
+            eq(payment.paymentStatus, "expected"),
+            eq(payment.paymentStatus, "processing")
+          )
+        ))
+        .groupBy(payment.pledgeId);
+
+      scheduledPayments.forEach((item: any) => {
+        scheduledPaymentsMap.set(item.pledgeId, item.totalScheduled);
+      });
+
+      // Get scheduled payment allocations (for split payments without receive date)
+      const scheduledAllocations = await db
+        .select({
+          pledgeId: paymentAllocations.pledgeId,
+          totalScheduled: sql<string>`COALESCE(SUM(${paymentAllocations.allocatedAmountInPledgeCurrency}::numeric), 0)`.as("totalScheduled"),
+        })
+        .from(paymentAllocations)
+        .innerJoin(payment, eq(paymentAllocations.paymentId, payment.id))
+        .where(and(
+          isNull(payment.receivedDate), // No receive date
+          or(
+            eq(payment.paymentStatus, "pending"),
+            eq(payment.paymentStatus, "expected"),
+            eq(payment.paymentStatus, "processing")
+          )
+        ))
+        .groupBy(paymentAllocations.pledgeId);
+
+      scheduledAllocations.forEach((item: any) => {
+        scheduledAllocationsMap.set(item.pledgeId, item.totalScheduled);
+      });
+    } catch (scheduledError) {
+      console.warn('Warning: Could not fetch scheduled payments data, using default values:', scheduledError);
+    }
+
+    // Get payment plan data for backward compatibility
     let paymentPlanData: Record<number, PaymentPlanData> = {};
-    
+
     try {
       const scheduledData = await db
         .select({
@@ -101,7 +155,7 @@ export async function GET(
           )
         )
         .groupBy(paymentPlan.pledgeId);
-      
+
       // Convert to lookup object with additional metadata
       paymentPlanData = scheduledData.reduce((acc, item) => {
         acc[item.pledgeId] = {
@@ -256,10 +310,10 @@ export async function GET(
         categoryName: category.name,
         categoryDescription: category.description,
         progressPercentage: sql<number>`
-          CASE 
-            WHEN ${pledge.originalAmount}::numeric > 0 
-            THEN ROUND((${pledge.totalPaid}::numeric / ${pledge.originalAmount}::numeric) * 100, 1)
-            ELSE 0 
+          CASE
+            WHEN ${pledge.originalAmount}::numeric > 0
+            THEN (${pledge.totalPaid}::numeric / ${pledge.originalAmount}::numeric) * 100
+            ELSE 0
           END
         `,
         // Relationship fields
@@ -306,16 +360,22 @@ export async function GET(
     }
 
     // Post-process the results to add payment plan information and relationship data
-    const pledges = pledgesData.map(pledge => {
+    const pledges = pledgesData.map((pledge: any) => {
+      // Calculate scheduled amounts from payments (new logic)
+      const scheduledPaymentAmount = parseFloat(scheduledPaymentsMap.get(pledge.id) || "0");
+      const scheduledAllocationAmount = parseFloat(scheduledAllocationsMap.get(pledge.id) || "0");
+      const totalScheduledAmount = scheduledPaymentAmount + scheduledAllocationAmount;
+      const scheduledAmount = totalScheduledAmount.toString();
+
+      // Keep payment plan data for backward compatibility
       const planData = paymentPlanData[pledge.id];
       const detailedPlan = detailedPaymentPlans[pledge.id];
-      const scheduledAmount = planData?.totalScheduledAmount || '0';
       const activePlanCount = planData?.activePlanCount || 0;
       const hasActivePlan = planData?.hasActivePlan || false;
-      
-      const scheduledAmountNum = parseFloat(scheduledAmount);
+
+      const scheduledAmountNum = totalScheduledAmount;
       const balanceNum = parseFloat(pledge.balance);
-      
+
       // Calculate unscheduled amount (balance minus scheduled amount, but not negative)
       const unscheduledAmount = Math.max(0, balanceNum - scheduledAmountNum).toString();
 
@@ -345,8 +405,8 @@ export async function GET(
         hasActivePlan,
         // Additional computed fields for UI (existing functionality)
         paymentPlanStatus: hasActivePlan ? 'active' : 'none',
-        schedulePercentage: balanceNum > 0 ? 
-          Math.round((scheduledAmountNum / balanceNum) * 100) : 0,
+        schedulePercentage: balanceNum > 0 ?
+          (scheduledAmountNum / balanceNum) * 100 : 0,
         // Detailed payment plan information (existing functionality)
         paymentPlan: detailedPlan || null,
         // NEW: Relationship data for frontend

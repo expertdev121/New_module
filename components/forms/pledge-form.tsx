@@ -83,9 +83,9 @@ const STATIC_CATEGORIES = [
   // Add your other categories here
 ];
 
-// Helper function to round amounts to 2 decimal places
-const roundToTwoDecimals = (value: number): number => {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
+// Helper function to maintain precision without rounding
+const maintainPrecision = (value: number): number => {
+  return value;
 };
 
 const pledgeSchema = z.object({
@@ -185,9 +185,9 @@ export default function PledgeDialog({
         contactId: pledgeData.contactId || contactId,
         categoryId: pledgeData.categoryId,
         currency: pledgeData.currency as (typeof supportedCurrencies)[number],
-        exchangeRate: roundToTwoDecimals(Math.max(pledgeData.exchangeRate || 1, 0.0001)),
-        originalAmount: roundToTwoDecimals(Math.max(pledgeData.originalAmount || 1, 0.01)),
-        originalAmountUsd: roundToTwoDecimals(Math.max(pledgeData.originalAmountUsd || 1, 0.01)),
+        exchangeRate: Math.max(pledgeData.exchangeRate || 1, 0.0001),
+        originalAmount: Math.max(pledgeData.originalAmount || 1, 0.01),
+        originalAmountUsd: Math.max(pledgeData.originalAmountUsd || 1, 0.01),
         description: pledgeData.description || "",
         pledgeDate: pledgeData.pledgeDate,
         exchangeRateDate: pledgeData.pledgeDate,
@@ -270,7 +270,7 @@ export default function PledgeDialog({
         fetchCategoryItems(pledgeData.categoryId);
       }
 
-      // Update exchange rate and recalculate USD amount based on current rates
+      // Update exchange rate and recalculate USD amount based on current rates without rounding
       setTimeout(() => {
         const currentCurrency = form.getValues("currency");
         const currentOriginalAmount = form.getValues("originalAmount");
@@ -282,13 +282,13 @@ export default function PledgeDialog({
 
           // Recalculate USD amount with the updated rate
           if (currentOriginalAmount) {
-            const recalculatedUsdAmount = roundToTwoDecimals(currentOriginalAmount / latestRate);
+            const recalculatedUsdAmount = currentOriginalAmount / latestRate;
             form.setValue("originalAmountUsd", recalculatedUsdAmount, { shouldValidate: true });
           }
         } else if (currentCurrency === "USD") {
           // For USD, exchange rate should be 1
           form.setValue("exchangeRate", 1, { shouldValidate: true });
-          form.setValue("originalAmountUsd", roundToTwoDecimals(currentOriginalAmount || 0), { shouldValidate: true });
+          form.setValue("originalAmountUsd", currentOriginalAmount || 0, { shouldValidate: true });
         }
 
         form.trigger();
@@ -320,10 +320,9 @@ export default function PledgeDialog({
   useEffect(() => {
     if (watchedOriginalAmount && watchedExchangeRate) {
       const usdAmount = watchedOriginalAmount / watchedExchangeRate;
-      const roundedUsdAmount = roundToTwoDecimals(usdAmount);
       const currentUsdAmount = form.getValues("originalAmountUsd");
-      if (Math.abs(currentUsdAmount - roundedUsdAmount) > 0.001) {
-        form.setValue("originalAmountUsd", roundedUsdAmount, {
+      if (Math.abs(currentUsdAmount - usdAmount) > 0.001) {
+        form.setValue("originalAmountUsd", usdAmount, {
           shouldValidate: true,
         });
       }
@@ -365,19 +364,16 @@ export default function PledgeDialog({
         return;
       }
 
-      const roundedOriginalAmount = roundToTwoDecimals(data.originalAmount);
-      const roundedOriginalAmountUsd = roundToTwoDecimals(data.originalAmountUsd);
-      const roundedExchangeRate = roundToTwoDecimals(data.exchangeRate);
-
+      // Remove rounding, use raw values
       const submissionData = {
         contactId: data.contactId,
         categoryId: data.categoryId,
         pledgeDate: data.pledgeDate,
         description: data.description,
-        originalAmount: roundedOriginalAmount,
+        originalAmount: data.originalAmount,
         currency: data.currency,
-        originalAmountUsd: roundedOriginalAmountUsd,
-        exchangeRate: roundedExchangeRate,
+        originalAmountUsd: data.originalAmountUsd,
+        exchangeRate: data.exchangeRate,
         campaignCode: data.campaignCode || undefined,
         notes: data.notes,
       };
@@ -437,8 +433,8 @@ export default function PledgeDialog({
   };
 
   const handleAmountBlur = (field: any, value: number) => {
-    const roundedValue = roundToTwoDecimals(value);
-    field.onChange(roundedValue);
+    // Remove rounding on blur, use raw value
+    field.onChange(value);
   };
 
   const isSubmitting =
@@ -815,7 +811,7 @@ export default function PledgeDialog({
                           <Input
                             type="text"
                             {...field}
-                            value={`${(field.value || 0).toFixed(2)}`}
+                            value={`${(field.value || 0)}`}
                             readOnly
                             className={cn(
                               "bg-gray-50",

@@ -13,6 +13,7 @@ export interface CreatePaymentData {
   paymentStatus?:
     | "pending"
     | "completed"
+    | "expected"
     | "failed"
     | "cancelled"
     | "refunded"

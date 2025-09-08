@@ -56,7 +56,7 @@ export default function ContactCategoriesCard({
     console.log(
       `💰 Scheduled amount for ${category.categoryName}: $${validScheduled} (from backend)`
     );
-    return Math.round(validScheduled).toLocaleString("en-US");
+    return validScheduled.toLocaleString("en-US");
   };
 
   const calculateUnscheduled = (
@@ -84,7 +84,7 @@ export default function ContactCategoriesCard({
     console.log(
       `📊 Unscheduled calculation: Balance($${validBalance}) - Scheduled($${validScheduled}) = $${unscheduled}`
     );
-    return Math.round(unscheduled).toLocaleString("en-US");
+    return unscheduled.toLocaleString("en-US");
   };
 
   const categoryMap = new Map<string, ExtendedCategory>();
@@ -152,21 +152,21 @@ export default function ContactCategoriesCard({
                     </Link>
                   </TableCell>
                   <TableCell className="text-right">
-                    ${Math.round(
+                    ${(
                       typeof category.totalPledgedUsd === "number"
                         ? category.totalPledgedUsd
                         : parseFloat(category.totalPledgedUsd) || 0
                     ).toLocaleString("en-US")}
                   </TableCell>
                   <TableCell className="text-right">
-                    ${Math.round(
+                    ${(
                       typeof category.totalPaidUsd === "number"
                         ? category.totalPaidUsd
                         : parseFloat(category.totalPaidUsd) || 0
                     ).toLocaleString("en-US")}
                   </TableCell>
                   <TableCell className="text-right">
-                    ${Math.round(
+                    ${(
                       typeof category.currentBalanceUsd === "number"
                         ? category.currentBalanceUsd
                         : parseFloat(category.currentBalanceUsd) || 0
