@@ -1,91 +1,83 @@
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
 import { z } from "zod";
 
-const PaymentStatusEnum = z.enum([
-  "pending",
-  "completed",
-  "failed",
-  "cancelled",
-  "refunded",
-  "processing",
+// Zod schemas for validation, matching the main query file
+const paymentStatusEnum = z.enum([
+  "pending", "completed", "failed", "cancelled", "refunded", "processing", "expected"
 ]);
 
-interface PaymentResponse {
-  id: number;
-  amount: string;
-  currency: string;
-  amountUsd: string | null;
-  paymentDate: string;
-  receivedDate: string | null;
-  processedDate: string | null;
-  paymentMethod: string | null;
-  paymentStatus: z.infer<typeof PaymentStatusEnum> | null;
-  referenceNumber: string | null;
-  checkNumber: string | null;
-  receiptNumber: string | null;
-  receiptIssued: boolean | null;
-  receiptIssuedDate: string | null;
-  notes: string | null;
-  paymentPlanId: number | null;
-  pledgeId?: number; // Add pledgeId to response for View link
-}
+const currencyEnum = z.enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"]);
 
-interface ApiResponse {
-  payments: PaymentResponse[];
-}
+const PaymentSchema = z.object({
+  id: z.number(),
+  amount: z.string(),
+  currency: currencyEnum,
+  amountUsd: z.string().nullable(),
+  paymentDate: z.string(),
+  receivedDate: z.string().nullable(),
+  paymentMethod: z.string().nullable(),
+  paymentStatus: paymentStatusEnum.nullable(),
+  referenceNumber: z.string().nullable(),
+  checkNumber: z.string().nullable(),
+  receiptNumber: z.string().nullable(),
+  receiptIssued: z.boolean(),
+  notes: z.string().nullable(),
+  paymentPlanId: z.number().nullable(),
+  pledgeId: z.number().nullable(),
+  isSplitPayment: z.boolean(),
+  allocationCount: z.number(),
+});
 
-// Updated schema to support either pledgeId or contactId
-const QueryParamsSchema = z
-  .object({
-    pledgeId: z.number().positive().optional(),
-    contactId: z.number().positive().optional(),
-    page: z.number().min(1).default(1),
-    limit: z.number().min(1).max(100).default(10),
-    search: z.string().optional(),
-    paymentStatus: PaymentStatusEnum.optional(),
-  })
-  .refine((data) => data.pledgeId || data.contactId, {
-    message: "Either pledgeId or contactId must be provided",
-  });
-type QueryParams = z.infer<typeof QueryParamsSchema>;
-const fetchPayments = async (params: QueryParams): Promise<ApiResponse> => {
-  const validatedParams = QueryParamsSchema.parse(params);
-  const queryParams = {
-    page: validatedParams.page,
-    limit: validatedParams.limit,
-    ...(validatedParams.search && { search: validatedParams.search }),
-    ...(validatedParams.paymentStatus && {
-      paymentStatus: validatedParams.paymentStatus,
-    }),
-  };
-  try {
-    let url: string;
+const PaymentsResponseSchema = z.object({
+  payments: z.array(PaymentSchema),
+  pagination: z.object({
+    page: z.number(),
+    limit: z.number(),
+    totalCount: z.number(),
+    totalPages: z.number(),
+  }),
+});
 
-    if (validatedParams.pledgeId) {
-      url = `/api/payments/${validatedParams.pledgeId}`;
-    } else if (validatedParams.contactId) {
-      url = `/api/contacts/${validatedParams.contactId}/payments`;
-    } else {
-      throw new Error("Either pledgeId or contactId must be provided");
+export type PaymentsResponse = z.infer<typeof PaymentsResponseSchema>;
+
+const queryParamsSchema = z.object({
+  pledgeId: z.number().positive().optional(),
+  contactId: z.number().positive().optional(),
+  page: z.number().min(1).default(1),
+  limit: z.number().min(1).max(100).default(10),
+  search: z.string().optional(),
+  paymentStatus: paymentStatusEnum.optional(),
+});
+
+type QueryParams = z.infer<typeof queryParamsSchema>;
+
+const fetchPayments = async (params: QueryParams): Promise<PaymentsResponse> => {
+  const validatedParams = queryParamsSchema.parse(params);
+  const searchParams = new URLSearchParams();
+
+  Object.entries(validatedParams).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      searchParams.append(key, value.toString());
     }
+  });
 
-    const response = await axios.get<ApiResponse>(url, {
-      params: queryParams,
-    });
-
-    return response.data;
+  try {
+    const response = await fetch(`/api/payments?${searchParams.toString()}`);
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `Failed to fetch payments: ${response.statusText}`);
+    }
+    const data = await response.json();
+    return PaymentsResponseSchema.parse(data);
   } catch (error) {
-    throw new Error(
-      `Failed to fetch payments: ${
-        axios.isAxiosError(error) ? error.message : "Unknown error"
-      }`
-    );
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error(`Failed to fetch payments: ${message}`);
+    throw new Error(`Failed to fetch payments: ${message}`);
   }
 };
 
 export const usePaymentsQuery = (params: QueryParams) => {
-  return useQuery<ApiResponse, Error>({
+  return useQuery<PaymentsResponse, Error>({
     queryKey: ["payments", params],
     queryFn: () => fetchPayments(params),
     enabled: !!(params.pledgeId || params.contactId),

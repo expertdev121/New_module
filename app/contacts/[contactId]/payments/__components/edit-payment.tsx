@@ -784,7 +784,7 @@ export default function EditPaymentDialog({
 
   useEffect(() => {
     if (watchedAmount && watchedExchangeRate) {
-      const usdAmount = watchedAmount * watchedExchangeRate;
+      const usdAmount = watchedAmount / watchedExchangeRate;
       form.setValue("amountUsd", Math.round(usdAmount * 100) / 100);
     }
   }, [watchedAmount, watchedExchangeRate, form]);

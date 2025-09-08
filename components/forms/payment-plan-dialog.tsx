@@ -91,7 +91,7 @@ import { useExchangeRates } from "@/lib/query/useExchangeRates";
 
 // Supported currencies - matches your schema
 const supportedCurrencies = [
-  "USD", "ILS", "EUR",  "GBP", "AUD", "CAD", "ZAR",
+  "USD", "ILS", "EUR","JPY","GBP", "AUD", "CAD", "ZAR",
 ] as const;
 
 // Frequency options - matches your schema
@@ -328,17 +328,25 @@ const convertAmount = (
   exchangeRates: Record<string, string> | undefined
 ): number => {
   if (!exchangeRates || fromCurrency === toCurrency) return amount;
+
+  // Exchange rates are stored as USD per foreign currency
+  // Example: if rate is 3.3462 for ILS, then 1 USD = 3.3462 ILS
+
   // Convert to USD first if not already USD
   let usdAmount = amount;
   if (fromCurrency !== "USD") {
     const fromRate = Number.parseFloat(exchangeRates[fromCurrency] || "1");
-    usdAmount = amount * fromRate;
+    // To convert from foreign currency to USD: divide by the rate
+    usdAmount = amount / fromRate;
   }
+
   // Convert from USD to target currency
   if (toCurrency !== "USD") {
     const toRate = Number.parseFloat(exchangeRates[toCurrency] || "1");
-    return usdAmount / toRate;
+    // To convert from USD to foreign currency: multiply by the rate
+    return usdAmount * toRate;
   }
+
   return usdAmount;
 };
 
@@ -897,7 +905,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       return { usdAmount: undefined, exchangeRate: undefined };
     }
     const rate = parseFloat(exchangeRates[currency] || "1");
-    return { usdAmount: amount * rate, exchangeRate: rate };
+    return { usdAmount: amount / rate, exchangeRate: rate };
   }
 
   const form = useForm({

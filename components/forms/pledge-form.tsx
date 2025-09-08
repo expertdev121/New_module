@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
+ /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
@@ -219,6 +219,7 @@ export default function PledgeDialog({
   const watchedCurrency = form.watch("currency");
   const watchedOriginalAmount = form.watch("originalAmount");
   const watchedExchangeRateDate = form.watch("exchangeRateDate");
+  const watchedExchangeRate = form.watch("exchangeRate");
 
   const { data: exchangeRatesData, isLoading: isLoadingRates, error: ratesError } =
     useExchangeRates(watchedExchangeRateDate);
@@ -269,7 +270,27 @@ export default function PledgeDialog({
         fetchCategoryItems(pledgeData.categoryId);
       }
 
+      // Update exchange rate and recalculate USD amount based on current rates
       setTimeout(() => {
+        const currentCurrency = form.getValues("currency");
+        const currentOriginalAmount = form.getValues("originalAmount");
+
+        // If we have exchange rate data and currency is not USD, update the rate
+        if (exchangeRatesData?.data?.rates && currentCurrency !== "USD") {
+          const latestRate = parseFloat(exchangeRatesData.data.rates[currentCurrency]) || 1;
+          form.setValue("exchangeRate", latestRate, { shouldValidate: true });
+
+          // Recalculate USD amount with the updated rate
+          if (currentOriginalAmount) {
+            const recalculatedUsdAmount = roundToTwoDecimals(currentOriginalAmount / latestRate);
+            form.setValue("originalAmountUsd", recalculatedUsdAmount, { shouldValidate: true });
+          }
+        } else if (currentCurrency === "USD") {
+          // For USD, exchange rate should be 1
+          form.setValue("exchangeRate", 1, { shouldValidate: true });
+          form.setValue("originalAmountUsd", roundToTwoDecimals(currentOriginalAmount || 0), { shouldValidate: true });
+        }
+
         form.trigger();
       }, 100);
     }
@@ -297,9 +318,8 @@ export default function PledgeDialog({
   }, [watchedCurrency, watchedExchangeRateDate, exchangeRatesData, form, isEditMode]);
 
   useEffect(() => {
-    const exchangeRate = form.getValues("exchangeRate");
-    if (watchedOriginalAmount && exchangeRate) {
-      const usdAmount = watchedOriginalAmount * exchangeRate;
+    if (watchedOriginalAmount && watchedExchangeRate) {
+      const usdAmount = watchedOriginalAmount / watchedExchangeRate;
       const roundedUsdAmount = roundToTwoDecimals(usdAmount);
       const currentUsdAmount = form.getValues("originalAmountUsd");
       if (Math.abs(currentUsdAmount - roundedUsdAmount) > 0.001) {
@@ -308,7 +328,7 @@ export default function PledgeDialog({
         });
       }
     }
-  }, [watchedOriginalAmount, form.watch("exchangeRate"), form]);
+  }, [watchedOriginalAmount, watchedExchangeRate, form]);
 
   const handleCategoryChange = async (categoryId: string) => {
     const id = parseInt(categoryId);
@@ -877,17 +897,15 @@ export default function PledgeDialog({
 
       {createdPledge && (
         <PaymentDialog
-          open={paymentDialogOpen}
-          onOpenChange={setPaymentDialogOpen}
           pledgeId={createdPledge.id}
           pledgeAmount={parseFloat(createdPledge.originalAmount)}
           pledgeCurrency={createdPledge.currency}
           pledgeDescription={createdPledge.description}
+          open={paymentDialogOpen}
+          onOpenChange={setPaymentDialogOpen}
           onPaymentCreated={() => {
-            if (onPledgeCreatedAndPay) {
-              onPledgeCreatedAndPay(createdPledge.id);
-            }
             setCreatedPledge(null);
+            if (onPledgeCreated) onPledgeCreated(createdPledge.id);
           }}
         />
       )}

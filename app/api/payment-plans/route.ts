@@ -603,7 +603,7 @@ export async function POST(request: NextRequest) {
       const usdRate = await getExchangeRate(
         validatedData.currency, 
         "USD", 
-        validatedData.exchangeRate,
+        null, // Pass null to ignore providedRate from form
         validatedData.startDate
       );
       
@@ -684,7 +684,7 @@ export async function POST(request: NextRequest) {
           instAmountUsd = inst.installmentAmountUsd.toFixed(2);
         } else {
           // Calculate USD amount for this installment
-          const usdRate = await getExchangeRate(instCurrency, "USD", validatedData.exchangeRate, inst.installmentDate);
+          const usdRate = await getExchangeRate(instCurrency, "USD", null, inst.installmentDate); // Pass null
           if (usdRate) {
             instAmountUsd = (inst.installmentAmount * usdRate).toFixed(2);
           }

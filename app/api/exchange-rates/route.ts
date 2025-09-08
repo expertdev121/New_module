@@ -54,7 +54,7 @@ export async function GET(request: Request) {
     Object.entries(response.data.quotes).forEach(([key, value]) => {
       if (key.startsWith("USD")) {
         const currency = key.replace("USD", "") as ExchangeRateRow["targetCurrency"];
-        transformedRates[currency] = (1 / Number(value)).toFixed(6);
+        transformedRates[currency] = Number(value).toFixed(6);
       }
     });
     transformedRates["USD"] = "1.0";

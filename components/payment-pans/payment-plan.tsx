@@ -177,10 +177,10 @@ export default function PaymentPlansTable({
     const rate = Number(exchangeRate);
     if (isNaN(value) || isNaN(rate) || rate === 0) return null;
 
-    // Fixed: The exchange rate should convert foreign currency TO USD
-    // So if we have 1 GBP = 0.7407 USD rate, then 478.90 GBP * 0.7407 = USD amount
+    // The exchange rate is returned as USD per foreign currency
+    // So if we have rate = 0.299 USD per ILS, then 47 ILS * 0.299 = USD amount
     const converted = value * rate;
-    return converted.toFixed(2);
+    return converted.toString();
   };
 
   // Helper function to display amount with USD equivalent
@@ -236,17 +236,17 @@ export default function PaymentPlansTable({
   const calculateInstallmentAmount = (plan: any) => {
     const totalAmount = Number(plan.totalPlannedAmount || 0);
     const numInstallments = Number(plan.numberOfInstallments || 0);
-    
+
     // Handle edge cases
     if (numInstallments === 0) {
-      return totalAmount.toFixed(2); // Single payment
+      return totalAmount.toString(); // Single payment
     }
-    
+
     if (totalAmount > 0 && numInstallments > 0) {
-      return (totalAmount / numInstallments).toFixed(2);
+      return (totalAmount / numInstallments).toString();
     }
-    
-    return "0.00";
+
+    return "0";
   };
 
   const formatDate = (dateString: string | null) => {
@@ -452,7 +452,7 @@ export default function PaymentPlansTable({
                     // Calculate remaining amount correctly
                     const remainingAmount = plan.remainingAmount || (
                       Number(plan.totalPlannedAmount || 0) - Number(plan.totalPaid || 0)
-                    ).toFixed(2);
+                    ).toString();
 
                     const remainingUSD = planCurrency === 'USD'
                       ? remainingAmount
@@ -461,7 +461,7 @@ export default function PaymentPlansTable({
                     // Calculate unscheduled amount (difference between pledge and planned)
                     const unscheduledAmount = (
                       Number(pledgeOriginalAmount || 0) - Number(plan.totalPlannedAmount || 0)
-                    ).toFixed(2);
+                    ).toString();
 
                     return (
                       <React.Fragment key={plan.id}>

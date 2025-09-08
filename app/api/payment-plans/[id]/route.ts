@@ -685,7 +685,7 @@ export async function PATCH(
         const usdRate = await getExchangeRate(
           validatedData.currency,
           "USD",
-          validatedData.exchangeRate,
+          null,
           validatedData.startDate || existingPlan.startDate
         );
         if (usdRate) {
@@ -702,7 +702,7 @@ export async function PATCH(
         const usdRate = await getExchangeRate(
           validatedData.currency,
           "USD",
-          validatedData.exchangeRate,
+          null,
           validatedData.startDate || existingPlan.startDate
         );
         if (usdRate) {
@@ -761,7 +761,7 @@ export async function PATCH(
               const usdRate = await getExchangeRate(
                 instCurrency,
                 "USD",
-                validatedData.exchangeRate,
+                null,
                 inst.installmentDate
               );
               if (usdRate) {
@@ -800,7 +800,7 @@ export async function PATCH(
             const usdRate = await getExchangeRate(
               validatedData.currency || existingPlan.currency,
               "USD",
-              validatedData.exchangeRate
+              null
             );
             if (usdRate) {
               dataToUpdate.totalPlannedAmountUsd = (exactTotal * usdRate).toString();
@@ -825,7 +825,7 @@ export async function PATCH(
             const usdRate = await getExchangeRate(
               validatedData.currency || existingPlan.currency,
               "USD",
-              validatedData.exchangeRate
+              null
             );
             if (usdRate) {
               dataToUpdate.totalPlannedAmountUsd = (exactTotal * usdRate).toString();
@@ -886,7 +886,7 @@ export async function PATCH(
           paymentCurrency,
           pledgeCurrency,
           planCurrency,
-          validatedData.exchangeRate,
+          null,
           pendingPayment.paymentDate
         );
 
