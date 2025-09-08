@@ -500,7 +500,16 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                   <FormItem>
                     <FormLabel>Start Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="date" {...field} onChange={(e) => {
+                        const value = e.target.value;
+                        if (value) {
+                          const parts = value.split("-");
+                          if (parts[0] && parts[0].length > 4) {
+                            return;
+                          }
+                        }
+                        field.onChange(value);
+                      }} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -515,7 +524,16 @@ export default function StudentRoleDialog(props: StudentRoleDialogProps) {
                   <FormItem>
                     <FormLabel>End Date</FormLabel>
                     <FormControl>
-                      <Input type="date" {...field} />
+                      <Input type="date" {...field} onChange={(e) => {
+                        const value = e.target.value;
+                        if (value) {
+                          const parts = value.split("-");
+                          if (parts[0] && parts[0].length > 4) {
+                            return;
+                          }
+                        }
+                        field.onChange(value);
+                      }} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>

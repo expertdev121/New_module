@@ -2276,6 +2276,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                             type="date"
                                             {...field}
                                             onChange={(e) => {
+                                              const value = e.target.value;
+                                              if (value) {
+                                                const parts = value.split("-");
+                                                if (parts[0] && parts[0].length > 4) {
+                                                  return;
+                                                }
+                                              }
                                               field.onChange(e);
                                               if (isEditMode && form.watch("distributionType") === "fixed") {
                                                 setInstallmentsModified(true);
@@ -2516,7 +2523,16 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                           <FormItem>
                             <FormLabel>Start Date *</FormLabel>
                             <FormControl>
-                              <Input type="date" {...field} value={field.value || ""} />
+                              <Input type="date" {...field} value={field.value || ""} onChange={(e) => {
+                                const value = e.target.value;
+                                if (value) {
+                                  const parts = value.split("-");
+                                  if (parts[0] && parts[0].length > 4) {
+                                    return;
+                                  }
+                                }
+                                field.onChange(value);
+                              }} />
                             </FormControl>
                             <FormMessage className="text-sm text-red-600 mt-1" />
                           </FormItem>

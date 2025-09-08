@@ -1,4 +1,4 @@
- /* eslint-disable @typescript-eslint/no-explicit-any */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
@@ -220,6 +220,7 @@ export default function PledgeDialog({
   const watchedOriginalAmount = form.watch("originalAmount");
   const watchedExchangeRateDate = form.watch("exchangeRateDate");
   const watchedExchangeRate = form.watch("exchangeRate");
+  const watchedCategoryId = form.watch("categoryId"); // Watch category changes
 
   const { data: exchangeRatesData, isLoading: isLoadingRates, error: ratesError } =
     useExchangeRates(watchedExchangeRateDate);
@@ -230,12 +231,15 @@ export default function PledgeDialog({
 
   // Function to fetch category items from API
   const fetchCategoryItems = async (categoryId: number) => {
-    if (!categoryId) return;
+    if (!categoryId) {
+      setCategoryItems([]);
+      return;
+    }
     
     setLoadingCategoryItems(true);
     try {
       const items = await getCategoryItems(categoryId);
-      setCategoryItems(items);
+      setCategoryItems(items || []);
     } catch (error) {
       console.error('Error fetching category items:', error);
       setCategoryItems([]);
@@ -253,30 +257,58 @@ export default function PledgeDialog({
     }
   }, [contactId]);
 
+  // Initial setup when dialog opens
   useEffect(() => {
-    if (isEditMode && pledgeData && open) {
-      const values = getDefaultValues();
+    if (open) {
+      const categoryToUse = isEditMode && pledgeData?.categoryId 
+        ? pledgeData.categoryId 
+        : defaultCategoryId;
 
-      if (!values.contactId) {
-        console.error("ContactId is missing in form values!");
-        values.contactId = contactId;
+      setSelectedCategoryId(categoryToUse);
+
+      if (isEditMode && pledgeData) {
+        const values = getDefaultValues();
+        if (!values.contactId) {
+          console.error("ContactId is missing in form values!");
+          values.contactId = contactId;
+        }
+        form.reset(values);
+      } else {
+        // For create mode, reset to default values
+        const defaultValues = getDefaultValues();
+        form.reset(defaultValues);
       }
 
-      form.reset(values);
-      setSelectedCategoryId(pledgeData.categoryId || null);
-
-      // Fetch category items if category is selected
-      if (pledgeData.categoryId) {
-        fetchCategoryItems(pledgeData.categoryId);
+      // Fetch items for the initial category
+      if (categoryToUse) {
+        fetchCategoryItems(categoryToUse);
       }
+    } else {
+      // Reset state when dialog closes
+      if (!isEditMode) {
+        setCategoryItems([]);
+        setSelectedCategoryId(defaultCategoryId);
+      }
+    }
+  }, [open, isEditMode, pledgeData, contactId, defaultCategoryId]);
 
-      // Update exchange rate and recalculate USD amount based on current rates without rounding
+  // Watch for category changes and fetch items
+  useEffect(() => {
+    if (watchedCategoryId && watchedCategoryId !== selectedCategoryId) {
+      setSelectedCategoryId(watchedCategoryId);
+      fetchCategoryItems(watchedCategoryId);
+    }
+  }, [watchedCategoryId]);
+
+  // Handle exchange rate updates in edit mode
+  useEffect(() => {
+    if (isEditMode && pledgeData && open && exchangeRatesData?.data?.rates) {
       setTimeout(() => {
         const currentCurrency = form.getValues("currency");
         const currentOriginalAmount = form.getValues("originalAmount");
 
         // If we have exchange rate data and currency is not USD, update the rate
-        if (exchangeRatesData?.data?.rates && currentCurrency !== "USD") {
+        if (currentCurrency !== "USD") {
           const latestRate = parseFloat(exchangeRatesData.data.rates[currentCurrency]) || 1;
           form.setValue("exchangeRate", latestRate, { shouldValidate: true });
 
@@ -294,16 +326,7 @@ export default function PledgeDialog({
         form.trigger();
       }, 100);
     }
-  }, [isEditMode, pledgeData, open, contactId]);
-
-  // Fetch category items when category changes
-  useEffect(() => {
-    if (selectedCategoryId) {
-      fetchCategoryItems(selectedCategoryId);
-    } else {
-      setCategoryItems([]);
-    }
-  }, [selectedCategoryId]);
+  }, [isEditMode, pledgeData, open, exchangeRatesData, form]);
 
   useEffect(() => {
     if (
@@ -334,6 +357,8 @@ export default function PledgeDialog({
     form.setValue("categoryId", id, { shouldValidate: true });
     setSelectedCategoryId(id);
     setCategoryPopoverOpen(false);
+    
+    // Clear description when changing categories (except in edit mode)
     if (!isEditMode) {
       form.setValue("description", "", { shouldValidate: true });
     }
@@ -596,17 +621,26 @@ export default function PledgeDialog({
                         <FormControl>
                           <Input
                             {...field}
-                            placeholder="Enter description of the pledge"
+                            readOnly
+                            placeholder={
+                              selectedCategory && categoryItems.length > 0
+                                ? "Select an item from the list below"
+                                : "No description available"
+                            }
                             className={cn(
+                              "bg-gray-50",
                               form.formState.errors.description && "border-red-500"
                             )}
                           />
                         </FormControl>
                         <FormMessage />
-                        {selectedCategory && categoryItems.length > 0 && (
+                        {selectedCategory && (categoryItems.length > 0 || loadingCategoryItems) && (
                           <div className="mt-2">
                             <FormLabel className="text-sm text-muted-foreground">
-                              Or select from {selectedCategory.name} items:
+                              {loadingCategoryItems
+                                ? `Loading ${selectedCategory.name} items...`
+                                : `Select from ${selectedCategory.name} items:`
+                              }
                             </FormLabel>
                             <Popover
                               open={itemSelectionPopoverOpen}
@@ -619,10 +653,12 @@ export default function PledgeDialog({
                                   className="w-full justify-between mt-1"
                                   aria-haspopup="listbox"
                                   aria-expanded={itemSelectionPopoverOpen}
-                                  disabled={loadingCategoryItems}
+                                  disabled={loadingCategoryItems || categoryItems.length === 0}
                                 >
-                                  {loadingCategoryItems 
-                                    ? "Loading items..." 
+                                  {loadingCategoryItems
+                                    ? "Loading items..."
+                                    : categoryItems.length === 0
+                                    ? "No items available"
                                     : `Select item from ${selectedCategory.name}`
                                   }
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -670,6 +706,16 @@ export default function PledgeDialog({
                           <Input
                             type="date"
                             {...field}
+                            onChange={(e) => {
+                              const value = e.target.value;
+                              if (value) {
+                                const parts = value.split("-");
+                                if (parts[0] && parts[0].length > 4) {
+                                  return;
+                                }
+                              }
+                              field.onChange(value);
+                            }}
                             className={cn(
                               form.formState.errors.pledgeDate && "border-red-500"
                             )}
