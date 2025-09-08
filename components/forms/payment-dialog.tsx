@@ -2,7 +2,7 @@
 // eslint-disable-next-line react-hooks/exhaustive-deps
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -299,6 +299,11 @@ export default function PaymentFormDialog({
   const [pledgeDialogOpen, setPledgeDialogOpen] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
   const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
+
+  // Refs to store last valid date values
+  const lastValidPaymentDateRef = useRef<string | null>(null);
+  const lastValidReceivedDateRef = useRef<string | null>(null);
+  const lastValidCheckDateRef = useRef<string | null>(null);
 
   const contactId = useContactId() || propContactId;
 
@@ -1065,7 +1070,22 @@ export default function PaymentFormDialog({
                       <FormItem>
                         <FormLabel>Payment Date</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} />
+                          <Input type="date" {...field} value={field.value ?? ""} onInput={(e) => {
+                            const target = e.target as HTMLInputElement;
+                            const value = target.value;
+                            if (value) {
+                              const parts = value.split("-");
+                              // Check if year part is longer than 4 digits (handles both YYYY-MM-DD and direct year input)
+                              if ((parts.length > 1 && parts[0] && parts[0].length > 4) || (parts.length === 1 && value.length > 4)) {
+                                target.value = lastValidPaymentDateRef.current ?? "";
+                                return;
+                              }
+                              lastValidPaymentDateRef.current = value;
+                            } else {
+                              lastValidPaymentDateRef.current = null;
+                            }
+                            field.onChange(value);
+                          }} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -1077,7 +1097,18 @@ export default function PaymentFormDialog({
                       <FormItem>
                         <FormLabel>Effective Date</FormLabel>
                         <FormControl>
-                          <Input type="date" {...field} value={field.value || ""} />
+                          <Input type="date" {...field} value={field.value ?? ""} onInput={(e) => {
+                            const target = e.target as HTMLInputElement;
+                            const value = target.value;
+                            if (value) {
+                              const parts = value.split("-");
+                              if (parts[0] && parts[0].length > 4) {
+                                target.value = field.value ?? "";
+                                return;
+                              }
+                            }
+                            field.onChange(value);
+                          }} />
                         </FormControl>
                       </FormItem>
                     )}
@@ -1286,19 +1317,30 @@ export default function PaymentFormDialog({
                   />
 
                   <div className="flex gap-4 md:col-span-2">
-                    <FormField
-                      control={form.control}
-                      name="checkDate"
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormLabel>Check Date</FormLabel>
-                          <FormControl>
-                            <Input type="date" {...field} value={field.value ?? ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                  <FormField
+                    control={form.control}
+                    name="checkDate"
+                    render={({ field }) => (
+                      <FormItem className="flex-1">
+                        <FormLabel>Check Date</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} value={field.value ?? ""} onInput={(e) => {
+                            const target = e.target as HTMLInputElement;
+                            const value = target.value;
+                            if (value) {
+                              const parts = value.split("-");
+                              if (parts[0] && parts[0].length > 4) {
+                                target.value = field.value ?? "";
+                                return;
+                              }
+                            }
+                            field.onChange(value);
+                          }} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                     <FormField
                       control={form.control}
                       name="checkNumber"
