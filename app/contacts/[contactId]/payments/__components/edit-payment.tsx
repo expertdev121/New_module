@@ -172,8 +172,7 @@ const useContactById = (contactId?: number | null) =>
       if (!contactId) throw new Error("Contact ID is required");
       const response = await fetch(`/api/contacts/${contactId}`);
       if (!response.ok) throw new Error("Failed to fetch contact");
-      const data = await response.json();
-      return { contact: data.contact };
+      return response.json();
     },
     enabled: !!contactId,
   });
@@ -528,12 +527,8 @@ export default function EditPaymentDialog({
   useEffect(() => {
     if (isExistingThirdPartyPayment && existingThirdPartyContactData?.contact) {
       setSelectedThirdPartyContact(existingThirdPartyContactData.contact);
-      // Also set the form field value to ensure it's properly bound
-      form.setValue("thirdPartyContactId", existingThirdPartyContactData.contact.id);
-      // Set the search input to show the selected contact's name for better UX
-      setContactSearch(existingThirdPartyContactData.contact.fullName);
     }
-  }, [isExistingThirdPartyPayment, existingThirdPartyContactData, form]);
+  }, [isExistingThirdPartyPayment, existingThirdPartyContactData]);
 
   // Effect to clear pledge selection when third-party contact changes
   useEffect(() => {
@@ -1036,23 +1031,12 @@ export default function EditPaymentDialog({
   const contactOptions = useMemo(() => {
     if (!contactsData?.contacts) return [];
 
-    const options = contactsData.contacts.map((contact: Contact) => ({
+    return contactsData.contacts.map((contact: Contact) => ({
       label: contact.fullName,
       value: contact.id,
       ...contact,
     }));
-
-    // Include the selected third-party contact if it's not already in the list
-    if (selectedThirdPartyContact && !options.find(option => option.value === selectedThirdPartyContact.id)) {
-      options.unshift({
-        label: selectedThirdPartyContact.fullName,
-        value: selectedThirdPartyContact.id,
-        ...selectedThirdPartyContact,
-      });
-    }
-
-    return options;
-  }, [contactsData?.contacts, selectedThirdPartyContact]);
+  }, [contactsData?.contacts]);
 
   const effectivePledgeDescription = pledgeData?.pledge?.description || payment.pledgeDescription || "N/A";
 
