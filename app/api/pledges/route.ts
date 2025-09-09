@@ -15,6 +15,47 @@ import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
 
+// Define interfaces for query results
+interface ScheduledItem {
+  pledgeId: number | null;
+  totalScheduled: string;
+}
+
+interface PledgeQueryResult {
+  id: number;
+  contactId: number;
+  categoryId: number | null;
+  relationshipId: number | null;
+  pledgeDate: string;
+  description: string | null;
+  originalAmount: string;
+  currency: string;
+  originalAmountUsd: string | null;
+  exchangeRate: string | null;
+  campaignCode: string | null;
+  totalPaid: string;
+  totalPaidUsd: string | null;
+  balance: string;
+  balanceUsd: string | null;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  categoryName: string | null;
+  categoryDescription: string | null;
+  contactFirstName: string | null;
+  contactLastName: string | null;
+  contactEmail: string | null;
+  relationshipType: string | null;
+  relationshipIsActive: boolean | null;
+  relationshipNotes: string | null;
+  relatedContactId: number | null;
+  relatedContactFirstName: string | null;
+  relatedContactLastName: string | null;
+  relatedContactEmail: string | null;
+  relatedContactPhone: string | null;
+}
+
 const pledgeSchema = z.object({
   contactId: z.number().positive(),
   categoryId: z.number().positive().optional(),
@@ -297,14 +338,18 @@ export async function GET(request: NextRequest) {
     console.log(`=== PLEDGES API DEBUG: Found ${pledges.length} pledges ===`);
 
     // Create maps for scheduled payments
-    const scheduledPaymentsMap = new Map();
-    scheduledPayments.forEach((item: any) => {
-      scheduledPaymentsMap.set(item.pledgeId, item.totalScheduled);
+    const scheduledPaymentsMap = new Map<number, string>();
+    scheduledPayments.forEach((item: ScheduledItem) => {
+      if (item.pledgeId !== null) {
+        scheduledPaymentsMap.set(item.pledgeId, item.totalScheduled);
+      }
     });
 
-    const scheduledAllocationsMap = new Map();
-    scheduledAllocations.forEach((item: any) => {
-      scheduledAllocationsMap.set(item.pledgeId, item.totalScheduled);
+    const scheduledAllocationsMap = new Map<number, string>();
+    scheduledAllocations.forEach((item: ScheduledItem) => {
+      if (item.pledgeId !== null) {
+        scheduledAllocationsMap.set(item.pledgeId, item.totalScheduled);
+      }
     });
 
     // Debug log first pledge with relationship data
@@ -325,7 +370,7 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
 
     // Format the response with structured relationship data
-    const formattedPledges = pledges.map((pledgeItem: any) => {
+    const formattedPledges = pledges.map((pledgeItem: PledgeQueryResult) => {
       // Combine scheduled payments and allocations (no payment plans)
       const scheduledPaymentAmount = parseFloat(scheduledPaymentsMap.get(pledgeItem.id) || "0");
       const scheduledAllocationAmount = parseFloat(scheduledAllocationsMap.get(pledgeItem.id) || "0");

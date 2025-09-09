@@ -649,14 +649,23 @@ export default function PaymentFormDialog({
       return acc;
     }, [] as Pledge[]);
 
-    return uniquePledges.map((pledge: Pledge) => ({
-      label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
-      value: pledge.id,
-      balance: parseFloat(pledge.balance),
-      currency: pledge.currency,
-      description: pledge.description || "No description",
-      originalAmount: parseFloat(pledge.originalAmount),
-    }));
+    return uniquePledges.map((pledge: Pledge) => {
+      // Calculate unscheduledAmount as balance minus scheduledAmount if available
+      const balanceNum = parseFloat(pledge.balance);
+      // Assume pledge.scheduledAmount is provided by API, else 0
+      const scheduledAmountNum = (pledge as any).scheduledAmount ? parseFloat((pledge as any).scheduledAmount) : 0;
+      const unscheduledAmountNum = Math.max(0, balanceNum - scheduledAmountNum);
+
+      return {
+        label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${unscheduledAmountNum.toLocaleString()})`,
+        value: pledge.id,
+        balance: balanceNum,
+        unscheduledAmount: unscheduledAmountNum,
+        currency: pledge.currency,
+        description: pledge.description || "No description",
+        originalAmount: parseFloat(pledge.originalAmount),
+      };
+    });
   }, [pledgesData?.pledges]);
 
   const solicitorOptions = useMemo(() => {

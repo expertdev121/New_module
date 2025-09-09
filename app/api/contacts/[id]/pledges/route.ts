@@ -13,6 +13,38 @@ import { sql, eq, and, or, gte, lte, ilike, SQL, not, isNull } from "drizzle-orm
 import { NextRequest, NextResponse } from "next/server";
 import { alias } from "drizzle-orm/pg-core";
 
+// Define types
+interface ScheduledItem {
+  pledgeId: number | null;
+  totalScheduled: string;
+}
+
+interface PledgeRow {
+  id: number;
+  pledgeDate: string;
+  description: string | null;
+  originalAmount: string;
+  currency: string;
+  originalAmountUsd: string | null;
+  totalPaid: string;
+  totalPaidUsd: string | null;
+  balance: string;
+  balanceUsd: string | null;
+  notes: string | null;
+  categoryName: string | null;
+  categoryDescription: string | null;
+  progressPercentage: number;
+  relationshipId: number | null;
+  relationshipType: string | null;
+  relationshipIsActive: boolean | null;
+  relationshipNotes: string | null;
+  relatedContactId: number | null;
+  relatedContactFirstName: string | null;
+  relatedContactLastName: string | null;
+  relatedContactEmail: string | null;
+  relatedContactPhone: string | null;
+}
+
 // Define types for payment plan data
 interface PaymentPlanData {
   totalScheduledAmount: string;
@@ -86,8 +118,8 @@ export async function GET(
     }
 
     // Get scheduled amounts - only payments without receive date and status expected/pending/processing
-    let scheduledPaymentsMap: Map<number, string> = new Map();
-    let scheduledAllocationsMap: Map<number, string> = new Map();
+    const scheduledPaymentsMap: Map<number, string> = new Map();
+    const scheduledAllocationsMap: Map<number, string> = new Map();
 
     try {
       // Get scheduled payments
@@ -108,8 +140,10 @@ export async function GET(
         ))
         .groupBy(payment.pledgeId);
 
-      scheduledPayments.forEach((item: any) => {
-        scheduledPaymentsMap.set(item.pledgeId, item.totalScheduled);
+      scheduledPayments.forEach((item: ScheduledItem) => {
+        if (item.pledgeId !== null) {
+          scheduledPaymentsMap.set(item.pledgeId, item.totalScheduled);
+        }
       });
 
       // Get scheduled payment allocations (for split payments without receive date)
@@ -130,8 +164,10 @@ export async function GET(
         ))
         .groupBy(paymentAllocations.pledgeId);
 
-      scheduledAllocations.forEach((item: any) => {
-        scheduledAllocationsMap.set(item.pledgeId, item.totalScheduled);
+      scheduledAllocations.forEach((item: ScheduledItem) => {
+        if (item.pledgeId !== null) {
+          scheduledAllocationsMap.set(item.pledgeId, item.totalScheduled);
+        }
       });
     } catch (scheduledError) {
       console.warn('Warning: Could not fetch scheduled payments data, using default values:', scheduledError);
@@ -360,7 +396,7 @@ export async function GET(
     }
 
     // Post-process the results to add payment plan information and relationship data
-    const pledges = pledgesData.map((pledge: any) => {
+    const pledges = pledgesData.map((pledge: PledgeRow) => {
       // Calculate scheduled amounts from payments (new logic)
       const scheduledPaymentAmount = parseFloat(scheduledPaymentsMap.get(pledge.id) || "0");
       const scheduledAllocationAmount = parseFloat(scheduledAllocationsMap.get(pledge.id) || "0");

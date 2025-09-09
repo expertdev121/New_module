@@ -561,7 +561,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Method Detail
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Receipt Number
+                    Check Number
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
                     Notes
@@ -791,10 +791,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
-                                      Receipt Number:
+                                      Check Number:
                                     </span>
                                     <span className="font-medium">
-                                      {payment.receiptNumber || "N/A"}
+                                      {payment.checkNumber || "N/A"}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">

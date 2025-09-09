@@ -1669,9 +1669,10 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const pledgeOptions =
     pledgesData?.pledges?.map((pledge) => ({
       label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency
-        } ${Number.parseFloat(pledge.balance.toString()).toLocaleString()})`,
+        } ${Number.parseFloat(pledge.unscheduledAmount || pledge.balance.toString()).toLocaleString()})`,
       value: pledge.id,
       balance: Number.parseFloat(pledge.balance.toString()),
+      unscheduledAmount: Number.parseFloat(pledge.unscheduledAmount || pledge.balance.toString()),
       currency: pledge.currency,
       description: pledge.description,
     })) || [];
