@@ -16,8 +16,6 @@ class AppError extends Error {
     this.details = details;
   }
 }
-
-// Updated to match your database schema
 const PaymentStatusEnum = z.enum([
   "pending",
   "completed", 
@@ -27,7 +25,6 @@ const PaymentStatusEnum = z.enum([
   "processing",
   "expected"
 ]);
-
 const QueryParamsSchema = z.object({
   pledgeId: z.number().positive(),
   page: z.number().min(1).default(1),
@@ -769,13 +766,8 @@ export async function PATCH(
     const resolvedParams = await params;
     const rawPledgeId = resolvedParams.pledgeId;
     const pledgeId = parseInt(rawPledgeId, 10);
-
-    if (isNaN(pledgeId) || pledgeId <= 0) {
-      throw new AppError(
-        "Invalid Pledge ID. Please ensure the Pledge ID is in the URL path (e.g., /api/payments/pledge/123).",
-        400
-      );
-    }
+    // Note: For PATCH requests, the URL pledgeId parameter is not used
+    // The actual payment ID is provided in the request body
 
     const body: unknown = await request.json();
 

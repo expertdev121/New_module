@@ -221,7 +221,7 @@ const accountOptions = [
   { value: "Mizrachi Tfachot", label: "Mizrachi Tfachot" },
   { value: "MS - Donations", label: "MS - Donations" },
   { value: "MS - Operations", label: "MS - Operations" },
-  { value: "Citibank (*)", label: "Citibank (*)" },
+  { value: "Citibank", label: "Citibank" },
   { value: "Pagi", label: "Pagi" },
 ] as const;
 
