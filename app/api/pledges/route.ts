@@ -7,11 +7,54 @@ import {
   contact,
   category,
   paymentPlan,
+  payment,
+  paymentAllocations,
 } from "@/lib/db/schema";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq, and, or, not, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
+
+// Define interfaces for query results
+interface ScheduledItem {
+  pledgeId: number | null;
+  totalScheduled: string;
+}
+
+interface PledgeQueryResult {
+  id: number;
+  contactId: number;
+  categoryId: number | null;
+  relationshipId: number | null;
+  pledgeDate: string;
+  description: string | null;
+  originalAmount: string;
+  currency: string;
+  originalAmountUsd: string | null;
+  exchangeRate: string | null;
+  campaignCode: string | null;
+  totalPaid: string;
+  totalPaidUsd: string | null;
+  balance: string;
+  balanceUsd: string | null;
+  isActive: boolean;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  categoryName: string | null;
+  categoryDescription: string | null;
+  contactFirstName: string | null;
+  contactLastName: string | null;
+  contactEmail: string | null;
+  relationshipType: string | null;
+  relationshipIsActive: boolean | null;
+  relationshipNotes: string | null;
+  relatedContactId: number | null;
+  relatedContactFirstName: string | null;
+  relatedContactLastName: string | null;
+  relatedContactEmail: string | null;
+  relatedContactPhone: string | null;
+}
 
 const pledgeSchema = z.object({
   contactId: z.number().positive(),
@@ -240,15 +283,41 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    // Get scheduled amounts separately
-    const scheduledAmountsQuery = db
+    // Get scheduled amounts - only payments without receive date and status expected/pending/processing
+    const scheduledPaymentsQuery = db
       .select({
-        pledgeId: paymentPlan.pledgeId,
-        totalScheduled: sql<string>`COALESCE(SUM(${paymentPlan.totalPlannedAmount}::numeric), 0)`.as("totalScheduled"),
+        pledgeId: payment.pledgeId,
+        totalScheduled: sql<string>`COALESCE(SUM(${payment.amountInPledgeCurrency}::numeric), 0)`.as("totalScheduled"),
       })
-      .from(paymentPlan)
-      .where(eq(paymentPlan.planStatus, "active"))
-      .groupBy(paymentPlan.pledgeId);
+      .from(payment)
+      .where(and(
+        not(isNull(payment.pledgeId)),
+        isNull(payment.receivedDate), // No receive date
+        or(
+          eq(payment.paymentStatus, "pending"),
+          eq(payment.paymentStatus, "expected"),
+          eq(payment.paymentStatus, "processing")
+        )
+      ))
+      .groupBy(payment.pledgeId);
+
+    // Get scheduled payment allocations (for split payments without receive date)
+    const scheduledAllocationsQuery = db
+      .select({
+        pledgeId: paymentAllocations.pledgeId,
+        totalScheduled: sql<string>`COALESCE(SUM(${paymentAllocations.allocatedAmountInPledgeCurrency}::numeric), 0)`.as("totalScheduled"),
+      })
+      .from(paymentAllocations)
+      .innerJoin(payment, eq(paymentAllocations.paymentId, payment.id))
+      .where(and(
+        isNull(payment.receivedDate), // No receive date
+        or(
+          eq(payment.paymentStatus, "pending"),
+          eq(payment.paymentStatus, "expected"),
+          eq(payment.paymentStatus, "processing")
+        )
+      ))
+      .groupBy(paymentAllocations.pledgeId);
 
     // Count query
     const countQuery = db
@@ -259,18 +328,28 @@ export async function GET(request: NextRequest) {
       .where(whereClause);
 
     // Execute all queries
-    const [pledges, scheduledAmounts, totalCountResult] = await Promise.all([
+    const [pledges, scheduledPayments, scheduledAllocations, totalCountResult] = await Promise.all([
       pledgesQuery.execute(),
-      scheduledAmountsQuery.execute(),
+      scheduledPaymentsQuery.execute(),
+      scheduledAllocationsQuery.execute(),
       countQuery.execute(),
     ]);
 
     console.log(`=== PLEDGES API DEBUG: Found ${pledges.length} pledges ===`);
-    
-    // Create a map of scheduled amounts for quick lookup
-    const scheduledMap = new Map();
-    scheduledAmounts.forEach((item) => {
-      scheduledMap.set(item.pledgeId, item.totalScheduled);
+
+    // Create maps for scheduled payments
+    const scheduledPaymentsMap = new Map<number, string>();
+    scheduledPayments.forEach((item: ScheduledItem) => {
+      if (item.pledgeId !== null) {
+        scheduledPaymentsMap.set(item.pledgeId, item.totalScheduled);
+      }
+    });
+
+    const scheduledAllocationsMap = new Map<number, string>();
+    scheduledAllocations.forEach((item: ScheduledItem) => {
+      if (item.pledgeId !== null) {
+        scheduledAllocationsMap.set(item.pledgeId, item.totalScheduled);
+      }
     });
 
     // Debug log first pledge with relationship data
@@ -291,10 +370,16 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
 
     // Format the response with structured relationship data
-    const formattedPledges = pledges.map((pledgeItem) => {
-      const scheduledAmount = scheduledMap.get(pledgeItem.id) || "0";
+    const formattedPledges = pledges.map((pledgeItem: PledgeQueryResult) => {
+      // Combine scheduled payments and allocations (no payment plans)
+      const scheduledPaymentAmount = parseFloat(scheduledPaymentsMap.get(pledgeItem.id) || "0");
+      const scheduledAllocationAmount = parseFloat(scheduledAllocationsMap.get(pledgeItem.id) || "0");
+
+      const totalScheduledAmount = scheduledPaymentAmount + scheduledAllocationAmount;
+      const scheduledAmount = totalScheduledAmount.toString();
+
       const balanceNumeric = parseFloat(pledgeItem.balance || "0");
-      const scheduledNumeric = parseFloat(scheduledAmount);
+      const scheduledNumeric = totalScheduledAmount;
       const unscheduledAmount = Math.max(0, balanceNumeric - scheduledNumeric).toString();
 
       const formattedPledge = {
@@ -302,8 +387,8 @@ export async function GET(request: NextRequest) {
         // Add calculated amounts
         scheduledAmount,
         unscheduledAmount,
-        progressPercentage: pledgeItem.originalAmount 
-          ? Math.round((parseFloat(pledgeItem.totalPaid || "0") / parseFloat(pledgeItem.originalAmount)) * 100)
+        progressPercentage: pledgeItem.originalAmount
+          ? (parseFloat(pledgeItem.totalPaid || "0") / parseFloat(pledgeItem.originalAmount)) * 100
           : 0,
         
         // Structure relationship data - THIS IS THE KEY PART

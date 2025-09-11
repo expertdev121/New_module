@@ -21,6 +21,7 @@ export interface Payment {
     | "completed"
     | "failed"
     | "cancelled"
+    | "expected"
     | "refunded"
     | "processing";
   referenceNumber?: string;

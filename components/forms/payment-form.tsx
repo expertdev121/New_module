@@ -277,7 +277,7 @@ export default function PaymentDialog({
     !watchedIsSplitPayment || Math.abs(totalAllocated - (watchedAmount || 0)) < 0.01;
 
   // Sanitize nullable string fields before submit
-  const sanitizeNullable = (value: any) => (value === null ? undefined : value);
+  const sanitizeNullable = (value: any) => (value === null || value === "" ? undefined : value);
 
   // Submit handler
   const onSubmit = async (data: PaymentFormData) => {
@@ -457,7 +457,16 @@ export default function PaymentDialog({
                     <FormItem>
                       <FormLabel>Payment Date</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} value={field.value ?? ""} />
+                        <Input type="date" {...field} value={field.value ?? ""} onChange={(e) => {
+                          const value = e.target.value;
+                          if (value) {
+                            const parts = value.split("-");
+                            if (parts[0] && parts[0].length > 4) {
+                              return;
+                            }
+                          }
+                          field.onChange(value);
+                        }} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -470,7 +479,16 @@ export default function PaymentDialog({
                     <FormItem>
                       <FormLabel>Effective Date</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} value={field.value ?? ""} />
+                        <Input type="date" {...field} value={field.value ?? ""} onChange={(e) => {
+                          const value = e.target.value;
+                          if (value) {
+                            const parts = value.split("-");
+                            if (parts[0] && parts[0].length > 4) {
+                              return;
+                            }
+                          }
+                          field.onChange(value);
+                        }} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
@@ -559,7 +577,16 @@ export default function PaymentDialog({
                     <FormItem>
                       <FormLabel>Check Date</FormLabel>
                       <FormControl>
-                        <Input type="date" {...field} value={field.value ?? ""} />
+                        <Input type="date" {...field} value={field.value ?? ""} onChange={(e) => {
+                          const value = e.target.value;
+                          if (value) {
+                            const parts = value.split("-");
+                            if (parts[0] && parts[0].length > 4) {
+                              return;
+                            }
+                          }
+                          field.onChange(value);
+                        }} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>

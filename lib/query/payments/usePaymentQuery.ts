@@ -29,6 +29,7 @@ export interface PaymentQueryParams {
     | "xfer";
   paymentStatus?:
     | "pending"
+    | "expected"
     | "completed"
     | "failed"
     | "cancelled"

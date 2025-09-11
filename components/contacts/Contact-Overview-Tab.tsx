@@ -32,9 +32,9 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   const paymentPercentage =
     financialSummary.totalPledgedUsd > 0
       ? Math.round(
-        (financialSummary.totalPaidUsd /
+        parseFloat(((financialSummary.totalPaidUsd /
           financialSummary.totalPledgedUsd) *
-        100
+        100).toFixed(2))
       )
       : 0;
 
@@ -108,7 +108,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 Total Pledged
               </dt>
               <dd className="text-right font-medium">
-                ${Math.round(financialSummary.totalPledgedUsd).toLocaleString(
+                ${financialSummary.totalPledgedUsd.toLocaleString(
                   "en-US"
                 )}
               </dd>
@@ -116,7 +116,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <div className="grid grid-cols-2 gap-1 py-2">
               <dt className="text-muted-foreground font-medium">Total Paid</dt>
               <dd className="text-right font-medium">
-                ${Math.round(financialSummary.totalPaidUsd).toLocaleString(
+                ${financialSummary.totalPaidUsd.toLocaleString(
                   "en-US"
                 )}
               </dd>
@@ -126,7 +126,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
                 Current Balance
               </dt>
               <dd className="text-right font-bold">
-                ${Math.round(financialSummary.currentBalanceUsd).toLocaleString(
+                ${financialSummary.currentBalanceUsd.toLocaleString(
                   "en-US"
                 )}
               </dd>

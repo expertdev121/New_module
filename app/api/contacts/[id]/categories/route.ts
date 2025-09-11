@@ -28,7 +28,7 @@ export async function GET(
            WHERE pl_inner.category_id = ${category.id}
            AND pl_inner.contact_id = ${contactId}
            AND p_inner.received_date IS NULL
-           AND p_inner.payment_status IN ('pending', 'processing')
+          AND p_inner.payment_status IN ('pending', 'processing', 'expected')
           ), 0
         )`.as("scheduledUsd"),
       })

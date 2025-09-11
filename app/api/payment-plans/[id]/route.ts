@@ -1,8 +1,18 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { db } from "@/lib/db";
-import { paymentPlan, pledge, installmentSchedule, payment, type PaymentPlan } from "@/lib/db/schema";
+import {
+  paymentPlan,
+  pledge,
+  installmentSchedule,
+  payment,
+  relationships,
+  currencyConversionLog,
+  exchangeRate,
+  type PaymentPlan,
+  type NewCurrencyConversionLog
+} from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
-import { eq, sql, and } from "drizzle-orm";
+import { eq, sql, and, desc } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -16,6 +26,7 @@ const PlanStatusEnum = z.enum([
 
 const updatePaymentPlanSchema = z.object({
   pledgeId: z.number().positive().optional(),
+  relationshipId: z.number().positive().optional(),
   planName: z.string().optional(),
   frequency: z
     .enum([
@@ -36,18 +47,32 @@ const updatePaymentPlanSchema = z.object({
   currency: z
     .enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"])
     .optional(),
+  totalPlannedAmountUsd: z
+    .number()
+    .positive("Total planned amount USD must be positive")
+    .optional(),
   installmentAmount: z
     .number()
     .positive("Installment amount must be positive")
+    .optional(),
+  installmentAmountUsd: z
+    .number()
+    .positive("Installment amount USD must be positive")
     .optional(),
   numberOfInstallments: z
     .number()
     .int()
     .positive("Number of installments must be positive")
     .optional(),
+  exchangeRate: z
+    .number()
+    .positive("Exchange rate must be positive")
+    .optional(),
   startDate: z.string().min(1, "Start date is required").optional(),
   endDate: z.string().optional(),
   nextPaymentDate: z.string().optional(),
+  remainingAmountUsd: z.number().optional(),
+  currencyPriority: z.number().int().positive().optional(),
   autoRenew: z.boolean().optional(),
   planStatus: PlanStatusEnum.optional(),
   notes: z.string().optional(),
@@ -55,27 +80,17 @@ const updatePaymentPlanSchema = z.object({
   customInstallments: z
     .array(
       z.object({
-        date: z.string().min(1, "Installment date is required"),
-        amount: z.number().positive("Installment amount must be positive"),
+        installmentDate: z.string().min(1, "Installment date is required"),
+        installmentAmount: z.number().positive("Installment amount must be positive"),
+        currency: z.enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"]).optional(),
+        installmentAmountUsd: z.number().optional(),
+        status: z.enum(["pending", "paid", "overdue", "cancelled"]).optional(),
+        paidDate: z.string().optional(),
         notes: z.string().optional(),
+        paymentId: z.number().optional(),
       })
     )
     .optional(),
-  paymentMethod: z.enum([
-    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
-    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer"
-  ]),
-  methodDetail: z.enum([
-    "achisomoch", "authorize", "bank_of_america_charitable", "banquest", "banquest_cm",
-    "benevity", "chai_charitable", "charityvest_inc", "cjp", "donors_fund", "earthport",
-    "e_transfer", "facts", "fidelity", "fjc", "foundation", "goldman_sachs", "htc", "jcf",
-    "jcf_san_diego", "jgive", "keshet", "masa", "masa_old", "matach", "matching_funds",
-    "mizrachi_canada", "mizrachi_olami", "montrose", "morgan_stanley_gift", "ms", "mt",
-    "ojc", "paypal", "pelecard", "schwab_charitable", "stripe", "tiaa", "touro", "uktoremet",
-    "vanguard_charitable", "venmo", "vmm", "wise", "worldline", "yaadpay", "yaadpay_cm",
-    "yourcause", "yu", "zelle"
-  ]),
 }).refine((data) => {
   if (data.distributionType === "fixed") {
     return (
@@ -93,6 +108,199 @@ const updatePaymentPlanSchema = z.object({
 });
 
 type UpdatePaymentPlanRequest = z.infer<typeof updatePaymentPlanSchema>;
+
+/**
+ * Get exchange rate from database or use provided rate
+ */
+async function getExchangeRate(
+  fromCurrency: string,
+  toCurrency: string,
+  providedRate?: number | null,
+  conversionDate?: string
+): Promise<number | null> {
+  if (fromCurrency === toCurrency) return 1;
+  if (providedRate) return providedRate;
+
+  try {
+    const targetDate = conversionDate || new Date().toISOString().split('T')[0];
+    
+    // Try to get exact date first
+    let rateQuery = await db
+      .select({ rate: exchangeRate.rate })
+      .from(exchangeRate)
+      .where(
+        and(
+          eq(exchangeRate.baseCurrency, fromCurrency as any),
+          eq(exchangeRate.targetCurrency, toCurrency as any),
+          eq(exchangeRate.date, targetDate)
+        )
+      )
+      .limit(1);
+
+    // If no exact date, get most recent rate
+    if (!rateQuery.length) {
+      rateQuery = await db
+        .select({ rate: exchangeRate.rate })
+        .from(exchangeRate)
+        .where(
+          and(
+            eq(exchangeRate.baseCurrency, fromCurrency as any),
+            eq(exchangeRate.targetCurrency, toCurrency as any),
+            sql`${exchangeRate.date} <= ${targetDate}`
+          )
+        )
+        .orderBy(desc(exchangeRate.date))
+        .limit(1);
+    }
+
+    if (rateQuery.length) {
+      return parseFloat(rateQuery[0].rate.toString());
+    }
+
+    // Try reverse rate (toCurrency to fromCurrency)
+    rateQuery = await db
+      .select({ rate: exchangeRate.rate })
+      .from(exchangeRate)
+      .where(
+        and(
+          eq(exchangeRate.baseCurrency, toCurrency as any),
+          eq(exchangeRate.targetCurrency, fromCurrency as any),
+          sql`${exchangeRate.date} <= ${targetDate}`
+        )
+      )
+      .orderBy(desc(exchangeRate.date))
+      .limit(1);
+
+    if (rateQuery.length) {
+      return 1 / parseFloat(rateQuery[0].rate.toString());
+    }
+
+    return null;
+  } catch (error) {
+    console.warn("Failed to get exchange rate from database:", error);
+    return null;
+  }
+}
+
+/**
+ * Helper function to calculate multi-currency conversions
+ */
+async function calculateMultiCurrencyConversions(
+  amount: number,
+  paymentCurrency: string,
+  pledgeCurrency: string,
+  planCurrency: string,
+  providedExchangeRate?: number | null,
+  conversionDate?: string
+) {
+  const conversions = {
+    amountUsd: null as number | null,
+    amountInPledgeCurrency: amount,
+    pledgeCurrencyExchangeRate: null as number | null,
+    amountInPlanCurrency: amount,
+    planCurrencyExchangeRate: null as number | null,
+    usdExchangeRate: null as number | null,
+  };
+
+  // Calculate USD amount
+  if (paymentCurrency === "USD") {
+    conversions.amountUsd = amount;
+    conversions.usdExchangeRate = 1;
+  } else {
+    const usdRate = await getExchangeRate(paymentCurrency, "USD", providedExchangeRate, conversionDate);
+    if (usdRate) {
+      conversions.amountUsd = amount * usdRate;
+      conversions.usdExchangeRate = usdRate;
+    }
+  }
+
+  // Calculate pledge currency amount
+  if (paymentCurrency !== pledgeCurrency) {
+    const pledgeRate = await getExchangeRate(paymentCurrency, pledgeCurrency, null, conversionDate);
+    if (pledgeRate) {
+      conversions.amountInPledgeCurrency = amount * pledgeRate;
+      conversions.pledgeCurrencyExchangeRate = pledgeRate;
+    } else if (conversions.amountUsd && pledgeCurrency !== "USD") {
+      // Try USD as intermediate currency
+      const usdToPledgeRate = await getExchangeRate("USD", pledgeCurrency, null, conversionDate);
+      if (usdToPledgeRate) {
+        conversions.amountInPledgeCurrency = conversions.amountUsd * usdToPledgeRate;
+        conversions.pledgeCurrencyExchangeRate = (conversions.usdExchangeRate || 1) * usdToPledgeRate;
+      }
+    }
+  } else {
+    conversions.amountInPledgeCurrency = amount;
+    conversions.pledgeCurrencyExchangeRate = 1;
+  }
+
+  // Calculate plan currency amount
+  if (paymentCurrency !== planCurrency) {
+    const planRate = await getExchangeRate(paymentCurrency, planCurrency, null, conversionDate);
+    if (planRate) {
+      conversions.amountInPlanCurrency = amount * planRate;
+      conversions.planCurrencyExchangeRate = planRate;
+    } else if (conversions.amountUsd && planCurrency !== "USD") {
+      // Try USD as intermediate currency
+      const usdToPlanRate = await getExchangeRate("USD", planCurrency, null, conversionDate);
+      if (usdToPlanRate) {
+        conversions.amountInPlanCurrency = conversions.amountUsd * usdToPlanRate;
+        conversions.planCurrencyExchangeRate = (conversions.usdExchangeRate || 1) * usdToPlanRate;
+      }
+    }
+  } else {
+    conversions.amountInPlanCurrency = amount;
+    conversions.planCurrencyExchangeRate = 1;
+  }
+
+  return conversions;
+}
+
+/**
+ * Helper function to log currency conversions
+ */
+async function logCurrencyConversion(
+  paymentId: number,
+  fromCurrency: string,
+  toCurrency: string,
+  fromAmount: number,
+  toAmount: number,
+  exchangeRate: number,
+  conversionType: string
+): Promise<void> {
+  if (fromCurrency === toCurrency || !toAmount) return;
+
+  const conversionLog: NewCurrencyConversionLog = {
+    paymentId,
+    fromCurrency: fromCurrency as any,
+    toCurrency: toCurrency as any,
+    fromAmount: fromAmount.toFixed(2),
+    toAmount: toAmount.toFixed(2),
+    exchangeRate: exchangeRate.toFixed(4),
+    conversionDate: new Date().toISOString().split('T')[0],
+    conversionType,
+  };
+
+  try {
+    await db.insert(currencyConversionLog).values(conversionLog);
+  } catch (error) {
+    console.warn("Failed to log currency conversion:", error);
+  }
+}
+
+/**
+ * Helper function to safely convert number to proper string format for database
+ */
+function safeNumericString(value: number | string | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value.toFixed(2) : null;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed.toFixed(2) : null;
+  }
+  return null;
+}
 
 export async function GET(
   request: NextRequest,
@@ -114,12 +322,16 @@ export async function GET(
         id: paymentPlan.id,
         planName: paymentPlan.planName,
         pledgeId: paymentPlan.pledgeId,
+        relationshipId: paymentPlan.relationshipId,
         frequency: paymentPlan.frequency,
         distributionType: paymentPlan.distributionType,
         totalPlannedAmount: paymentPlan.totalPlannedAmount,
         currency: paymentPlan.currency,
+        totalPlannedAmountUsd: paymentPlan.totalPlannedAmountUsd,
         installmentAmount: paymentPlan.installmentAmount,
+        installmentAmountUsd: paymentPlan.installmentAmountUsd,
         numberOfInstallments: paymentPlan.numberOfInstallments,
+        exchangeRate: paymentPlan.exchangeRate,
         startDate: paymentPlan.startDate,
         endDate: paymentPlan.endDate,
         nextPaymentDate: paymentPlan.nextPaymentDate,
@@ -127,20 +339,18 @@ export async function GET(
         totalPaid: paymentPlan.totalPaid,
         totalPaidUsd: paymentPlan.totalPaidUsd,
         remainingAmount: paymentPlan.remainingAmount,
+        remainingAmountUsd: paymentPlan.remainingAmountUsd,
         planStatus: paymentPlan.planStatus,
         autoRenew: paymentPlan.autoRenew,
         remindersSent: paymentPlan.remindersSent,
         lastReminderDate: paymentPlan.lastReminderDate,
+        currencyPriority: paymentPlan.currencyPriority,
         isActive: paymentPlan.isActive,
         notes: paymentPlan.notes,
         internalNotes: paymentPlan.internalNotes,
         createdAt: paymentPlan.createdAt,
         updatedAt: paymentPlan.updatedAt,
-        exchangeRate: paymentPlan.exchangeRate,
 
-        paymentMethod: sql<string>`(SELECT ${payment.paymentMethod} FROM ${payment} WHERE ${payment.paymentPlanId} = ${paymentPlan.id} LIMIT 1)`.as("paymentMethod"),
-    methodDetail: sql<string>`(SELECT ${payment.methodDetail} FROM ${payment} WHERE ${payment.paymentPlanId} = ${paymentPlan.id} LIMIT 1)`.as("methodDetail"),
-    
         // Pledge related - subqueries:
         pledgeOriginalAmount: sql<string>`(SELECT ${pledge.originalAmount} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmount"),
         pledgeOriginalAmountUsd: sql<string>`(SELECT ${pledge.originalAmountUsd} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmountUsd"),
@@ -169,6 +379,8 @@ export async function GET(
           id: installmentSchedule.id,
           installmentDate: installmentSchedule.installmentDate,
           installmentAmount: installmentSchedule.installmentAmount,
+          currency: installmentSchedule.currency,
+          installmentAmountUsd: installmentSchedule.installmentAmountUsd,
           notes: installmentSchedule.notes,
           status: installmentSchedule.status,
           paidDate: installmentSchedule.paidDate,
@@ -178,11 +390,14 @@ export async function GET(
         .orderBy(installmentSchedule.installmentDate);
 
       customInstallments = installmentSchedules.map((schedule) => ({
-        date: schedule.installmentDate,
-        amount: Number.parseFloat(schedule.installmentAmount.toString()),
-        notes: schedule.notes || "",
-        isPaid: schedule.status === "paid",
+        installmentDate: schedule.installmentDate,
+        installmentAmount: Number.parseFloat(schedule.installmentAmount.toString()),
+        currency: schedule.currency || plan.currency,
+        installmentAmountUsd: schedule.installmentAmountUsd ? Number.parseFloat(schedule.installmentAmountUsd.toString()) : undefined,
+        status: schedule.status || "pending",
         paidDate: schedule.paidDate,
+        notes: schedule.notes || "",
+        paymentId: undefined,
       }));
     }
 
@@ -258,7 +473,11 @@ export async function PATCH(
     // If pledgeId is provided, validate pledge exists
     if (validatedData.pledgeId !== undefined) {
       const pledgeExists = await db
-        .select()
+        .select({
+          id: pledge.id,
+          currency: pledge.currency,
+          exchangeRate: pledge.exchangeRate,
+        })
         .from(pledge)
         .where(eq(pledge.id, validatedData.pledgeId))
         .limit(1);
@@ -277,9 +496,31 @@ export async function PATCH(
       }
     }
 
+    // If relationshipId is provided, validate relationship exists
+    if (validatedData.relationshipId !== undefined) {
+      const relationshipExists = await db
+        .select()
+        .from(relationships)
+        .where(eq(relationships.id, validatedData.relationshipId))
+        .limit(1);
+
+      if (!relationshipExists.length) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "relationshipId",
+              message: "Relationship not found with provided relationshipId",
+            }],
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Helper functions for currency precision
-    const toCents = (amount: number) => Math.round(amount * 100);
-    const fromCents = (cents: number) => Math.round(cents) / 100;
+    const toCents = (amount: number) => amount * 100;
+    const fromCents = (cents: number) => cents / 100;
 
     // Validate custom installments
     if (validatedData.distributionType === "custom" && validatedData.customInstallments) {
@@ -297,7 +538,7 @@ export async function PATCH(
       }
 
       const totalCustomCents = validatedData.customInstallments.reduce(
-        (sum, inst) => sum + toCents(inst.amount),
+        (sum, inst) => sum + toCents(inst.installmentAmount),
         0
       );
       const expectedCents = toCents(
@@ -320,12 +561,12 @@ export async function PATCH(
       } else if (difference !== 0) {
         // Auto-adjust last installment amount
         const lastIndex = validatedData.customInstallments.length - 1;
-        const lastCents = toCents(validatedData.customInstallments[lastIndex].amount);
-        validatedData.customInstallments[lastIndex].amount = fromCents(lastCents + difference);
+        const lastCents = toCents(validatedData.customInstallments[lastIndex].installmentAmount);
+        validatedData.customInstallments[lastIndex].installmentAmount = fromCents(lastCents + difference);
       }
 
       // Validate unique installment dates
-      const dates = validatedData.customInstallments.map((inst) => inst.date);
+      const dates = validatedData.customInstallments.map((inst) => inst.installmentDate);
       if (new Set(dates).size !== dates.length) {
         return NextResponse.json(
           {
@@ -405,8 +646,8 @@ export async function PATCH(
             }
 
             customInstallments.push({
-              date: installmentDate.toISOString().split("T")[0],
-              amount: fromCents(installmentCents),
+              installmentDate: installmentDate.toISOString().split("T")[0],
+              installmentAmount: fromCents(installmentCents),
               notes: `Installment ${i + 1}`,
             });
           }
@@ -418,6 +659,58 @@ export async function PATCH(
       }
     }
 
+    // Get pledge details for currency conversions
+    const [currentPledge] = await db
+      .select({
+        currency: pledge.currency,
+        exchangeRate: pledge.exchangeRate,
+      })
+      .from(pledge)
+      .where(eq(pledge.id, validatedData.pledgeId || existingPlan.pledgeId))
+      .limit(1);
+
+    const pledgeCurrency = currentPledge?.currency || "USD";
+    const pledgeExchangeRate = currentPledge?.exchangeRate ? parseFloat(currentPledge.exchangeRate.toString()) : null;
+
+    // Calculate USD amounts using proper exchange rates for updated values
+    let calculatedTotalUsd: string | null = null;
+    let calculatedInstallmentUsd: string | null = null;
+    let effectiveExchangeRate: string | null = null;
+
+    if (validatedData.totalPlannedAmount && validatedData.currency) {
+      if (validatedData.currency === "USD") {
+        calculatedTotalUsd = validatedData.totalPlannedAmount.toFixed(2);
+        effectiveExchangeRate = "1.0000";
+      } else {
+        const usdRate = await getExchangeRate(
+          validatedData.currency,
+          "USD",
+          null,
+          validatedData.startDate || existingPlan.startDate
+        );
+        if (usdRate) {
+          calculatedTotalUsd = (validatedData.totalPlannedAmount * usdRate).toFixed(2);
+          effectiveExchangeRate = usdRate.toFixed(4);
+        }
+      }
+    }
+
+    if (validatedData.installmentAmount && validatedData.currency) {
+      if (validatedData.currency === "USD") {
+        calculatedInstallmentUsd = validatedData.installmentAmount.toFixed(2);
+      } else {
+        const usdRate = await getExchangeRate(
+          validatedData.currency,
+          "USD",
+          null,
+          validatedData.startDate || existingPlan.startDate
+        );
+        if (usdRate) {
+          calculatedInstallmentUsd = (validatedData.installmentAmount * usdRate).toFixed(2);
+        }
+      }
+    }
+
     const dataToUpdate: Partial<PaymentPlan> = {
       updatedAt: new Date(),
       ...(validatedData.planName !== undefined && { planName: validatedData.planName }),
@@ -425,48 +718,94 @@ export async function PATCH(
       ...(validatedData.distributionType !== undefined && { distributionType: validatedData.distributionType }),
       ...(validatedData.totalPlannedAmount !== undefined && { totalPlannedAmount: validatedData.totalPlannedAmount.toString() }),
       ...(validatedData.currency !== undefined && { currency: validatedData.currency }),
+      ...(calculatedTotalUsd && { totalPlannedAmountUsd: calculatedTotalUsd }),
+      ...(validatedData.totalPlannedAmountUsd !== undefined && !calculatedTotalUsd && { totalPlannedAmountUsd: validatedData.totalPlannedAmountUsd.toString() }),
       ...(validatedData.installmentAmount !== undefined && { installmentAmount: validatedData.installmentAmount.toString() }),
+      ...(calculatedInstallmentUsd && { installmentAmountUsd: calculatedInstallmentUsd }),
+      ...(validatedData.installmentAmountUsd !== undefined && !calculatedInstallmentUsd && { installmentAmountUsd: validatedData.installmentAmountUsd.toString() }),
       ...(validatedData.numberOfInstallments !== undefined && { numberOfInstallments: validatedData.numberOfInstallments }),
+      ...(effectiveExchangeRate && { exchangeRate: effectiveExchangeRate }),
+      ...(validatedData.exchangeRate !== undefined && !effectiveExchangeRate && { exchangeRate: validatedData.exchangeRate.toString() }),
       ...(validatedData.startDate !== undefined && { startDate: validatedData.startDate }),
       ...(validatedData.endDate !== undefined && { endDate: validatedData.endDate }),
       ...(validatedData.nextPaymentDate !== undefined && { nextPaymentDate: validatedData.nextPaymentDate }),
+      ...(validatedData.remainingAmountUsd !== undefined && { remainingAmountUsd: validatedData.remainingAmountUsd.toString() }),
+      ...(validatedData.currencyPriority !== undefined && { currencyPriority: validatedData.currencyPriority }),
       ...(validatedData.autoRenew !== undefined && { autoRenew: validatedData.autoRenew }),
       ...(validatedData.planStatus !== undefined && { planStatus: validatedData.planStatus }),
       ...(validatedData.notes !== undefined && { notes: validatedData.notes }),
       ...(validatedData.internalNotes !== undefined && { internalNotes: validatedData.internalNotes }),
       ...(validatedData.pledgeId !== undefined && { pledgeId: validatedData.pledgeId }),
-      ...(validatedData.paymentMethod !== undefined && { paymentMethod: validatedData.paymentMethod }),
-      ...(validatedData.methodDetail !== undefined && { methodDetail: validatedData.methodDetail }),
+      ...(validatedData.relationshipId !== undefined && { relationshipId: validatedData.relationshipId }),
     };
 
-    // Handle installment schedule update
+    // Handle installment schedule update with proper multi-currency support
     if (validatedData.distributionType !== undefined) {
       if (validatedData.distributionType === "custom") {
         if (validatedData.customInstallments) {
-          // Remove old installments
+          // Remove old installments first
           await db.delete(installmentSchedule).where(eq(installmentSchedule.paymentPlanId, planId));
 
-          // Insert new custom installments
-          await db.insert(installmentSchedule).values(
-            validatedData.customInstallments.map((inst) => ({
+          // Insert new custom installments with proper currency conversions
+          const installmentsToInsert = [];
+          for (const inst of validatedData.customInstallments) {
+            const instCurrency = inst.currency || validatedData.currency || existingPlan.currency;
+            let instAmountUsd: string | null = null;
+
+            if (instCurrency === "USD") {
+              instAmountUsd = inst.installmentAmount.toFixed(2);
+            } else if (inst.installmentAmountUsd) {
+              instAmountUsd = inst.installmentAmountUsd.toFixed(2);
+            } else {
+              // Calculate USD amount for this installment
+              const usdRate = await getExchangeRate(
+                instCurrency,
+                "USD",
+                null,
+                inst.installmentDate
+              );
+              if (usdRate) {
+                instAmountUsd = (inst.installmentAmount * usdRate).toFixed(2);
+              }
+            }
+
+            installmentsToInsert.push({
               paymentPlanId: planId,
-              installmentDate: inst.date,
-              installmentAmount: inst.amount.toString(),
-              currency: validatedData.currency || existingPlan.currency,
+              installmentDate: inst.installmentDate,
+              installmentAmount: inst.installmentAmount.toString(),
+              currency: instCurrency,
+              installmentAmountUsd: instAmountUsd,
               notes: inst.notes || null,
-            }))
-          );
+              status: inst.status || "pending",
+            });
+          }
+
+          await db.insert(installmentSchedule).values(installmentsToInsert);
 
           dataToUpdate.numberOfInstallments = validatedData.customInstallments.length;
 
           // Update total planned to exact sum of custom installments
           const exactTotal = fromCents(
             validatedData.customInstallments.reduce(
-              (sum, inst) => sum + toCents(inst.amount),
+              (sum, inst) => sum + toCents(inst.installmentAmount),
               0,
             )
           );
           dataToUpdate.totalPlannedAmount = exactTotal.toString();
+
+          // Calculate USD total
+          if (validatedData.currency === "USD") {
+            dataToUpdate.totalPlannedAmountUsd = exactTotal.toString();
+          } else {
+            const usdRate = await getExchangeRate(
+              validatedData.currency || existingPlan.currency,
+              "USD",
+              null
+            );
+            if (usdRate) {
+              dataToUpdate.totalPlannedAmountUsd = (exactTotal * usdRate).toString();
+            }
+          }
         }
       } else if (validatedData.distributionType === "fixed") {
         // Remove any custom installments if switching to fixed
@@ -477,9 +816,41 @@ export async function PATCH(
             toCents(validatedData.installmentAmount) * validatedData.numberOfInstallments
           );
           dataToUpdate.totalPlannedAmount = exactTotal.toString();
+
+          // Calculate USD amounts
+          if (validatedData.currency === "USD") {
+            dataToUpdate.totalPlannedAmountUsd = exactTotal.toString();
+            dataToUpdate.installmentAmountUsd = validatedData.installmentAmount.toString();
+          } else {
+            const usdRate = await getExchangeRate(
+              validatedData.currency || existingPlan.currency,
+              "USD",
+              null
+            );
+            if (usdRate) {
+              dataToUpdate.totalPlannedAmountUsd = (exactTotal * usdRate).toString();
+              dataToUpdate.installmentAmountUsd = (validatedData.installmentAmount * usdRate).toString();
+            }
+          }
         }
       }
     }
+
+    // **RECALCULATE REMAINING AMOUNTS BASED ON UPDATED VALUES**
+    const currentTotalPaidCents = toCents(parseFloat(existingPlan.totalPaid.toString()) || 0);
+    const currentTotalPaidUsdCents = toCents(parseFloat(existingPlan.totalPaidUsd?.toString() || "0"));
+
+    // Get the new total planned amount (either from update or existing)
+    const newTotalPlannedCents = toCents(parseFloat(dataToUpdate.totalPlannedAmount || existingPlan.totalPlannedAmount.toString()));
+    const newTotalPlannedUsdCents = toCents(parseFloat(dataToUpdate.totalPlannedAmountUsd || existingPlan.totalPlannedAmountUsd?.toString() || "0"));
+
+    // Calculate remaining amounts with precision
+    const newRemainingAmountCents = Math.max(0, newTotalPlannedCents - currentTotalPaidCents);
+    const newRemainingAmountUsdCents = Math.max(0, newTotalPlannedUsdCents - currentTotalPaidUsdCents);
+
+    // Update the dataToUpdate object with recalculated remaining amounts
+    dataToUpdate.remainingAmount = fromCents(newRemainingAmountCents).toString();
+    dataToUpdate.remainingAmountUsd = fromCents(newRemainingAmountUsdCents).toString();
 
     // Update payment plan record
     const [updatedPlan] = await db
@@ -488,29 +859,88 @@ export async function PATCH(
       .where(eq(paymentPlan.id, planId))
       .returning();
 
-    // related payment records if payment method or method detail changed
-    if (validatedData.paymentMethod !== undefined || validatedData.methodDetail !== undefined) {
-      const paymentUpdates: any = {
-        updatedAt: new Date(),
-      };
-      
-      if (validatedData.paymentMethod !== undefined) {
-        paymentUpdates.paymentMethod = validatedData.paymentMethod;
-      }
-      
-      if (validatedData.methodDetail !== undefined) {
-        paymentUpdates.methodDetail = validatedData.methodDetail;
-      }
+    // Update related pending payments with comprehensive multi-currency support
+    if (validatedData.distributionType !== undefined ||
+      validatedData.installmentAmount !== undefined ||
+      validatedData.currency !== undefined) {
 
-      await db
-        .update(payment)
-        .set(paymentUpdates)
+      // Get all pending payments for this plan
+      const pendingPayments = await db
+        .select()
+        .from(payment)
         .where(
           and(
             eq(payment.paymentPlanId, planId),
-            eq(payment.paymentStatus, "pending") 
+            eq(payment.paymentStatus, "pending")
           )
         );
+
+      // Update pending payments with new currency conversions
+      for (const pendingPayment of pendingPayments) {
+        const paymentAmount = parseFloat(pendingPayment.amount.toString());
+        const paymentCurrency = pendingPayment.currency;
+        const planCurrency = validatedData.currency || existingPlan.currency;
+        
+        const conversions = await calculateMultiCurrencyConversions(
+          paymentAmount,
+          paymentCurrency,
+          pledgeCurrency,
+          planCurrency,
+          null,
+          pendingPayment.paymentDate
+        );
+
+        const paymentUpdates = {
+          amountUsd: safeNumericString(conversions.amountUsd),
+          exchangeRate: safeNumericString(conversions.usdExchangeRate),
+          amountInPledgeCurrency: safeNumericString(conversions.amountInPledgeCurrency),
+          pledgeCurrencyExchangeRate: safeNumericString(conversions.pledgeCurrencyExchangeRate),
+          amountInPlanCurrency: safeNumericString(conversions.amountInPlanCurrency),
+          planCurrencyExchangeRate: safeNumericString(conversions.planCurrencyExchangeRate),
+        };
+
+        await db
+          .update(payment)
+          .set(paymentUpdates)
+          .where(eq(payment.id, pendingPayment.id));
+
+        // Log comprehensive currency conversions
+        if (conversions.amountUsd && paymentCurrency !== "USD" && conversions.usdExchangeRate) {
+          await logCurrencyConversion(
+            pendingPayment.id,
+            paymentCurrency,
+            "USD",
+            paymentAmount,
+            conversions.amountUsd,
+            conversions.usdExchangeRate,
+            "plan_update_usd"
+          );
+        }
+
+        if (conversions.amountInPledgeCurrency !== paymentAmount && conversions.pledgeCurrencyExchangeRate) {
+          await logCurrencyConversion(
+            pendingPayment.id,
+            paymentCurrency,
+            pledgeCurrency,
+            paymentAmount,
+            conversions.amountInPledgeCurrency,
+            conversions.pledgeCurrencyExchangeRate,
+            "plan_update_pledge"
+          );
+        }
+
+        if (conversions.amountInPlanCurrency !== paymentAmount && conversions.planCurrencyExchangeRate) {
+          await logCurrencyConversion(
+            pendingPayment.id,
+            paymentCurrency,
+            planCurrency,
+            paymentAmount,
+            conversions.amountInPlanCurrency,
+            conversions.planCurrencyExchangeRate,
+            "plan_update_plan"
+          );
+        }
+      }
     }
 
     return NextResponse.json({
@@ -533,6 +963,95 @@ export async function PATCH(
       );
     }
 
+    return ErrorHandler.handle(error);
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id: planIdString } = await params;
+    const planId = parseInt(planIdString, 10);
+
+    if (isNaN(planId) || planId <= 0) {
+      return NextResponse.json(
+        { error: "Invalid payment plan ID" },
+        { status: 400 }
+      );
+    }
+
+    // Check if payment plan exists
+    const [existingPlan] = await db
+      .select()
+      .from(paymentPlan)
+      .where(eq(paymentPlan.id, planId))
+      .limit(1);
+
+    if (!existingPlan) {
+      return NextResponse.json(
+        { error: "Payment plan not found" },
+        { status: 404 }
+      );
+    }
+
+    // Check if there are any completed payments for this plan
+    const existingPayments = await db
+      .select()
+      .from(payment)
+      .where(
+        and(
+          eq(payment.paymentPlanId, planId),
+          eq(payment.paymentStatus, "completed")
+        )
+      )
+      .limit(1);
+
+    if (existingPayments.length > 0) {
+      return NextResponse.json(
+        {
+          error: "Cannot delete payment plan with completed payments. Consider cancelling instead.",
+        },
+        { status: 400 }
+      );
+    }
+
+    // Delete related records in sequence (foreign key constraints)
+    // Delete currency conversion logs first
+    await db
+      .delete(currencyConversionLog)
+      .where(
+        sql`payment_id IN (SELECT id FROM ${payment} WHERE payment_plan_id = ${planId})`
+      );
+
+    // Delete installment schedules (this will cascade to related payments via foreign key)
+    await db
+      .delete(installmentSchedule)
+      .where(eq(installmentSchedule.paymentPlanId, planId));
+
+    // Delete any remaining pending payments
+    await db
+      .delete(payment)
+      .where(
+        and(
+          eq(payment.paymentPlanId, planId),
+          eq(payment.paymentStatus, "pending")
+        )
+      );
+
+    // Finally delete the payment plan
+    await db
+      .delete(paymentPlan)
+      .where(eq(paymentPlan.id, planId));
+
+    return NextResponse.json({
+      message: "Payment plan deleted successfully",
+      deletedPlanId: planId,
+    });
+
+  } catch (error) {
+    console.error("Error deleting payment plan:", error);
     return ErrorHandler.handle(error);
   }
 }

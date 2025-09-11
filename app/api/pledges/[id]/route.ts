@@ -165,7 +165,7 @@ export async function GET(
         updatedAt: pledgeData.updatedAt,
 
         // Calculated fields
-        paymentPercentage: Math.round(paymentPercentage * 100) / 100,
+        paymentPercentage: paymentPercentage,
         remainingBalance: balance,
         isPaidInFull: balance <= 0,
       },

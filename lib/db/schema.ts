@@ -207,6 +207,7 @@ export const paymentStatusEnum = pgEnum("payment_status", [
   "cancelled",
   "refunded",
   "processing",
+  "expected"
 ]);
 
 export const frequencyEnum = pgEnum("frequency", [
@@ -398,7 +399,6 @@ export const pledge = pgTable(
     categoryId: integer("category_id").references(() => category.id, {
       onDelete: "set null",
     }),
-    // NEW FIELD: Optional relationship assignment
     relationshipId: integer("relationship_id").references(() => relationships.id, {
       onDelete: "set null",
     }),
@@ -433,6 +433,7 @@ export const pledge = pgTable(
     categoryIdIdx: index("pledge_category_id_idx").on(table.categoryId),
     relationshipIdIdx: index("pledge_relationship_id_idx").on(table.relationshipId),
     pledgeDateIdx: index("pledge_pledge_date_idx").on(table.pledgeDate),
+    currencyIdx: index("pledge_currency_idx").on(table.currency),
   })
 );
 
@@ -446,7 +447,6 @@ export const paymentPlan = pgTable(
     pledgeId: integer("pledge_id")
       .references(() => pledge.id, { onDelete: "cascade" })
       .notNull(),
-    // NEW FIELD: Optional relationship assignment
     relationshipId: integer("relationship_id").references(() => relationships.id, {
       onDelete: "set null",
     }),
@@ -458,10 +458,19 @@ export const paymentPlan = pgTable(
       scale: 2,
     }).notNull(),
     currency: currencyEnum("currency").notNull(),
+    // NEW: USD conversion fields for payment plans
+    totalPlannedAmountUsd: numeric("total_planned_amount_usd", {
+      precision: 10,
+      scale: 2,
+    }),
     installmentAmount: numeric("installment_amount", {
       precision: 10,
       scale: 2,
     }).notNull(),
+    installmentAmountUsd: numeric("installment_amount_usd", {
+      precision: 10,
+      scale: 2,
+    }),
     numberOfInstallments: integer("number_of_installments").notNull(),
     exchangeRate: numeric("exchange_rate", { precision: 10, scale: 2 }),
     startDate: date("start_date").notNull(),
@@ -476,10 +485,16 @@ export const paymentPlan = pgTable(
       precision: 10,
       scale: 2,
     }).notNull(),
+    remainingAmountUsd: numeric("remaining_amount_usd", {
+      precision: 10,
+      scale: 2,
+    }),
     planStatus: planStatusEnum("plan_status").notNull().default("active"),
     autoRenew: boolean("auto_renew").default(false).notNull(),
     remindersSent: integer("reminders_sent").default(0).notNull(),
     lastReminderDate: date("last_reminder_date"),
+    // NEW: Currency priority for multiple plans per pledge
+    currencyPriority: integer("currency_priority").default(1).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     notes: text("notes"),
     internalNotes: text("internal_notes"),
@@ -493,6 +508,8 @@ export const paymentPlan = pgTable(
     nextPaymentIdx: index("payment_plan_next_payment_idx").on(
       table.nextPaymentDate
     ),
+    currencyIdx: index("payment_plan_currency_idx").on(table.currency),
+    currencyPriorityIdx: index("payment_plan_currency_priority_idx").on(table.pledgeId, table.currencyPriority),
   })
 );
 
@@ -601,6 +618,11 @@ export const installmentSchedule = pgTable(
       scale: 2,
     }).notNull(),
     currency: currencyEnum("currency").notNull(),
+    // NEW: USD conversion for installments
+    installmentAmountUsd: numeric("installment_amount_usd", {
+      precision: 10,
+      scale: 2,
+    }),
     status: installmentStatusEnum("status").notNull().default("pending"),
     paidDate: date("paid_date"),
     notes: text("notes"),
@@ -641,20 +663,40 @@ export const payment = pgTable(
       onDelete: "set null",
     }),
     
-    // NEW FIELDS FOR THIRD-PARTY PAYMENTS
+    // Third-party payment fields
     payerContactId: integer("payer_contact_id").references(() => contact.id, {
       onDelete: "set null",
     }),
     isThirdPartyPayment: boolean("is_third_party_payment").default(false).notNull(),
     
+    // Core payment amount and currency
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     currency: currencyEnum("currency").notNull(),
+    
+    // USD conversion (for reporting)
     amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }),
-    amountInPledgeCurrency: numeric("amount_pledge_currency", {
+    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4 }),
+    
+    // NEW: Pledge currency conversion (for pledge balance calculations)
+    amountInPledgeCurrency: numeric("amount_in_pledge_currency", {
       precision: 10,
       scale: 2,
     }),
-    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4 }),
+    pledgeCurrencyExchangeRate: numeric("pledge_currency_exchange_rate", {
+      precision: 10,
+      scale: 4,
+    }),
+    
+    // NEW: Plan currency conversion (for plan tracking)
+    amountInPlanCurrency: numeric("amount_in_plan_currency", {
+      precision: 10,
+      scale: 2,
+    }),
+    planCurrencyExchangeRate: numeric("plan_currency_exchange_rate", {
+      precision: 10,
+      scale: 4,
+    }),
+    
     paymentDate: date("payment_date").notNull(),
     receivedDate: date("received_date"),
     checkDate: date("check_date"),
@@ -693,6 +735,7 @@ export const payment = pgTable(
     referenceIdx: index("payment_reference_idx").on(table.referenceNumber),
     solicitorIdIdx: index("payment_solicitor_id_idx").on(table.solicitorId),
     installmentScheduleIdIdx: index("payment_installment_schedule_id_idx").on(table.installmentScheduleId),
+    currencyIdx: index("payment_currency_idx").on(table.currency),
   })
 );
 
@@ -714,7 +757,7 @@ export const paymentAllocations = pgTable(
       { onDelete: "set null" }
     ),
     
-    // NEW FIELD FOR THIRD-PARTY TRACKING
+    // Third-party tracking
     payerContactId: integer("payer_contact_id").references(() => contact.id, {
       onDelete: "set null",
     }),
@@ -725,6 +768,11 @@ export const paymentAllocations = pgTable(
     }).notNull(),
     currency: currencyEnum("currency").notNull(),
     allocatedAmountUsd: numeric("allocated_amount_usd", {
+      precision: 10,
+      scale: 2,
+    }),
+    // NEW: Pledge currency conversion for allocations
+    allocatedAmountInPledgeCurrency: numeric("allocated_amount_in_pledge_currency", {
       precision: 10,
       scale: 2,
     }),
@@ -750,6 +798,33 @@ export const paymentAllocations = pgTable(
 
 export type PaymentAllocation = typeof paymentAllocations.$inferSelect;
 export type NewPaymentAllocation = typeof paymentAllocations.$inferInsert;
+
+// NEW: Currency conversion tracking table
+export const currencyConversionLog = pgTable(
+  "currency_conversion_log",
+  {
+    id: serial("id").primaryKey(),
+    paymentId: integer("payment_id")
+      .references(() => payment.id, { onDelete: "cascade" })
+      .notNull(),
+    fromCurrency: currencyEnum("from_currency").notNull(),
+    toCurrency: currencyEnum("to_currency").notNull(),
+    fromAmount: numeric("from_amount", { precision: 10, scale: 2 }).notNull(),
+    toAmount: numeric("to_amount", { precision: 10, scale: 2 }).notNull(),
+    exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4 }).notNull(),
+    conversionDate: date("conversion_date").notNull(),
+    conversionType: text("conversion_type").notNull(), // 'pledge', 'plan', 'usd_reporting'
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    paymentIdIdx: index("currency_conversion_log_payment_id_idx").on(table.paymentId),
+    dateIdx: index("currency_conversion_log_date_idx").on(table.conversionDate),
+    typeIdx: index("currency_conversion_log_type_idx").on(table.conversionType),
+  })
+);
+
+export type CurrencyConversionLog = typeof currencyConversionLog.$inferSelect;
+export type NewCurrencyConversionLog = typeof currencyConversionLog.$inferInsert;
 
 export const bonusCalculation = pgTable(
   "bonus_calculation",
@@ -827,6 +902,9 @@ export const contactRelations = relations(contact, ({ many }) => ({
   pledges: many(pledge),
   auditLogs: many(auditLog),
   solicitor: many(solicitor),
+  paymentsAsPayer: many(payment, {
+    relationName: "payerPayments",
+  }),
 }));
 
 export const contactRolesRelations = relations(contactRoles, ({ one }) => ({
@@ -854,7 +932,6 @@ export const relationshipsRelations = relations(relationships, ({ one, many }) =
     references: [contact.id],
     relationName: "relationTarget",
   }),
-  // NEW RELATIONS: Relationships can have pledges, payments, and payment plans assigned
   pledges: many(pledge),
   payments: many(payment),
   paymentPlans: many(paymentPlan),
@@ -881,7 +958,6 @@ export const pledgeRelations = relations(pledge, ({ one, many }) => ({
     fields: [pledge.categoryId],
     references: [category.id],
   }),
-  // NEW RELATION: Pledge can be assigned to a relationship
   relationship: one(relationships, {
     fields: [pledge.relationshipId],
     references: [relationships.id],
@@ -896,7 +972,6 @@ export const paymentPlanRelations = relations(paymentPlan, ({ one, many }) => ({
     fields: [paymentPlan.pledgeId],
     references: [pledge.id],
   }),
-  // NEW RELATION: Payment plan can be assigned to a relationship
   relationship: one(relationships, {
     fields: [paymentPlan.relationshipId],
     references: [relationships.id],
@@ -937,13 +1012,11 @@ export const paymentRelations = relations(payment, ({ one, many }) => ({
     fields: [payment.relationshipId],
     references: [relationships.id],
   }),
-  
-  // NEW RELATION FOR PAYER CONTACT
   payerContact: one(contact, {
     fields: [payment.payerContactId],
     references: [contact.id],
+    relationName: "payerPayments",
   }),
-  
   solicitor: one(solicitor, {
     fields: [payment.solicitorId],
     references: [solicitor.id],
@@ -957,6 +1030,7 @@ export const paymentRelations = relations(payment, ({ one, many }) => ({
     references: [bonusCalculation.paymentId],
   }),
   paymentAllocations: many(paymentAllocations),
+  currencyConversions: many(currencyConversionLog),
 }));
 
 export const solicitorRelations = relations(solicitor, ({ one, many }) => ({
@@ -1010,6 +1084,16 @@ export const paymentAllocationsRelations = relations(
     installmentSchedule: one(installmentSchedule, {
       fields: [paymentAllocations.installmentScheduleId],
       references: [installmentSchedule.id],
+    }),
+  })
+);
+
+export const currencyConversionLogRelations = relations(
+  currencyConversionLog,
+  ({ one }) => ({
+    payment: one(payment, {
+      fields: [currencyConversionLog.paymentId],
+      references: [payment.id],
     }),
   })
 );

@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-
 import React, { useEffect, useState, useCallback, useMemo } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, Plus, X, Search, UserPlus } from "lucide-react";
+import { Check, ChevronsUpDown, Edit, Users, Split, AlertTriangle, Plus, X, Search, UserPlus, RotateCcw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +23,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Form,
   FormControl,
@@ -144,7 +151,6 @@ const useSolicitors = (params: { search?: string; status?: "active" | "inactive"
       const searchParams = new URLSearchParams();
       if (params.search) searchParams.set("search", params.search);
       if (params.status) searchParams.set("status", params.status);
-
       const response = await fetch(`/api/solicitor?${searchParams}`);
       if (!response.ok) throw new Error("Failed to fetch solicitors");
       return response.json();
@@ -162,6 +168,18 @@ const useContacts = (search?: string) =>
       return response.json();
     },
     enabled: !!search && search.length >= 2,
+  });
+
+const useContactById = (contactId?: number | null) =>
+  useQuery<{ contact: Contact }>({
+    queryKey: ["contact", contactId],
+    queryFn: async () => {
+      if (!contactId) throw new Error("Contact ID is required");
+      const response = await fetch(`/api/contacts/${contactId}`);
+      if (!response.ok) throw new Error("Failed to fetch contact");
+      return response.json();
+    },
+    enabled: !!contactId,
   });
 
 const supportedCurrencies = [
@@ -267,7 +285,7 @@ const accountOptions = [
   { value: "Mizrachi Tfachot", label: "Mizrachi Tfachot" },
   { value: "MS - Donations", label: "MS - Donations" },
   { value: "MS - Operations", label: "MS - Operations" },
-  { value: "Citibank (*)", label: "Citibank (*)" },
+  { value: "Citibank", label: "Citibank" },
   { value: "Pagi", label: "Pagi" },
 ] as const;
 
@@ -279,27 +297,22 @@ const editPaymentSchema = z
     amountUsd: z.number().positive("Amount in USD must be positive").optional(),
     amountInPledgeCurrency: z.number().positive("Amount in pledge currency must be positive").optional(),
     exchangeRate: z.number().positive("Exchange rate must be positive").optional(),
-
     paymentDate: z.string().min(1, "Payment date is required").optional(),
     receivedDate: z.string().optional().nullable(),
     methodDetail: z.string().optional().nullable(),
     paymentMethod: z.string().optional(),
     paymentStatus: z.string().optional(),
-
     account: z.string().optional().nullable(),
     checkDate: z.string().optional().nullable(),
     checkNumber: z.string().optional().nullable(),
-
     receiptNumber: z.string().optional().nullable(),
     receiptType: z.string().optional().nullable(),
     receiptIssued: z.boolean().optional(),
-
     solicitorId: z.number().positive("Solicitor ID must be positive").optional().nullable(),
     bonusPercentage: z.number().min(0).max(100).optional().nullable(),
     bonusAmount: z.number().min(0).optional().nullable(),
     bonusRuleId: z.number().positive("Bonus rule ID must be positive").optional().nullable(),
     notes: z.string().optional().nullable(),
-
     pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
     paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
     isSplitPayment: z.boolean().optional(),
@@ -323,7 +336,6 @@ const editPaymentSchema = z
         })
       )
       .optional(),
-
     // New fields for installment management
     autoAdjustAllocations: z.boolean().optional(),
     redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
@@ -377,9 +389,7 @@ export default function EditPaymentDialog({
     isLoading: isLoadingRates,
     error: ratesError,
   } = useExchangeRates();
-
   const { data: solicitorsData } = useSolicitors({ status: "active" });
-
   const contactId = useContactId() || propContactId || payment.contactId;
 
   // Third-party payment state
@@ -410,7 +420,6 @@ export default function EditPaymentDialog({
   const [autoAdjustAllocations, setAutoAdjustAllocations] = useState(false);
   const [redistributionMethod, setRedistributionMethod] = useState<"proportional" | "equal" | "custom">("proportional");
   const [canConvertToSplit, setCanConvertToSplit] = useState(false);
-
   const [originalAmount] = useState(parseFloat(payment.amount));
 
   const isControlled = controlledOpen !== undefined;
@@ -507,33 +516,36 @@ export default function EditPaymentDialog({
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
 
   // Effect to load existing third-party contact if editing a third-party payment
+  const { data: existingThirdPartyContactData } = useContactById(
+    isExistingThirdPartyPayment ? existingThirdPartyContactId : null
+  );
+
   useEffect(() => {
-    if (isExistingThirdPartyPayment && existingThirdPartyContactId && contactsData?.contacts) {
-      const existingContact = contactsData.contacts.find(c => c.id === existingThirdPartyContactId);
-      if (existingContact) {
-        setSelectedThirdPartyContact(existingContact);
-      }
+    if (isExistingThirdPartyPayment && existingThirdPartyContactData?.contact) {
+      setSelectedThirdPartyContact(existingThirdPartyContactData.contact);
     }
-  }, [isExistingThirdPartyPayment, existingThirdPartyContactId, contactsData]);
+  }, [isExistingThirdPartyPayment, existingThirdPartyContactData]);
 
   // Effect to clear pledge selection when third-party contact changes
   useEffect(() => {
     if (watchedIsThirdParty) {
-      // Reset pledge selection when changing third-party contact
-      form.setValue("pledgeId", null);
-      if (watchedIsSplitPayment) {
-        form.setValue("allocations", [{
-          pledgeId: 0,
-          allocatedAmount: 0,
-          notes: null,
-          currency: payment.currency,
-          receiptNumber: null,
-          receiptType: null,
-          receiptIssued: false,
-        }]);
+      // Reset pledge selection when changing third-party contact, except if editing existing third-party payment
+      if (!isExistingThirdPartyPayment) {
+        form.setValue("pledgeId", null);
+        if (watchedIsSplitPayment) {
+          form.setValue("allocations", [{
+            pledgeId: 0,
+            allocatedAmount: 0,
+            notes: null,
+            currency: payment.currency,
+            receiptNumber: null,
+            receiptType: null,
+            receiptIssued: false,
+          }]);
+        }
       }
     }
-  }, [selectedThirdPartyContact, watchedIsThirdParty, watchedIsSplitPayment, form, payment.currency]);
+  }, [selectedThirdPartyContact, watchedIsThirdParty, watchedIsSplitPayment, form, payment.currency, isExistingThirdPartyPayment]);
 
   // Check if payment can be converted to split
   useEffect(() => {
@@ -548,11 +560,9 @@ export default function EditPaymentDialog({
       (sum, alloc) => sum + (alloc.allocatedAmount || 0),
       0
     );
-
     if (totalOriginal === 0) return;
 
     let newAllocations: any[];
-
     switch (method) {
       case "proportional":
         // Maintain proportional distribution
@@ -565,7 +575,6 @@ export default function EditPaymentDialog({
           };
         });
         break;
-
       case "equal":
         // Distribute equally among all allocations
         const equalAmount = newAmount / watchedAllocations.length;
@@ -574,7 +583,6 @@ export default function EditPaymentDialog({
           allocatedAmount: equalAmount,
         }));
         break;
-
       case "custom":
       default:
         // Keep existing allocations, user will adjust manually
@@ -585,7 +593,6 @@ export default function EditPaymentDialog({
     // Ensure the total equals the new amount (handle rounding errors)
     const newTotal = newAllocations.reduce((sum, alloc) => sum + (alloc.allocatedAmount || 0), 0);
     const difference = newAmount - newTotal;
-
     if (Math.abs(difference) > 0.001 && newAllocations.length > 0) {
       // Add the difference to the first allocation
       const firstAllocation = newAllocations[0];
@@ -643,6 +650,33 @@ export default function EditPaymentDialog({
     }
   };
 
+  // Handle undo split payment functionality
+  const handleUndoSplitPayment = (targetPledgeId: number) => {
+    // Find the allocation for the target pledge to get receipt info
+    const targetAllocation = watchedAllocations?.find(alloc => alloc.pledgeId === targetPledgeId);
+    
+    // Convert to regular payment
+    form.setValue("isSplitPayment", false);
+    form.setValue("pledgeId", targetPledgeId);
+    
+    // Restore receipt information from the target allocation if available
+    if (targetAllocation) {
+      form.setValue("receiptNumber", targetAllocation.receiptNumber);
+      form.setValue("receiptType", targetAllocation.receiptType);
+      form.setValue("receiptIssued", targetAllocation.receiptIssued ?? false);
+    } else {
+      // Clear receipt fields if no target allocation found
+      form.setValue("receiptNumber", null);
+      form.setValue("receiptType", null);
+      form.setValue("receiptIssued", false);
+    }
+    
+    // Clear allocations
+    replace([]);
+    
+    toast.success(`Split payment converted to regular payment for Pledge #${targetPledgeId}`);
+  };
+
   // Handle third-party payment toggle
   const handleThirdPartyToggle = (checked: boolean) => {
     form.setValue("isThirdPartyPayment", checked);
@@ -680,7 +714,6 @@ export default function EditPaymentDialog({
   // Handle split payment toggle
   const handleSplitPaymentToggle = (checked: boolean) => {
     form.setValue("isSplitPayment", checked);
-
     if (checked) {
       // Converting to split payment
       if (payment.pledgeId) {
@@ -759,7 +792,6 @@ export default function EditPaymentDialog({
     
     // Clear any existing payment date errors since future dates are now allowed
     form.clearErrors("paymentDate");
-
     // Auto-refresh exchange rate when currency and effective date are available
     if (watchedCurrency && exchangeRatesData?.data?.rates) {
       const rate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
@@ -784,7 +816,7 @@ export default function EditPaymentDialog({
 
   useEffect(() => {
     if (watchedAmount && watchedExchangeRate) {
-      const usdAmount = watchedAmount * watchedExchangeRate;
+      const usdAmount = watchedAmount / watchedExchangeRate;
       form.setValue("amountUsd", Math.round(usdAmount * 100) / 100);
     }
   }, [watchedAmount, watchedExchangeRate, form]);
@@ -863,12 +895,12 @@ export default function EditPaymentDialog({
     setShowAmountChangeWarning(false);
     setSelectedThirdPartyContact(null);
     setContactSearch("");
-
+    
     // If editing an existing third-party payment, restore the contact
     if (isExistingThirdPartyPayment && existingThirdPartyContactId) {
       // This will be handled by the effect that loads the existing contact
     }
-
+    
     // Reset allocations
     const initialAllocations = isSplitPayment && payment.allocations
       ? payment.allocations.map(alloc => ({
@@ -895,7 +927,8 @@ export default function EditPaymentDialog({
     replace(initialAllocations);
   }, [form, payment, isSplitPayment, replace, isExistingThirdPartyPayment, existingThirdPartyContactId]);
 
-  const updatePaymentMutation = useUpdatePaymentMutation(watchedIsSplitPayment ? payment.id : payment.pledgeId || 0);
+  const watchedPledgeId = form.watch("pledgeId");
+  const updatePaymentMutation = useUpdatePaymentMutation(watchedIsSplitPayment ? payment.id : watchedPledgeId || payment.pledgeId || 0);
 
   const onSubmit = async (data: EditPaymentFormData) => {
     try {
@@ -906,6 +939,12 @@ export default function EditPaymentDialog({
         }
         if (!areAllocationCurrenciesValid()) {
           toast.error("All allocation currencies must match the payment currency");
+          return;
+        }
+      } else {
+        // For non-split payments, ensure a pledge is selected
+        if (!data.pledgeId) {
+          toast.error("Please select a pledge for the payment");
           return;
         }
       }
@@ -922,7 +961,6 @@ export default function EditPaymentDialog({
       if (isPaymentPlanPayment) {
         // For payment plan payments, allow amount changes but warn about installment impact
         const allowedUpdates = { ...data, ...basePayload };
-
         // Remove undefined or empty fields
         const filteredData = Object.fromEntries(
           Object.entries(allowedUpdates).filter(([key, val]) => {
@@ -931,7 +969,6 @@ export default function EditPaymentDialog({
             return val !== undefined && val !== null && val !== '';
           })
         );
-
         await updatePaymentMutation.mutateAsync(filteredData as any);
       } else {
         const processedAllocations = watchedIsSplitPayment && watchedAllocations
@@ -993,7 +1030,6 @@ export default function EditPaymentDialog({
   // Fix pledge options with useMemo and deduplication
   const pledgeOptions = useMemo(() => {
     if (!pledgesData?.pledges) return [];
-
     // Remove duplicates by pledge ID
     const uniquePledges = pledgesData.pledges.reduce((acc, pledge) => {
       if (!acc.find(p => p.id === pledge.id)) {
@@ -1014,7 +1050,6 @@ export default function EditPaymentDialog({
 
   const contactOptions = useMemo(() => {
     if (!contactsData?.contacts) return [];
-
     return contactsData.contacts.map((contact: Contact) => ({
       label: contact.fullName,
       value: contact.id,
@@ -1027,6 +1062,83 @@ export default function EditPaymentDialog({
   const formatCurrency = (amount: string | number, currency = "USD") => {
     const numAmount = typeof amount === "string" ? parseFloat(amount) : amount;
     return `${currency} ${numAmount.toLocaleString()}`;
+  };
+
+  // Undo Split Section Component
+  const UndoSplitSection = () => {
+    if (!watchedIsSplitPayment || !watchedAllocations?.length) return null;
+
+    const handleUndoWithoutSelectingPledge = () => {
+      form.setValue("isSplitPayment", false);
+      form.setValue("pledgeId", null);
+      replace([]);
+      toast.success("Split payment undone. You can now select a new pledge.");
+    };
+
+    return (
+      <div className="mt-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+        <div className="flex items-center gap-2 mb-3">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <h4 className="font-medium text-amber-800">Undo Split Payment</h4>
+        </div>
+        <p className="text-sm text-amber-700 mb-3">
+          You can convert this split payment back to a regular payment. Choose one of the options below:
+        </p>
+        <div className="space-y-3">
+          <div>
+            <p className="text-sm font-medium text-amber-800 mb-2">Option 1: Select a pledge to apply the full amount</p>
+            <div className="space-y-2">
+              {watchedAllocations.map((allocation, index) => {
+                const pledgeOption = pledgeOptions.find(p => p.value === allocation.pledgeId);
+                return (
+                  <div key={allocation.pledgeId || index} className="flex items-center justify-between p-2 bg-white rounded border">
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">
+                        {pledgeOption?.label || `Pledge #${allocation.pledgeId}`}
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        Allocated: {formatCurrency(allocation.allocatedAmount || 0, allocation.currency || payment.currency)}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleUndoSplitPayment(allocation.pledgeId)}
+                      className="ml-2 text-amber-700 border-amber-300 hover:bg-amber-100"
+                    >
+                      Select
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="border-t border-amber-200 my-4" />
+
+          <div>
+            <p className="text-sm font-medium text-amber-800 mb-2">Option 2: Undo split and choose pledge later</p>
+            <p className="text-xs text-amber-700 mb-3">
+              This will remove all allocations and allow you to select a new pledge for the entire payment amount.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleUndoWithoutSelectingPledge}
+              className="w-full flex items-center gap-2 text-amber-700 border-amber-300 hover:bg-amber-100"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Undo Split and Re-assign
+            </Button>
+          </div>
+        </div>
+        <p className="text-xs text-amber-600 mt-4">
+          This action will delete all current allocations and convert this back to a regular payment.
+        </p>
+      </div>
+    );
   };
 
   return (
@@ -1111,6 +1223,7 @@ export default function EditPaymentDialog({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6" noValidate>
+            <UndoSplitSection />
 
             {/* Amount Change Warning for Split Payments */}
             {showAmountChangeWarning && watchedIsSplitPayment && (
@@ -1165,7 +1278,6 @@ export default function EditPaymentDialog({
                       Third-Party Payment (Payment for someone else&apos;s pledge)
                     </label>
                   </div>
-
                   {watchedIsThirdParty && (
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -1180,7 +1292,6 @@ export default function EditPaymentDialog({
                           />
                         </div>
                       </div>
-
                       {contactSearch.length >= 2 && (
                         <div className="border rounded-md max-h-40 overflow-y-auto">
                           {isLoadingContacts ? (
@@ -1201,7 +1312,6 @@ export default function EditPaymentDialog({
                           )}
                         </div>
                       )}
-
                       {selectedThirdPartyContact && (
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                           <div className="flex items-center justify-between">

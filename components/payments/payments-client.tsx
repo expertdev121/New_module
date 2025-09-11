@@ -69,6 +69,7 @@ const PaymentStatusEnum = z.enum([
   "cancelled",
   "refunded",
   "processing",
+  "expected",
 ]);
 
 type PaymentStatusType = z.infer<typeof PaymentStatusEnum>;
@@ -155,9 +156,12 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   };
 
   const formatUSDAmount = (amount: string | null | undefined) => {
-    if (!amount) return "$0";
-    const rounded = Math.round(Number.parseFloat(amount));
-    return `${rounded.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
+    if (!amount) return "$0.00";
+    const value = Number.parseFloat(amount) || 0;
+    return value.toLocaleString("en-US", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
   };
 
   // Split Payment Badge Component
@@ -360,12 +364,13 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
 
   const formatCurrency = (amount: string, currency: string = "USD") => {
     try {
+      const value = Number.parseFloat(amount) || 0;
       const formatted = new Intl.NumberFormat("en-US", {
         style: "currency",
         currency: currency || "USD",
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 0,
-      }).format(Number.parseFloat(amount));
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(value);
 
       const currencySymbol = formatted.replace(/[\d,.\s]/g, "");
       const numericAmount = formatted.replace(/[^\d,.\s]/g, "").trim();
@@ -556,7 +561,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Method Detail
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Receipt Number
+                    Check Number
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
                     Notes
@@ -786,10 +791,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
-                                      Receipt Number:
+                                      Check Number:
                                     </span>
                                     <span className="font-medium">
-                                      {payment.receiptNumber || "N/A"}
+                                      {payment.checkNumber || "N/A"}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">

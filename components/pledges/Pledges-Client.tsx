@@ -226,14 +226,14 @@ export default function PledgesTable() {
   };
 
   const formatCurrency = (amount: string, currency: string) => {
-    const rounded = Math.round(Number.parseFloat(amount) || 0); // Round first
+    const value = Number.parseFloat(amount) || 0;
     const formatted = new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(rounded);
-    
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+
     const currencySymbol = formatted.replace(/[\d,.\s]/g, "");
     const numericAmount = formatted.replace(/[^\d,.\s]/g, "").trim();
 
@@ -242,8 +242,13 @@ export default function PledgesTable() {
 
   const formatUSDAmount = (amount: string | null | undefined) => {
     if (!amount) return "N/A";
-    const rounded = Math.round(Number.parseFloat(amount) || 0); // Round before formatting
-    return `$${rounded.toLocaleString()}`;
+    const value = Number.parseFloat(amount) || 0;
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
   };
 
   const handleDeletePledge = (pledgeId: number, pledgeDescription: string) => {
