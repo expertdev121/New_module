@@ -145,6 +145,8 @@ type AllocationResponse = {
   updatedAt: string | null;
 };
 
+type UpdatePaymentData = z.infer<typeof updatePaymentSchema>;
+
 // Enhanced validation functions
 async function validatePledgeOwnership(pledgeIds: number[], expectedContactId?: number | null): Promise<{ isValid: boolean; invalidPledges: number[]; contactMismatch: boolean }> {
   if (!expectedContactId) {
@@ -183,7 +185,7 @@ async function validateCurrencyConsistency(
   };
 }
 
-async function validatePaymentPlanConstraints(paymentId: number, newData: any): Promise<{ isValid: boolean; reason?: string }> {
+async function validatePaymentPlanConstraints(paymentId: number, newData: UpdatePaymentData): Promise<{ isValid: boolean; reason?: string }> {
   const paymentPlanInfo = await db
     .select({
       id: payment.id,
