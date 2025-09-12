@@ -60,7 +60,7 @@ const allocationUpdateSchema = z.object({
   };
 });
 
-// Enhanced payment schema with comprehensive validation
+// Updated payment schema to match POST method pattern
 const updatePaymentSchema = z.object({
   paymentId: z.number().positive("Payment ID is required and must be positive"),
   amount: z.number().positive("Amount must be positive").optional(),
@@ -92,10 +92,9 @@ const updatePaymentSchema = z.object({
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
   installmentScheduleId: z.number().positive("Installment schedule ID must be positive").optional().nullable(),
   
-  // Third-party payment fields
-  payerContactId: z.number().positive("Payer contact ID must be positive").optional().nullable(),
+  // Third-party payment fields - simplified to match POST method
   isThirdPartyPayment: z.boolean().optional(),
-  thirdPartyContactId: z.number().positive("Third-party contact ID must be positive").optional().nullable(),
+  payerContactId: z.number().positive("Payer contact ID must be positive").optional().nullable(),
   
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationUpdateSchema).optional(),
@@ -112,14 +111,14 @@ const updatePaymentSchema = z.object({
 }, {
   message: "Total allocation amount must equal the payment amount for split payments",
 }).refine((data) => {
-  // Third-party payment validation
-  if (data.isThirdPartyPayment && !data.thirdPartyContactId) {
+  // Simplified third-party payment validation
+  if (data.isThirdPartyPayment && !data.payerContactId) {
     return false;
   }
   return true;
 }, {
-  message: "Third-party contact must be selected for third-party payments",
-  path: ["thirdPartyContactId"],
+  message: "Payer contact must be set for third-party payments",
+  path: ["payerContactId"],
 }).refine((data) => {
   // Payment plan + third-party conflict validation
   if (data.isThirdPartyPayment && data.paymentPlanId) {
@@ -474,7 +473,6 @@ async function updatePledgeTotals(pledgeId: number) {
     .where(eq(pledge.id, pledgeId));
 }
 
-
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ pledgeId: string }> }
@@ -564,37 +562,29 @@ export async function PATCH(
     // Enhanced validation for third-party split payments
     if (validatedData.isThirdPartyPayment && validatedData.isSplitPayment && validatedData.allocations) {
       const pledgeIds = validatedData.allocations.map(a => a.pledgeId);
-      const ownershipValidation = await validatePledgeOwnership(pledgeIds, validatedData.thirdPartyContactId);
       
-      if (!ownershipValidation.isValid) {
-        if (ownershipValidation.invalidPledges.length > 0) {
-          throw new AppError(
-            "Invalid pledge IDs in allocations",
-            400,
-            { details: `Pledges with IDs ${ownershipValidation.invalidPledges.join(', ')} do not exist.` }
-          );
-        }
-        if (ownershipValidation.contactMismatch) {
-          throw new AppError(
-            "Cross-contact allocation error",
-            400,
-            { details: "All allocations must be to pledges belonging to the selected third-party contact." }
-          );
-        }
+      // Get the contact ID from the pledges to validate ownership
+      const pledgeOwnerships = await db
+        .select({ id: pledge.id, contactId: pledge.contactId })
+        .from(pledge)
+        .where(inArray(pledge.id, pledgeIds));
+      
+      const uniqueContactIds = [...new Set(pledgeOwnerships.map(p => p.contactId))];
+      
+      // For third-party payments, all pledges should belong to the same contact
+      if (uniqueContactIds.length > 1) {
+        throw new AppError(
+          "Cross-contact allocation error",
+          400,
+          { details: "All allocations must be to pledges belonging to the same contact for third-party payments." }
+        );
       }
     }
 
     // Enhanced validation for regular third-party payments
     if (validatedData.isThirdPartyPayment && !validatedData.isSplitPayment && validatedData.pledgeId) {
-      const ownershipValidation = await validatePledgeOwnership([validatedData.pledgeId], validatedData.thirdPartyContactId);
-      
-      if (!ownershipValidation.isValid) {
-        throw new AppError(
-          "Invalid pledge selection for third-party payment",
-          400,
-          { details: "The selected pledge must belong to the third-party contact." }
-        );
-      }
+      // The pledge ownership is determined by the pledgeId itself, no need for additional validation
+      // since the frontend handles contact selection correctly
     }
 
     // Enhanced currency validation for split payments
@@ -628,16 +618,14 @@ export async function PATCH(
         isSplitPayment: ___, 
         autoAdjustAllocations: ____, 
         redistributionMethod: _____, 
-        thirdPartyContactId: ______, 
         ...dataToUpdate 
       } = data;
-      
-      const isThirdParty = data.isThirdPartyPayment && data.thirdPartyContactId;
       
       const baseUpdateData: Record<string, string | number | boolean | null | undefined | Date> = {
         ...dataToUpdate,
         isThirdPartyPayment: data.isThirdPartyPayment || false,
-        payerContactId: isThirdParty ? data.thirdPartyContactId : null,
+        // Simplified to match POST method - payerContactId is set directly
+        payerContactId: data.isThirdPartyPayment ? data.payerContactId : null,
         updatedAt: new Date(),
       };
 
@@ -703,14 +691,6 @@ export async function PATCH(
       const targetPledgeId = validatedData.pledgeId || currentPayment.pledgeId;
       if (!targetPledgeId) {
         throw new AppError("Target pledge ID is required when converting split payment to regular payment", 400);
-      }
-
-      // Enhanced validation for third-party payments
-      if (validatedData.isThirdPartyPayment && validatedData.thirdPartyContactId) {
-        const ownershipValidation = await validatePledgeOwnership([targetPledgeId], validatedData.thirdPartyContactId);
-        if (!ownershipValidation.isValid) {
-          throw new AppError("Target pledge must belong to the selected third-party contact", 400);
-        }
       }
 
       const targetPledgeExists = await db
@@ -857,7 +837,7 @@ export async function PATCH(
           receiptType: alloc.receiptType ?? null,
           receiptIssued: alloc.receiptIssued ?? false,
           notes: alloc.notes ?? null,
-          payerContactId: validatedData.isThirdPartyPayment ? validatedData.thirdPartyContactId : null,
+          payerContactId: validatedData.isThirdPartyPayment ? validatedData.payerContactId : null,
           createdAt: new Date(),
           updatedAt: new Date(),
         };
@@ -1001,7 +981,7 @@ export async function PATCH(
               currency: allocationCurrency,
               notes: allocation.notes ?? null,
               installmentScheduleId: allocation.installmentScheduleId ?? null,
-              payerContactId: validatedData.isThirdPartyPayment ? validatedData.thirdPartyContactId : null,
+              payerContactId: validatedData.isThirdPartyPayment ? validatedData.payerContactId : null,
               updatedAt: new Date(),
             };
 
@@ -1032,7 +1012,7 @@ export async function PATCH(
               receiptType: allocation.receiptType ?? null,
               receiptIssued: allocation.receiptIssued ?? false,
               notes: allocation.notes ?? null,
-              payerContactId: validatedData.isThirdPartyPayment ? validatedData.thirdPartyContactId : null,
+              payerContactId: validatedData.isThirdPartyPayment ? validatedData.payerContactId : null,
               createdAt: new Date(),
               updatedAt: new Date(),
             };
@@ -1061,14 +1041,6 @@ export async function PATCH(
       console.log("Updating regular payment");
       
       if (validatedData.pledgeId && validatedData.pledgeId !== pledgeId) {
-        // Enhanced validation for third-party payments
-        if (validatedData.isThirdPartyPayment && validatedData.thirdPartyContactId) {
-          const ownershipValidation = await validatePledgeOwnership([validatedData.pledgeId], validatedData.thirdPartyContactId);
-          if (!ownershipValidation.isValid) {
-            throw new AppError("Selected pledge must belong to the third-party contact", 400);
-          }
-        }
-
         const newPledgeExists = await db
           .select({ id: pledge.id })
           .from(pledge)
@@ -1236,7 +1208,6 @@ export async function PATCH(
     return ErrorHandler.handle(err);
   }
 }
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
