@@ -83,6 +83,7 @@ interface Pledge {
   contact?: {
     fullName: string;
   };
+  contactId?: number;
 }
 
 interface Contact {
@@ -180,6 +181,19 @@ const useContactById = (contactId?: number | null) =>
       return response.json();
     },
     enabled: !!contactId,
+  });
+
+// New hook to fetch pledge details including contact info
+const usePledgeWithContact = (pledgeId?: number | null) =>
+  useQuery<{ pledge: Pledge; contact: Contact }>({
+    queryKey: ["pledge-with-contact", pledgeId],
+    queryFn: async () => {
+      if (!pledgeId) throw new Error("Pledge ID is required");
+      const response = await fetch(`/api/pledges/${pledgeId}`);
+      if (!response.ok) throw new Error("Failed to fetch pledge");
+      return response.json();
+    },
+    enabled: !!pledgeId,
   });
 
 const supportedCurrencies = [
@@ -400,6 +414,14 @@ export default function EditPaymentDialog({
   const isExistingThirdPartyPayment = payment.isThirdPartyPayment || false;
   const existingThirdPartyContactId = payment.thirdPartyContactId || null;
 
+  // NEW: Get pledge details with contact info for third-party payments
+  const { data: pledgeWithContactData, isLoading: isLoadingPledgeWithContact } = usePledgeWithContact(
+    isExistingThirdPartyPayment && payment.pledgeId ? payment.pledgeId : null
+  );
+
+  // Fetch third-party contact details if not available from pledge data
+  const { data: thirdPartyContactData } = useContactById(existingThirdPartyContactId);
+
   // Get pledges for the current contact or third-party contact
   const targetContactId = selectedThirdPartyContact?.id || contactId;
   const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
@@ -515,34 +537,31 @@ export default function EditPaymentDialog({
   );
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
 
-  // Effect to load existing third-party contact if editing a third-party payment
-  const { data: existingThirdPartyContactData } = useContactById(
-    isExistingThirdPartyPayment ? existingThirdPartyContactId : null
-  );
-
+  // NEW: Effect to load and set the third-party contact from pledge data
   useEffect(() => {
-    if (isExistingThirdPartyPayment && existingThirdPartyContactData?.contact) {
-      setSelectedThirdPartyContact(existingThirdPartyContactData.contact);
+    if (isExistingThirdPartyPayment && pledgeWithContactData?.contact && !selectedThirdPartyContact) {
+      const thirdPartyContact = pledgeWithContactData.contact;
+      setSelectedThirdPartyContact(thirdPartyContact);
+      // Also update the form with the correct thirdPartyContactId
+      form.setValue("thirdPartyContactId", thirdPartyContact.id);
     }
-  }, [isExistingThirdPartyPayment, existingThirdPartyContactData]);
+  }, [isExistingThirdPartyPayment, pledgeWithContactData, selectedThirdPartyContact, form]);
 
   // Effect to clear pledge selection when third-party contact changes
   useEffect(() => {
-    if (watchedIsThirdParty) {
-      // Reset pledge selection when changing third-party contact, except if editing existing third-party payment
-      if (!isExistingThirdPartyPayment) {
-        form.setValue("pledgeId", null);
-        if (watchedIsSplitPayment) {
-          form.setValue("allocations", [{
-            pledgeId: 0,
-            allocatedAmount: 0,
-            notes: null,
-            currency: payment.currency,
-            receiptNumber: null,
-            receiptType: null,
-            receiptIssued: false,
-          }]);
-        }
+    if (watchedIsThirdParty && !isExistingThirdPartyPayment) {
+      // Only reset for new third-party payments, not existing ones
+      form.setValue("pledgeId", null);
+      if (watchedIsSplitPayment) {
+        form.setValue("allocations", [{
+          pledgeId: 0,
+          allocatedAmount: 0,
+          notes: null,
+          currency: payment.currency,
+          receiptNumber: null,
+          receiptType: null,
+          receiptIssued: false,
+        }]);
       }
     }
   }, [selectedThirdPartyContact, watchedIsThirdParty, watchedIsSplitPayment, form, payment.currency, isExistingThirdPartyPayment]);
