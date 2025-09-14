@@ -1,16 +1,16 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { 
-  paymentPlan, 
-  pledge, 
-  installmentSchedule, 
-  payment, 
+import {
+  paymentPlan,
+  pledge,
+  installmentSchedule,
+  payment,
   relationships,
   currencyConversionLog,
   exchangeRate,
-  PaymentPlan, 
-  NewPaymentPlan, 
+  PaymentPlan,
+  NewPaymentPlan,
   NewPayment,
   NewCurrencyConversionLog
 } from "@/lib/db/schema";
@@ -129,7 +129,7 @@ async function getExchangeRate(
 
   try {
     const targetDate = conversionDate || new Date().toISOString().split('T')[0];
-    
+
     // Try to get exact date first
     let rateQuery = await db
       .select({ rate: exchangeRate.rate })
@@ -305,27 +305,27 @@ function calculateInstallmentDates(startDate: string, frequency: string, numberO
  */
 function validatePaymentData(payment: NewPayment): string[] {
   const errors: string[] = [];
-  
+
   if (!payment.amount || parseFloat(payment.amount) <= 0) {
     errors.push("Amount must be a positive number");
   }
-  
+
   if (!payment.currency) {
     errors.push("Currency is required");
   }
-  
+
   if (!payment.paymentDate) {
     errors.push("Payment date is required");
   }
-  
+
   if (!payment.paymentMethod) {
     errors.push("Payment method is required");
   }
-  
+
   if (!payment.paymentStatus) {
     errors.push("Payment status is required");
   }
-  
+
   return errors;
 }
 
@@ -343,10 +343,10 @@ async function createScheduledPayment(
   installmentAmountUsd?: number | null,
   customNotes?: string | null
 ): Promise<NewPayment> {
-  
+
   const paymentCurrency = installmentRecord.currency || validatedData.currency;
   const paymentDate = installmentRecord.installmentDate;
-  
+
   // Calculate comprehensive multi-currency conversions
   const conversions = await calculateMultiCurrencyConversions(
     installmentAmount,
@@ -358,8 +358,8 @@ async function createScheduledPayment(
   );
 
   // Use form-provided USD amount or calculated amount
-  const finalUsdAmount = installmentAmountUsd !== null && installmentAmountUsd !== undefined 
-    ? installmentAmountUsd 
+  const finalUsdAmount = installmentAmountUsd !== null && installmentAmountUsd !== undefined
+    ? installmentAmountUsd
     : conversions.amountUsd;
 
   return {
@@ -369,23 +369,23 @@ async function createScheduledPayment(
     relationshipId: validatedData.relationshipId || null,
     payerContactId: null,
     isThirdPartyPayment: false,
-    
+
     // Core payment amount and currency
     amount: safeNumericString(installmentAmount)!,
     currency: paymentCurrency,
-    
+
     // USD conversion (for reporting)
     amountUsd: safeNumericString(finalUsdAmount),
     exchangeRate: safeNumericString(conversions.usdExchangeRate),
-    
+
     // Pledge currency conversion (for pledge balance calculations)
     amountInPledgeCurrency: safeNumericString(conversions.amountInPledgeCurrency),
     pledgeCurrencyExchangeRate: safeNumericString(conversions.pledgeCurrencyExchangeRate),
-    
+
     // Plan currency conversion (for plan tracking)
     amountInPlanCurrency: safeNumericString(conversions.amountInPlanCurrency),
     planCurrencyExchangeRate: safeNumericString(conversions.planCurrencyExchangeRate),
-    
+
     // Required payment fields
     paymentDate: paymentDate,
     receivedDate: null,
@@ -484,7 +484,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Validate sum of custom installments - check whole numbers only, ignore decimals
-      const totalCustomAmount = validatedData.customInstallments.reduce((sum, installment) => 
+      const totalCustomAmount = validatedData.customInstallments.reduce((sum, installment) =>
         sum + Math.floor(installment.installmentAmount), 0
       );
       const expectedAmount = Math.floor(validatedData.totalPlannedAmount);
@@ -511,13 +511,13 @@ export async function POST(request: NextRequest) {
       currentDate.setHours(0, 0, 0, 0);
       const thirtyDaysAgo = new Date(currentDate);
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-      
+
       const invalidDates = validatedData.customInstallments.filter(inst => {
         const instDate = new Date(inst.installmentDate);
         instDate.setHours(0, 0, 0, 0);
         return instDate < thirtyDaysAgo;
       });
-      
+
       if (invalidDates.length > 0) {
         return NextResponse.json(
           { error: "Validation failed", details: [{ field: "customInstallments", message: "Installment dates cannot be more than 30 days in the past." }] },
@@ -535,19 +535,27 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Check if whole numbers match for fixed distribution
       const totalPlannedAmount = validatedData.totalPlannedAmount;
       const numberOfInstallments = validatedData.numberOfInstallments;
+      const installmentAmount = validatedData.installmentAmount;
 
-      // Check if the provided installment amount matches at whole number level
-      const providedInstallmentWhole = Math.floor(validatedData.installmentAmount);
-      const calculatedTotalWhole = providedInstallmentWhole * numberOfInstallments;
-      const expectedTotalWhole = Math.floor(totalPlannedAmount);
+      // Calculate the correct installment amount
+      const correctInstallmentAmount = Math.round((totalPlannedAmount / numberOfInstallments) * 100) / 100;
+      const calculatedTotal = installmentAmount * numberOfInstallments;
+      const difference = Math.abs(calculatedTotal - totalPlannedAmount);
 
-      // Only validate whole numbers match - ignore decimal differences
-      if (calculatedTotalWhole !== expectedTotalWhole) {
+      // Allow tolerance of 1 cent per installment
+      const tolerance = numberOfInstallments * 0.01;
+
+      if (difference > tolerance) {
         return NextResponse.json(
-          { error: "Validation failed", details: [{ field: "installmentAmount", message: `Installment amount whole number (${providedInstallmentWhole}) × number of installments (${numberOfInstallments}) = ${calculatedTotalWhole} must equal total planned amount whole number (${expectedTotalWhole}).` }] },
+          {
+            error: "Validation failed",
+            details: [{
+              field: "installmentAmount",
+              message: `Total mismatch: ${numberOfInstallments} × ${installmentAmount.toFixed(2)} = ${calculatedTotal.toFixed(2)}, but total should be ${totalPlannedAmount.toFixed(2)}. Suggested installment amount: ${correctInstallmentAmount.toFixed(2)}`
+            }]
+          },
           { status: 400 }
         );
       }
@@ -601,12 +609,12 @@ export async function POST(request: NextRequest) {
       effectiveExchangeRate = "1.00";
     } else {
       const usdRate = await getExchangeRate(
-        validatedData.currency, 
-        "USD", 
+        validatedData.currency,
+        "USD",
         null, // Pass null to ignore providedRate from form
         validatedData.startDate
       );
-      
+
       if (usdRate) {
         totalPlannedAmountUsd = (validatedData.totalPlannedAmount * usdRate).toFixed(2);
         if (validatedData.installmentAmount) {
@@ -673,7 +681,7 @@ export async function POST(request: NextRequest) {
     if (validatedData.distributionType === "custom" && validatedData.customInstallments) {
       // Custom distribution - insert custom installment schedules and payments
       const installmentsToInsert = [];
-      
+
       for (const inst of validatedData.customInstallments) {
         const instCurrency = inst.currency || validatedData.currency;
         let instAmountUsd: string | null = null;
@@ -708,7 +716,7 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < installmentResults.length; i++) {
         const installmentRecord = installmentResults[i];
         const customInstallment = validatedData.customInstallments[i];
-        
+
         const scheduledPayment = await createScheduledPayment(
           installmentRecord,
           validatedData,
@@ -720,13 +728,13 @@ export async function POST(request: NextRequest) {
           safeConvert(customInstallment.installmentAmountUsd),
           customInstallment.notes
         );
-        
+
         // Validate payment data before adding
         const validationErrors = validatePaymentData(scheduledPayment);
         if (validationErrors.length > 0) {
           throw new Error(`Payment validation failed for installment ${i + 1}: ${validationErrors.join(', ')}`);
         }
-        
+
         scheduledPayments.push(scheduledPayment);
       }
 
@@ -737,7 +745,7 @@ export async function POST(request: NextRequest) {
       for (let i = 0; i < paymentResults.length; i++) {
         const paymentRecord = paymentResults[i];
         const customInstallment = validatedData.customInstallments[i];
-        
+
         // Log USD conversion
         if (paymentRecord.amountUsd && paymentRecord.currency !== "USD" && paymentRecord.exchangeRate) {
           await logCurrencyConversion(
@@ -811,13 +819,13 @@ export async function POST(request: NextRequest) {
           parseFloat(finalInstallmentAmount),
           installmentAmountUsd ? parseFloat(installmentAmountUsd) : null
         );
-        
+
         // Validate payment data before adding
         const validationErrors = validatePaymentData(scheduledPayment);
         if (validationErrors.length > 0) {
           throw new Error(`Payment validation failed: ${validationErrors.join(', ')}`);
         }
-        
+
         scheduledPayments.push(scheduledPayment);
       }
 
@@ -939,32 +947,32 @@ export async function POST(request: NextRequest) {
 
       const pgError = error as any;
       if (pgError.code) {
-          switch (pgError.code) {
-              case '23502': // NOT NULL violation
-                  console.error("PostgreSQL NOT NULL constraint violation:", pgError.detail || pgError.message);
-                  return NextResponse.json(
-                      { error: "Required data is missing or invalid (database constraint violation).", detail: pgError.detail || pgError.message },
-                      { status: 400 }
-                  );
-              case '23503': // Foreign key violation
-                  console.error("PostgreSQL Foreign Key constraint violation:", pgError.detail || pgError.message);
-                  return NextResponse.json(
-                      { error: "Associated record not found (foreign key violation).", detail: pgError.detail || pgError.message },
-                      { status: 400 }
-                  );
-              case '23505': // Unique constraint violation
-                  console.error("PostgreSQL Unique constraint violation:", pgError.detail || pgError.message);
-                  return NextResponse.json(
-                      { error: "Duplicate data entry (unique constraint violation).", detail: pgError.detail || pgError.message },
-                      { status: 409 }
-                  );
-              default:
-                  console.error(`Unhandled PostgreSQL error (Code: ${pgError.code}):`, pgError.message, pgError.detail);
-                  return NextResponse.json(
-                      { error: "A database error occurred.", message: pgError.message },
-                      { status: 500 }
-                  );
-          }
+        switch (pgError.code) {
+          case '23502': // NOT NULL violation
+            console.error("PostgreSQL NOT NULL constraint violation:", pgError.detail || pgError.message);
+            return NextResponse.json(
+              { error: "Required data is missing or invalid (database constraint violation).", detail: pgError.detail || pgError.message },
+              { status: 400 }
+            );
+          case '23503': // Foreign key violation
+            console.error("PostgreSQL Foreign Key constraint violation:", pgError.detail || pgError.message);
+            return NextResponse.json(
+              { error: "Associated record not found (foreign key violation).", detail: pgError.detail || pgError.message },
+              { status: 400 }
+            );
+          case '23505': // Unique constraint violation
+            console.error("PostgreSQL Unique constraint violation:", pgError.detail || pgError.message);
+            return NextResponse.json(
+              { error: "Duplicate data entry (unique constraint violation).", detail: pgError.detail || pgError.message },
+              { status: 409 }
+            );
+          default:
+            console.error(`Unhandled PostgreSQL error (Code: ${pgError.code}):`, pgError.message, pgError.detail);
+            return NextResponse.json(
+              { error: "A database error occurred.", message: pgError.message },
+              { status: 500 }
+            );
+        }
       }
     }
 
