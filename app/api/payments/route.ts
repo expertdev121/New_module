@@ -168,59 +168,42 @@ const paymentCreateSchema = z.object({
 });
 
 // Enhanced currency conversion helper
-// Enhanced currency conversion helper
+async function getUsdToCurrencyRate(currency: string, date: string): Promise<number | null> {
+  if (currency === 'USD') return 1;
+
+  const rate = await db
+    .select()
+    .from(exchangeRate)
+    .where(
+      and(
+        eq(exchangeRate.baseCurrency, 'USD' as (typeof currencyEnum.enumValues)[number]),
+        eq(exchangeRate.targetCurrency, currency as (typeof currencyEnum.enumValues)[number]),
+        lte(exchangeRate.date, date)
+      )
+    )
+    .orderBy(desc(exchangeRate.date))
+    .limit(1);
+
+  if (rate.length > 0) {
+    return parseFloat(rate[0].rate);
+  }
+
+  return null;
+}
+
 async function getExchangeRate(fromCurrency: string, toCurrency: string, date: string): Promise<number> {
   if (fromCurrency === toCurrency) {
     return 1;
   }
 
-  // 1. Try to find the most recent direct rate on or before the given date
-  const directRate = await db
-    .select()
-    .from(exchangeRate)
-    .where(
-      and(
-        eq(exchangeRate.baseCurrency, fromCurrency as (typeof currencyEnum.enumValues)[number]),
-        eq(exchangeRate.targetCurrency, toCurrency as (typeof currencyEnum.enumValues)[number]),
-        lte(exchangeRate.date, date)
-      )
-    )
-    .orderBy(desc(exchangeRate.date))
-    .limit(1);
+  // Always convert through USD
+  const usdToFromRate = await getUsdToCurrencyRate(fromCurrency, date);
+  const usdToToRate = await getUsdToCurrencyRate(toCurrency, date);
 
-  if (directRate.length > 0) {
-    return parseFloat(directRate[0].rate);
+  if (usdToFromRate && usdToToRate) {
+    return usdToToRate / usdToFromRate;
   }
 
-  // 2. If not found, try the most recent inverse rate
-  const inverseRate = await db
-    .select()
-    .from(exchangeRate)
-    .where(
-      and(
-        eq(exchangeRate.baseCurrency, toCurrency as (typeof currencyEnum.enumValues)[number]),
-        eq(exchangeRate.targetCurrency, fromCurrency as (typeof currencyEnum.enumValues)[number]),
-        lte(exchangeRate.date, date)
-      )
-    )
-    .orderBy(desc(exchangeRate.date))
-    .limit(1);
-
-  if (inverseRate.length > 0) {
-    return 1 / parseFloat(inverseRate[0].rate);
-  }
-
-  // 3. If still not found, try to convert through USD as a fallback
-  if (fromCurrency !== 'USD' && toCurrency !== 'USD') {
-    console.warn(`No direct rate for ${fromCurrency}->${toCurrency}. Trying via USD.`);
-    const fromToUsdRate = await getExchangeRate(fromCurrency, 'USD', date);
-    const usdToToRate = await getExchangeRate('USD', toCurrency, date);
-    if (fromToUsdRate && usdToToRate) {
-      return fromToUsdRate * usdToToRate;
-    }
-  }
-
-  // 4. If all else fails, throw an error.
   throw new AppError(`Exchange rate not found for ${fromCurrency} to ${toCurrency} on or before ${date}`, 400);
 }
 
