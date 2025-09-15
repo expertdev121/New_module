@@ -221,51 +221,40 @@ async function validatePaymentPlanConstraints(paymentId: number, newData: Update
 }
 
 // Currency conversion helper functions
+async function getUsdToCurrencyRate(currency: string, date: string): Promise<number | null> {
+  if (currency === 'USD') return 1;
+
+  const rate = await db
+    .select()
+    .from(exchangeRate)
+    .where(
+      and(
+        eq(exchangeRate.baseCurrency, 'USD' as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR"),
+        eq(exchangeRate.targetCurrency, currency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR"),
+        sql`${exchangeRate.date} <= ${date}`
+      )
+    )
+    .orderBy(desc(exchangeRate.date))
+    .limit(1);
+
+  if (rate.length > 0) {
+    return parseFloat(rate[0].rate);
+  }
+
+  return null;
+}
+
 async function getExchangeRate(fromCurrency: string, toCurrency: string, date: string): Promise<number> {
   if (fromCurrency === toCurrency) {
     return 1;
   }
 
-  const directRate = await db
-    .select()
-    .from(exchangeRate)
-    .where(
-      and(
-        eq(exchangeRate.baseCurrency, fromCurrency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR"),
-        eq(exchangeRate.targetCurrency, toCurrency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR"),
-        sql`${exchangeRate.date} <= ${date}`
-      )
-    )
-    .orderBy(desc(exchangeRate.date))
-    .limit(1);
+  // Always convert through USD
+  const usdToFromRate = await getUsdToCurrencyRate(fromCurrency, date);
+  const usdToToRate = await getUsdToCurrencyRate(toCurrency, date);
 
-  if (directRate.length > 0) {
-    return parseFloat(directRate[0].rate);
-  }
-
-  const inverseRate = await db
-    .select()
-    .from(exchangeRate)
-    .where(
-      and(
-        eq(exchangeRate.baseCurrency, toCurrency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR"),
-        eq(exchangeRate.targetCurrency, fromCurrency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR"),
-        sql`${exchangeRate.date} <= ${date}`
-      )
-    )
-    .orderBy(desc(exchangeRate.date))
-    .limit(1);
-
-  if (inverseRate.length > 0) {
-    return 1 / parseFloat(inverseRate[0].rate);
-  }
-
-  if (fromCurrency !== 'USD' && toCurrency !== 'USD') {
-    const fromToUsdRate = await getExchangeRate(fromCurrency, 'USD', date);
-    const usdToToRate = await getExchangeRate('USD', toCurrency, date);
-    if (fromToUsdRate && usdToToRate) {
-      return fromToUsdRate * usdToToRate;
-    }
+  if (usdToFromRate && usdToToRate) {
+    return usdToToRate / usdToFromRate;
   }
 
   throw new AppError(`Exchange rate not found for ${fromCurrency} to ${toCurrency} on or before ${date}`, 400);
