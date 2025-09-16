@@ -456,14 +456,256 @@ export default function RelationshipDialog(props: RelationshipDialogProps) {
                     </h4>
                     <div className="text-sm text-blue-800 space-y-1">
                       <div>
-                        <strong>{effectiveContactName}</strong> is the{" "}
-                        <strong>
-                          {relationshipTypes.find((t) => t.value === selectedRelationshipType)?.label.toLowerCase()}
-                        </strong>{" "}
-                        of{" "}
-                        <strong>
-                          {selectedContact.firstName} {selectedContact.lastName}
-                        </strong>
+                        {(() => {
+                          // Define relationship categories for proper summary generation
+                          const relationshipTypesWhereRelatedIsSubject = new Set([
+                            // Child relationships - the related contact IS the child
+                            "Their Son",
+                            "Their Daughter", 
+                            "His Son", 
+                            "Her Son",
+                            "His Daughter",
+                            "Her Daughter",
+                            "Her Step Son",
+                            
+                            // Grandchild relationships - the related contact IS the grandchild
+                            "Their Grandson",
+                            "Their Granddaughter",
+                            
+                            // Nephew/Niece relationships - the related contact IS the nephew/niece
+                            "His Nephew",
+                            "Her Nephew", 
+                            "His Niece",
+                            "Her Niece",
+                            
+                            // Spouse relationship - the related contact IS the spouse
+                            "His Wife",
+                          ]);
+
+                          const relationshipTypesWhereMainIsSubject = new Set([
+                            // Sibling relationships - the main contact IS the sibling
+                            "His Sister",
+                            "Her Sister",
+                            "Her Brother", 
+                            "His Brother",
+                            
+                            // Parent relationships - the main contact IS the parent/child
+                            "His Mother",
+                            "Her Mother", 
+                            "His Father",
+                            "Her Father",
+                            "His Parents",
+                            "Her Parents",
+                            
+                            // Aunt/Uncle relationships - the main contact IS the aunt/uncle
+                            "His Aunt",
+                            "Her Aunt",
+                            "His Uncle",
+                            "Her Uncle",
+                            
+                            // Grandparent relationships - the main contact IS the grandparent
+                            "His Grandfather", 
+                            "Her Grandfather",
+                            "His Grandmother",
+                            "Her Grandmother",
+                            "His Grandparents",
+                            "Her Grandparents",
+                            
+                            // Cousin relationships - the main contact IS the cousin
+                            "His Cousin (M)",
+                            "His Cousin (F)",
+                            "Her Cousin (M)",
+                            "Her Cousin (F)",
+                            
+                            // Step relationships - the main contact IS the step relative
+                            "His Step Mother",
+                            
+                            // Former spouse relationships - the main contact IS the former spouse
+                            "Her Former Husband",
+                            "His Former Wife",
+                          ]);
+
+                          const mutualRelationshipTypes = new Set([
+                            "Partner",
+                            "Friend", 
+                            "Neighbor",
+                            "Relative",
+                            "Fiance",
+                          ]);
+
+                          const professionalRelationshipTypes = new Set([
+                            "Business",
+                            "Employee",
+                            "Employer",
+                            "Owner",
+                          ]);
+
+                          const communityRelationshipTypes = new Set([
+                            "Chevrusa",
+                            "Congregant",
+                            "Rabbi",
+                            "Donor",
+                          ]);
+
+                          const generalRelationshipTypes = new Set([
+                            "Contact", 
+                            "Foundation",
+                            "Fund",
+                          ]);
+
+                          // Helper function to clean relationship labels
+                          const cleanRelationshipLabel = (label: string) => {
+                            return label.toLowerCase().replace(/^(his|her|their)\s+/, '');
+                          };
+
+                          if (relationshipTypesWhereRelatedIsSubject.has(selectedRelationshipType)) {
+                            // The related contact IS the relationship to the main contact
+                            // e.g., "Their Son" means Avi Masri is Larry's son
+                            return (
+                              <>
+                                <strong>
+                                  {selectedContact.firstName} {selectedContact.lastName}
+                                </strong>{" "}
+                                is <strong>{effectiveContactName}</strong>&apos;s{" "}
+                                <strong>
+                                  {cleanRelationshipLabel(selectedRelationshipType)}
+                                </strong>
+                              </>
+                            );
+                          } else if (relationshipTypesWhereMainIsSubject.has(selectedRelationshipType)) {
+                            // The main contact IS the relationship to the related contact  
+                            // e.g., "His Sister" means Larry is Avi Masri's sister
+                            return (
+                              <>
+                                <strong>{effectiveContactName}</strong> is{" "}
+                                <strong>
+                                  {selectedContact.firstName} {selectedContact.lastName}
+                                </strong>&apos;s{" "}
+                                <strong>
+                                  {cleanRelationshipLabel(selectedRelationshipType)}
+                                </strong>
+                              </>
+                            );
+                          } else if (mutualRelationshipTypes.has(selectedRelationshipType)) {
+                            // Mutual relationships - both are the same to each other
+                            const relationshipLabel = selectedRelationshipType.toLowerCase();
+                            const pluralLabel = relationshipLabel === 'fiance' ? 'fiancés' : 
+                                              relationshipLabel === 'relative' ? 'relatives' : 
+                                              relationshipLabel + 's';
+                            return (
+                              <>
+                                <strong>{effectiveContactName}</strong> and{" "}
+                                <strong>
+                                  {selectedContact.firstName} {selectedContact.lastName}
+                                </strong>{" "}
+                                are <strong>{pluralLabel}</strong>
+                              </>
+                            );
+                          } else if (professionalRelationshipTypes.has(selectedRelationshipType)) {
+                            // Professional relationships
+                            if (selectedRelationshipType === "Employee") {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> is an employee of{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>
+                                </>
+                              );
+                            } else if (selectedRelationshipType === "Employer") {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> is the employer of{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>
+                                </>
+                              );
+                            } else if (selectedRelationshipType === "Owner") {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> is the owner of{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>
+                                </>
+                              );
+                            } else {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> has a business relationship with{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>
+                                </>
+                              );
+                            }
+                          } else if (communityRelationshipTypes.has(selectedRelationshipType)) {
+                            // Community/Religious relationships
+                            if (selectedRelationshipType === "Rabbi") {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> is the rabbi of{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>
+                                </>
+                              );
+                            } else if (selectedRelationshipType === "Congregant") {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> and{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>{" "}
+                                  are congregants together
+                                </>
+                              );
+                            } else if (selectedRelationshipType === "Donor") {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> is a donor to{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>
+                                </>
+                              );
+                            } else if (selectedRelationshipType === "Chevrusa") {
+                              return (
+                                <>
+                                  <strong>{effectiveContactName}</strong> and{" "}
+                                  <strong>
+                                    {selectedContact.firstName} {selectedContact.lastName}
+                                  </strong>{" "}
+                                  are study partners (chevrusas)
+                                </>
+                              );
+                            }
+                          } else if (generalRelationshipTypes.has(selectedRelationshipType)) {
+                            // General relationship types
+                            const relationshipLabel = selectedRelationshipType.toLowerCase();
+                            return (
+                              <>
+                                <strong>{effectiveContactName}</strong> is a{" "}
+                                <strong>{relationshipLabel}</strong> of{" "}
+                                <strong>
+                                  {selectedContact.firstName} {selectedContact.lastName}
+                                </strong>
+                              </>
+                            );
+                          } else {
+                            // Default fallback for any unhandled cases
+                            return (
+                              <>
+                                <strong>{effectiveContactName}</strong> is related to{" "}
+                                <strong>
+                                  {selectedContact.firstName} {selectedContact.lastName}
+                                </strong>{" "}
+                                as <strong>{selectedRelationshipType.toLowerCase()}</strong>
+                              </>
+                            );
+                          }
+                        })()}
                       </div>
                       <div className="flex items-center gap-2">
                         <span>Status:</span>
