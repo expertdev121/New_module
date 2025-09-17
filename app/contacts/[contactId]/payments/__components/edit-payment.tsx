@@ -398,11 +398,6 @@ export default function EditPaymentDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: EditPaymentDialogProps) {
-  const {
-    data: exchangeRatesData,
-    isLoading: isLoadingRates,
-    error: ratesError,
-  } = useExchangeRates();
   const { data: solicitorsData } = useSolicitors({ status: "active" });
   const contactId = useContactId() || propContactId || payment.contactId;
 
@@ -530,6 +525,12 @@ export default function EditPaymentDialog({
   const watchedAllocations = form.watch("allocations");
   const watchedIsThirdParty = form.watch("isThirdPartyPayment");
   const watchedThirdPartyContactId = form.watch("thirdPartyContactId");
+
+  const {
+    data: exchangeRatesData,
+    isLoading: isLoadingRates,
+    error: ratesError,
+  } = useExchangeRates(watchedReceivedDate || undefined);
 
   const totalAllocatedAmount = (watchedAllocations || []).reduce(
     (sum, alloc) => sum + (alloc.allocatedAmount || 0),
@@ -797,25 +798,33 @@ export default function EditPaymentDialog({
 
   // Enhanced exchange rate and date validation effect
   useEffect(() => {
-    // Use received date if available, otherwise fall back to payment date
-    const effectiveDate = watchedReceivedDate || watchedPaymentDate;
-    
-    if (!effectiveDate) return;
-    
-    const selectedDate = new Date(effectiveDate);
+    // Determine the date to use for exchange rate: receivedDate if available, else today's date
     const today = new Date();
-    
-    // Reset time to compare dates only
-    selectedDate.setHours(0, 0, 0, 0);
     today.setHours(0, 0, 0, 0);
-    
+
+    let dateToUse: string | null = null;
+    if (watchedReceivedDate) {
+      dateToUse = watchedReceivedDate;
+    } else {
+      // Use today's date in ISO format if no received date
+      dateToUse = today.toISOString().split("T")[0];
+    }
+
+    if (!dateToUse) return;
+
+    const selectedDate = new Date(dateToUse);
+    selectedDate.setHours(0, 0, 0, 0);
+
     // Clear any existing payment date errors since future dates are now allowed
     form.clearErrors("paymentDate");
-    // Auto-refresh exchange rate when currency and effective date are available
+
+    // Refetch exchange rates when dateToUse or currency changes
+    // useExchangeRates hook should handle refetching based on dateToUse
+
     if (watchedCurrency && exchangeRatesData?.data?.rates) {
       const rate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
       form.setValue("exchangeRate", rate);
-      
+
       // Show appropriate toast based on which date is being used
       if (watchedReceivedDate) {
         if (selectedDate > today) {
@@ -823,15 +832,11 @@ export default function EditPaymentDialog({
         } else {
           toast.success(`Exchange rate updated based on received date`);
         }
-      } else if (watchedPaymentDate) {
-        if (selectedDate > today) {
-          toast.info(`Using today's exchange rate (payment date is in future)`);
-        } else {
-          toast.info(`Using today's exchange rate (no received date set)`);
-        }
+      } else {
+        toast.info(`Using today's exchange rate (no received date set, using today's date)`);
       }
     }
-  }, [watchedCurrency, watchedPaymentDate, watchedReceivedDate, exchangeRatesData, form]);
+  }, [watchedCurrency, watchedReceivedDate, exchangeRatesData, form]);
 
   useEffect(() => {
     if (watchedAmount && watchedExchangeRate) {

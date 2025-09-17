@@ -16,7 +16,18 @@ const rateCache = new Map<string, ExchangeRateData>();
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
+  let date = searchParams.get("date") || new Date().toISOString().split("T")[0];
+
+  // For future dates, use today's date since future rates don't exist
+  const requestedDate = new Date(date);
+  const today = new Date();
+  requestedDate.setHours(0, 0, 0, 0);
+  today.setHours(0, 0, 0, 0);
+
+  const isFutureDate = requestedDate > today;
+  if (isFutureDate) {
+    date = today.toISOString().split("T")[0];
+  }
 
   if (rateCache.has(date)) {
     return NextResponse.json(rateCache.get(date)!);
@@ -68,7 +79,7 @@ export async function GET(request: Request) {
       targetCurrency: currency as ExchangeRateRow["targetCurrency"],
       rate,
       date,
-      updatedAt: new Date().toISOString().split("T")[0],
+      updatedAt: new Date().toISOString(),
     }));
 
   if (insertData.length > 0) {
@@ -83,7 +94,7 @@ export async function GET(request: Request) {
         ],
         set: {
           rate: sql`excluded.rate`,
-          updatedAt: sql`excluded.updated_at`, 
+          updatedAt: sql`excluded."updated_at"`,
         },
       });
   }

@@ -285,42 +285,6 @@ export default function PaymentFormDialog({
   contactId: propContactId,
   showPledgeSelector = false,
 }: PaymentDialogProps) {
-  const {
-    data: exchangeRatesData,
-    isLoading: isLoadingRates,
-    error: ratesError,
-    refetch: refetchRates,
-  } = useExchangeRates();
-  const { data: solicitorsData, isLoading: isLoadingSolicitors } = useSolicitors({ status: "active" });
-  const createPaymentMutation = useCreatePaymentMutation();
-
-  const [open, setOpen] = useState(false);
-  const [showSolicitorSection, setShowSolicitorSection] = useState(false);
-  const [pledgeDialogOpen, setPledgeDialogOpen] = useState(false);
-  const [contactSearch, setContactSearch] = useState("");
-  const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
-
-  // Refs to store last valid date values
-  const lastValidPaymentDateRef = useRef<string | null>(null);
-  const lastValidReceivedDateRef = useRef<string | null>(null);
-  const lastValidCheckDateRef = useRef<string | null>(null);
-
-  const contactId = useContactId() || propContactId;
-
-  const { data: contactsData, isLoading: isLoadingContacts } = useContacts(contactSearch);
-
-  // Get pledges for the current contact or third-party contact
-  const targetContactId = selectedThirdPartyContact?.id || contactId;
-  const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
-    {
-      contactId: targetContactId as number,
-      page: 1,
-      limit: 100,
-      status: undefined,
-    },
-    { enabled: !!targetContactId }
-  );
-
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
@@ -381,6 +345,7 @@ export default function PaymentFormDialog({
   const watchedCurrency = form.watch("currency");
   const watchedAmount = form.watch("amount");
   const watchedPaymentDate = form.watch("paymentDate");
+  const watchedReceivedDate = form.watch("receivedDate");
   const watchedSolicitorId = form.watch("solicitorId");
   const watchedBonusPercentage = form.watch("bonusPercentage");
   const watchedExchangeRate = form.watch("exchangeRate");
@@ -388,6 +353,43 @@ export default function PaymentFormDialog({
   const watchedIsSplitPayment = form.watch("isSplitPayment");
   const watchedMainPledgeId = form.watch("pledgeId");
   const watchedIsThirdParty = form.watch("isThirdPartyPayment");
+
+  const { data: solicitorsData, isLoading: isLoadingSolicitors } = useSolicitors({ status: "active" });
+  const createPaymentMutation = useCreatePaymentMutation();
+
+  const [open, setOpen] = useState(false);
+  const [showSolicitorSection, setShowSolicitorSection] = useState(false);
+  const [pledgeDialogOpen, setPledgeDialogOpen] = useState(false);
+  const [contactSearch, setContactSearch] = useState("");
+  const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
+
+  // Refs to store last valid date values
+  const lastValidPaymentDateRef = useRef<string | null>(null);
+  const lastValidReceivedDateRef = useRef<string | null>(null);
+  const lastValidCheckDateRef = useRef<string | null>(null);
+
+  const contactId = useContactId() || propContactId;
+
+  const { data: contactsData, isLoading: isLoadingContacts } = useContacts(contactSearch);
+
+  // Get pledges for the current contact or third-party contact
+  const targetContactId = selectedThirdPartyContact?.id || contactId;
+  const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
+    {
+      contactId: targetContactId as number,
+      page: 1,
+      limit: 100,
+      status: undefined,
+    },
+    { enabled: !!targetContactId }
+  );
+
+  const {
+    data: exchangeRatesData,
+    isLoading: isLoadingRates,
+    error: ratesError,
+    refetch: refetchRates,
+  } = useExchangeRates(watchedReceivedDate || undefined);
 
   const totalAllocatedAmount = (watchedAllocations || []).reduce(
     (sum, alloc) => sum + (alloc.allocatedAmount || 0),
