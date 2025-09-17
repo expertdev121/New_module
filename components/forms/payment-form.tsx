@@ -209,7 +209,7 @@ export default function PaymentDialog({
       paymentDate: new Date().toISOString().split("T")[0],
       receivedDate: null,
       paymentMethod: "cash",
-      methodDetail: null,
+      methodDetail: undefined,
       account: "",
       checkDate: null,
       checkNumber: null,
@@ -511,13 +511,25 @@ export default function PaymentDialog({
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Payment Method</FormLabel>
-                      <Select value={field.value ?? ""} onValueChange={field.onChange}>
+                      <Select
+                        value={field.value ?? NO_SELECTION}
+                        onValueChange={(value) => {
+                          if (value === NO_SELECTION) {
+                            field.onChange(null);
+                          } else if (value === field.value) {
+                            field.onChange(null);
+                          } else {
+                            field.onChange(value);
+                          }
+                        }}
+                      >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select payment method" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent className="max-h-[200px] overflow-y-auto">
+                          <SelectItem value={NO_SELECTION}>None</SelectItem>
                           {paymentMethodValues.map((method) => (
                             <SelectItem key={method} value={method}>
                               {method}
@@ -546,7 +558,7 @@ export default function PaymentDialog({
                             <SelectValue placeholder="Select method detail" />
                           </SelectTrigger>
                         </FormControl>
-                        <SelectContent>
+                        <SelectContent className="max-h-[200px] overflow-y-auto">
                           <SelectItem value={NO_SELECTION}>None</SelectItem>
                           {methodDetailValues.map((detail) => (
                             <SelectItem key={detail} value={detail}>

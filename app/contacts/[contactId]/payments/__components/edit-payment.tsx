@@ -303,6 +303,8 @@ const accountOptions = [
   { value: "Pagi", label: "Pagi" },
 ] as const;
 
+const NO_SELECTION = "__NONE__"; // Sentinel for 'None' selection for Select components
+
 const editPaymentSchema = z
   .object({
     paymentId: z.number().positive(),
@@ -311,10 +313,11 @@ const editPaymentSchema = z
     amountUsd: z.number().positive("Amount in USD must be positive").optional(),
     amountInPledgeCurrency: z.number().positive("Amount in pledge currency must be positive").optional(),
     exchangeRate: z.number().positive("Exchange rate must be positive").optional(),
+    exchangeRateToPledgeCurrency: z.number().positive("Exchange rate to pledge currency must be positive").optional(),
     paymentDate: z.string().min(1, "Payment date is required").optional(),
     receivedDate: z.string().optional().nullable(),
     methodDetail: z.string().optional().nullable(),
-    paymentMethod: z.string().optional(),
+    paymentMethod: z.string().optional().nullable(),
     paymentStatus: z.string().optional(),
     account: z.string().optional().nullable(),
     checkDate: z.string().optional().nullable(),
@@ -330,12 +333,12 @@ const editPaymentSchema = z
     pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
     paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
     isSplitPayment: z.boolean().optional(),
-    
+
     // Third-party payment fields
     isThirdPartyPayment: z.boolean().optional(),
     thirdPartyContactId: z.number().positive().optional().nullable(),
     payerContactId: z.number().positive().optional().nullable(),
-    
+
     allocations: z
       .array(
         z.object({
@@ -459,22 +462,23 @@ export default function EditPaymentDialog({
       amountUsd: payment.amountUsd ? parseFloat(payment.amountUsd) : undefined,
       amountInPledgeCurrency: payment.amountInPledgeCurrency ? parseFloat(payment.amountInPledgeCurrency) : undefined,
       exchangeRate: payment.exchangeRate ? parseFloat(payment.exchangeRate) : 1,
+      exchangeRateToPledgeCurrency: 1,
       paymentDate: payment.paymentDate,
       receivedDate: payment.receivedDate || null,
-      paymentMethod: payment.paymentMethod,
-      methodDetail: payment.methodDetail || null,
-      paymentStatus: payment.paymentStatus,
-      account: payment.account || null,
-      checkDate: payment.checkDate || null,
-      checkNumber: payment.checkNumber || null,
-      receiptNumber: isSplitPayment ? null : payment.receiptNumber || null,
-      receiptType: isSplitPayment ? null : payment.receiptType || null,
+      paymentMethod: payment.paymentMethod ?? undefined,
+      methodDetail: payment.methodDetail ?? undefined,
+      paymentStatus: payment.paymentStatus ?? undefined,
+      account: payment.account ?? undefined,
+      checkDate: payment.checkDate ?? undefined,
+      checkNumber: payment.checkNumber ?? undefined,
+      receiptNumber: isSplitPayment ? undefined : (payment.receiptNumber ?? undefined),
+      receiptType: isSplitPayment ? undefined : (payment.receiptType ?? undefined),
       receiptIssued: isSplitPayment ? false : payment.receiptIssued,
-      solicitorId: payment.solicitorId || null,
-      bonusPercentage: payment.bonusPercentage ? parseFloat(payment.bonusPercentage) : null,
-      bonusAmount: payment.bonusAmount ? parseFloat(payment.bonusAmount) : null,
-      bonusRuleId: payment.bonusRuleId || null,
-      notes: payment.notes || null,
+      solicitorId: payment.solicitorId ?? undefined,
+      bonusPercentage: payment.bonusPercentage ? parseFloat(payment.bonusPercentage) : undefined,
+      bonusAmount: payment.bonusAmount ? parseFloat(payment.bonusAmount) : undefined,
+      bonusRuleId: payment.bonusRuleId ?? undefined,
+      notes: payment.notes ?? undefined,
       pledgeId: payment.pledgeId || null,
       paymentPlanId: payment.paymentPlanId || null,
       isSplitPayment: isSplitPayment,
@@ -525,6 +529,7 @@ export default function EditPaymentDialog({
   const watchedAllocations = form.watch("allocations");
   const watchedIsThirdParty = form.watch("isThirdPartyPayment");
   const watchedThirdPartyContactId = form.watch("thirdPartyContactId");
+  const watchedPledgeId = form.watch("pledgeId");
 
   const {
     data: exchangeRatesData,
@@ -674,11 +679,11 @@ export default function EditPaymentDialog({
   const handleUndoSplitPayment = (targetPledgeId: number) => {
     // Find the allocation for the target pledge to get receipt info
     const targetAllocation = watchedAllocations?.find(alloc => alloc.pledgeId === targetPledgeId);
-    
+
     // Convert to regular payment
     form.setValue("isSplitPayment", false);
     form.setValue("pledgeId", targetPledgeId);
-    
+
     // Restore receipt information from the target allocation if available
     if (targetAllocation) {
       form.setValue("receiptNumber", targetAllocation.receiptNumber);
@@ -690,10 +695,10 @@ export default function EditPaymentDialog({
       form.setValue("receiptType", null);
       form.setValue("receiptIssued", false);
     }
-    
+
     // Clear allocations
     replace([]);
-    
+
     toast.success(`Split payment converted to regular payment for Pledge #${targetPledgeId}`);
   };
 
@@ -845,12 +850,91 @@ export default function EditPaymentDialog({
     }
   }, [watchedAmount, watchedExchangeRate, form]);
 
+  // Fix pledge options with useMemo and deduplication
+  const pledgeOptions = useMemo(() => {
+    if (!pledgesData?.pledges) return [];
+    // Remove duplicates by pledge ID
+    const uniquePledges = pledgesData.pledges.reduce((acc, pledge) => {
+      if (!acc.find(p => p.id === pledge.id)) {
+        acc.push(pledge);
+      }
+      return acc;
+    }, [] as Pledge[]);
+
+    return uniquePledges.map((pledge: Pledge) => ({
+      label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
+      value: pledge.id,
+      balance: parseFloat(pledge.balance),
+      currency: pledge.currency,
+      description: pledge.description || "No description",
+      originalAmount: parseFloat(pledge.originalAmount),
+    }));
+  }, [pledgesData?.pledges]);
+
+  // Calculate amount in pledge currency
+  useEffect(() => {
+    if (watchedAmount && watchedCurrency && watchedPledgeId != null && exchangeRatesData?.data?.rates && !watchedIsSplitPayment) {
+      const pledgeOption = pledgeOptions.find(p => p.value === watchedPledgeId);
+      if (pledgeOption) {
+        const pledgeCurrency = pledgeOption.currency;
+
+        // Skip calculation if payment currency and pledge currency are the same
+        if (watchedCurrency === pledgeCurrency) {
+          form.setValue("amountInPledgeCurrency", watchedAmount);
+          return;
+        }
+
+        const paymentCurrencyRate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
+        const pledgeCurrencyRate = parseFloat(exchangeRatesData.data.rates[pledgeCurrency]) || 1;
+
+        if (paymentCurrencyRate && pledgeCurrencyRate) {
+          // Convert payment amount to USD first, then to pledge currency
+          const amountInUSD = watchedAmount / paymentCurrencyRate;
+          const amountInPledgeCurrency = amountInUSD * pledgeCurrencyRate;
+          form.setValue("amountInPledgeCurrency", Math.round(amountInPledgeCurrency * 100) / 100);
+        }
+      }
+    } else if (watchedIsSplitPayment || !watchedPledgeId) {
+      // For split payments or no pledge selected, clear the field
+      // Use undefined instead of null for TypeScript compatibility
+      form.setValue("amountInPledgeCurrency", undefined);
+    }
+  }, [watchedAmount, watchedCurrency, watchedPledgeId, exchangeRatesData, watchedIsSplitPayment, pledgeOptions, form]);
+
+  useEffect(() => {
+    if (watchedCurrency && watchedPledgeId != null && exchangeRatesData?.data?.rates && !watchedIsSplitPayment) {
+      const pledgeOption = pledgeOptions.find(p => p.value === watchedPledgeId);
+      if (pledgeOption) {
+        const pledgeCurrency = pledgeOption.currency;
+
+        // Skip calculation if payment currency and pledge currency are the same
+        if (watchedCurrency === pledgeCurrency) {
+          form.setValue("exchangeRateToPledgeCurrency", 1);
+          return;
+        }
+
+        const paymentCurrencyRate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
+        const pledgeCurrencyRate = parseFloat(exchangeRatesData.data.rates[pledgeCurrency]) || 1;
+
+        if (paymentCurrencyRate && pledgeCurrencyRate) {
+          // Calculate the exchange rate from payment currency to pledge currency
+          const exchangeRateToPledge = pledgeCurrencyRate / paymentCurrencyRate;
+          form.setValue("exchangeRateToPledgeCurrency", Math.round(exchangeRateToPledge * 10000) / 10000);
+        }
+      }
+    } else if (watchedIsSplitPayment || !watchedPledgeId) {
+      // For split payments or no pledge selected, reset to 1
+      form.setValue("exchangeRateToPledgeCurrency", 1);
+    }
+  }, [watchedCurrency, watchedPledgeId, exchangeRatesData, watchedIsSplitPayment, pledgeOptions, form]);
+
   useEffect(() => {
     if (watchedBonusPercentage != null && watchedAmount != null) {
       const bonusAmount = (watchedAmount * watchedBonusPercentage) / 100;
       form.setValue("bonusAmount", Math.round(bonusAmount * 100) / 100);
     } else {
-      form.setValue("bonusAmount", null);
+      // Use undefined instead of null for TypeScript compatibility
+      form.setValue("bonusAmount", undefined);
     }
   }, [watchedBonusPercentage, watchedAmount, form]);
 
@@ -888,6 +972,7 @@ export default function EditPaymentDialog({
         ? parseFloat(payment.amountInPledgeCurrency)
         : undefined,
       exchangeRate: payment.exchangeRate ? parseFloat(payment.exchangeRate) : 1,
+      exchangeRateToPledgeCurrency: 1,
       paymentDate: payment.paymentDate,
       receivedDate: payment.receivedDate || null,
       paymentMethod: payment.paymentMethod,
@@ -919,12 +1004,12 @@ export default function EditPaymentDialog({
     setShowAmountChangeWarning(false);
     setSelectedThirdPartyContact(null);
     setContactSearch("");
-    
+
     // If editing an existing third-party payment, restore the contact
     if (isExistingThirdPartyPayment && existingThirdPartyContactId) {
       // This will be handled by the effect that loads the existing contact
     }
-    
+
     // Reset allocations
     const initialAllocations = isSplitPayment && payment.allocations
       ? payment.allocations.map(alloc => ({
@@ -951,8 +1036,14 @@ export default function EditPaymentDialog({
     replace(initialAllocations);
   }, [form, payment, isSplitPayment, replace, isExistingThirdPartyPayment, existingThirdPartyContactId]);
 
-  const watchedPledgeId = form.watch("pledgeId");
   const updatePaymentMutation = useUpdatePaymentMutation(watchedIsSplitPayment ? payment.id : watchedPledgeId || payment.pledgeId || 0);
+
+  // Get pledge currency for exchange rate display
+  const selectedPledgeCurrency = useMemo(() => {
+    if (!watchedPledgeId || !pledgesData?.pledges) return null;
+    const pledge = pledgesData.pledges.find(p => p.id === watchedPledgeId);
+    return pledge?.currency || null;
+  }, [watchedPledgeId, pledgesData?.pledges]);
 
   const onSubmit = async (data: EditPaymentFormData) => {
     try {
@@ -1050,27 +1141,6 @@ export default function EditPaymentDialog({
       commissionRate: solicitor.commissionRate,
       contact: solicitor.contact,
     })) || [];
-
-  // Fix pledge options with useMemo and deduplication
-  const pledgeOptions = useMemo(() => {
-    if (!pledgesData?.pledges) return [];
-    // Remove duplicates by pledge ID
-    const uniquePledges = pledgesData.pledges.reduce((acc, pledge) => {
-      if (!acc.find(p => p.id === pledge.id)) {
-        acc.push(pledge);
-      }
-      return acc;
-    }, [] as Pledge[]);
-
-    return uniquePledges.map((pledge: Pledge) => ({
-      label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
-      value: pledge.id,
-      balance: parseFloat(pledge.balance),
-      currency: pledge.currency,
-      description: pledge.description || "No description",
-      originalAmount: parseFloat(pledge.originalAmount),
-    }));
-  }, [pledgesData?.pledges]);
 
   const contactOptions = useMemo(() => {
     if (!contactsData?.contacts) return [];
@@ -1537,7 +1607,7 @@ export default function EditPaymentDialog({
                     control={form.control}
                     name="exchangeRate"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="hidden"  >
                         <FormLabel>
                           Exchange Rate (to USD)
                           {watchedReceivedDate ? (
@@ -1572,8 +1642,66 @@ export default function EditPaymentDialog({
                     control={form.control}
                     name="amountUsd"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="hidden">
                         <FormLabel>Amount (USD)</FormLabel>
+                        <FormControl>
+                          <Input {...field} type="number" step="0.01" readOnly className="opacity-70" />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Exchange Rate to Pledge Currency */}
+                  <FormField
+                    control={form.control}
+                    name="exchangeRateToPledgeCurrency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          Exchange Rate (to {selectedPledgeCurrency || 'Pledge Currency'})
+                          {watchedReceivedDate ? (
+                            <span className="text-sm text-blue-600 ml-2">
+                              (Based on received date: {new Date(watchedReceivedDate).toLocaleDateString()})
+                            </span>
+                          ) : watchedPaymentDate ? (
+                            <span className="text-sm text-orange-600 ml-2">
+                              (Based on today date - no received date set)
+                            </span>
+                          ) : null}
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            {...field}
+                            type="number"
+                            step="0.0001"
+                            readOnly={isLoadingRates || watchedIsSplitPayment || !watchedPledgeId || (watchedCurrency === selectedPledgeCurrency)}
+                            className={isLoadingRates ? "opacity-70" : ""}
+                            onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                          />
+                        </FormControl>
+                        {!watchedPledgeId && !watchedIsSplitPayment && (
+                          <p className="text-sm text-gray-500">Select a pledge to see exchange rate</p>
+                        )}
+                        {watchedCurrency === selectedPledgeCurrency && watchedPledgeId && (
+                          <p className="text-sm text-green-600">Same currency - no conversion needed</p>
+                        )}
+                        {watchedIsSplitPayment && (
+                          <p className="text-sm text-gray-500">Not applicable for split payments</p>
+                        )}
+                        {isLoadingRates && <p className="text-sm text-gray-500">Fetching latest rates...</p>}
+                        {ratesError && <p className="text-sm text-red-500">Error fetching rates.</p>}
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  {/* Amount in Pledge Currency */}
+                  <FormField
+                    control={form.control}
+                    name="amountInPledgeCurrency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amount in Pledge Currency</FormLabel>
                         <FormControl>
                           <Input {...field} type="number" step="0.01" readOnly className="opacity-70" />
                         </FormControl>
@@ -1595,9 +1723,9 @@ export default function EditPaymentDialog({
                           )}
                         </FormLabel>
                         <FormControl>
-                          <Input 
-                            {...field} 
-                            type="date" 
+                          <Input
+                            {...field}
+                            type="date"
                           />
                         </FormControl>
                         {isPaymentPlanPayment && (
@@ -1820,7 +1948,7 @@ export default function EditPaymentDialog({
                                 <FormLabel>Receipt Type</FormLabel>
                                 <Select
                                   value={field.value || ""}
-                                  onValueChange={(val) => field.onChange(val === "__NONE_SELECTED__" ? null : val)}
+                                  onValueChange={(val) => field.onChange(val === NO_SELECTION ? null : val)}
                                 >
                                   <FormControl>
                                     <SelectTrigger>
@@ -1828,7 +1956,7 @@ export default function EditPaymentDialog({
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
-                                    <SelectItem value="__NONE_SELECTED__">None</SelectItem>
+                                    <SelectItem value={NO_SELECTION}>None</SelectItem>
                                     {receiptTypes.map((type) => (
                                       <SelectItem key={type.value} value={type.value}>
                                         {type.label}
@@ -1946,48 +2074,57 @@ export default function EditPaymentDialog({
                               <Button
                                 variant="outline"
                                 role="combobox"
-                                className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
                               >
                                 {field.value
                                   ? paymentMethods.find((method) => method.value === field.value)?.label
-                                  : "Select a payment method"}
+                                  : "Select payment method"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0">
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                             <Command>
                               <CommandInput placeholder="Search payment methods..." />
-                              <CommandEmpty>No payment method found.</CommandEmpty>
-                              <CommandGroup>
-                                <CommandItem
-                                  value=""
-                                  onSelect={() => {
-                                    form.setValue("paymentMethod", "");
-                                  }}
-                                  className="text-muted-foreground"
-                                >
-                                  <div className="mr-2 h-4 w-4" />
-                                  Select a payment method
-                                </CommandItem>
-                                {paymentMethods.map((method) => (
+                              <CommandList className="max-h-[200px] overflow-y-auto">
+                                <CommandEmpty>No payment method found.</CommandEmpty>
+                                <CommandGroup>
                                   <CommandItem
-                                    key={method.value}
-                                    value={method.value}
+                                    value="None"
                                     onSelect={() => {
-                                      form.setValue("paymentMethod", method.value);
+                                      form.setValue("paymentMethod", null, { shouldValidate: true, shouldDirty: true });
                                     }}
                                   >
                                     <Check
                                       className={cn(
                                         "mr-2 h-4 w-4",
-                                        field.value === method.value ? "opacity-100" : "opacity-0"
+                                        !field.value ? "opacity-100" : "opacity-0"
                                       )}
                                     />
-                                    {method.label}
+                                    None
                                   </CommandItem>
-                                ))}
-                              </CommandGroup>
+                                  {paymentMethods.map((method, index) => (
+                                    <CommandItem
+                                      value={method.label}
+                                      key={`payment-method-${method.value}-${index}`}
+                                      onSelect={() => {
+                                        form.setValue("paymentMethod", method.value, { shouldValidate: true, shouldDirty: true });
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          method.value === field.value ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {method.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
                             </Command>
                           </PopoverContent>
                         </Popover>
@@ -2009,39 +2146,57 @@ export default function EditPaymentDialog({
                               <Button
                                 variant="outline"
                                 role="combobox"
-                                className="w-full justify-between"
-                                disabled={!form.watch("paymentMethod")}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
                               >
                                 {field.value
                                   ? methodDetails.find((detail) => detail.value === field.value)?.label
-                                  : "Select a method detail"}
+                                  : "Select method detail"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0">
+                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                             <Command>
-                              <CommandInput placeholder="Search method detail..." />
-                              <CommandEmpty>No method detail found.</CommandEmpty>
-                              <CommandGroup>
-                                {methodDetails.map((detail) => (
+                              <CommandInput placeholder="Search method details..." />
+                              <CommandList className="max-h-[200px] overflow-y-auto">
+                                <CommandEmpty>No method detail found.</CommandEmpty>
+                                <CommandGroup>
                                   <CommandItem
-                                    key={detail.value}
-                                    value={detail.value}
+                                    value="None"
                                     onSelect={() => {
-                                      form.setValue("methodDetail", detail.value);
+                                      form.setValue("methodDetail", undefined, { shouldValidate: true, shouldDirty: true });
                                     }}
                                   >
                                     <Check
                                       className={cn(
                                         "mr-2 h-4 w-4",
-                                        field.value === detail.value ? "opacity-100" : "opacity-0"
+                                        !field.value ? "opacity-100" : "opacity-0"
                                       )}
                                     />
-                                    {detail.label}
+                                    None
                                   </CommandItem>
-                                ))}
-                              </CommandGroup>
+                                  {methodDetails.map((detail, index) => (
+                                    <CommandItem
+                                      value={detail.value}
+                                      key={`method-detail-${detail.value}-${index}`}
+                                      onSelect={() => {
+                                        form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          detail.value === field.value ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {detail.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
                             </Command>
                           </PopoverContent>
                         </Popover>

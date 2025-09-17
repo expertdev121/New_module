@@ -242,6 +242,8 @@ const paymentSchema = z.object({
   currency: z.enum(supportedCurrencies).optional(),
   amountUsd: z.number().optional(),
   exchangeRate: z.number().optional(),
+  amountInPledgeCurrency: z.number().optional(),
+  exchangeRateToPledgeCurrency: z.number().optional(),
   paymentDate: z.string().optional(),
   receivedDate: z.string().optional().nullable(),
   paymentMethod: z.string().optional(),
@@ -292,10 +294,12 @@ export default function PaymentFormDialog({
       currency: "USD",
       exchangeRate: 1,
       amountUsd: 0,
+      amountInPledgeCurrency: 0,
+      exchangeRateToPledgeCurrency: 1,
       paymentDate: new Date().toISOString().split("T")[0],
       receivedDate: null,
       paymentMethod: "cash",
-      methodDetail: null,
+      methodDetail: undefined,
       account: "",
       checkDate: null,
       checkNumber: null,
@@ -384,6 +388,13 @@ export default function PaymentFormDialog({
     { enabled: !!targetContactId }
   );
 
+  // Get pledge currency for exchange rate display
+  const selectedPledgeCurrency = useMemo(() => {
+    if (!watchedMainPledgeId || !pledgesData?.pledges) return null;
+    const pledge = pledgesData.pledges.find(p => p.id === watchedMainPledgeId);
+    return pledge?.currency || null;
+  }, [watchedMainPledgeId, pledgesData?.pledges]);
+
   const {
     data: exchangeRatesData,
     isLoading: isLoadingRates,
@@ -464,6 +475,52 @@ export default function PaymentFormDialog({
     }
   }, [watchedBonusPercentage, watchedAmount, form]);
 
+  // Calculate pledge exchange rate and amount in pledge currency
+  useEffect(() => {
+    if (selectedPledgeCurrency && watchedCurrency && exchangeRatesData?.data?.rates) {
+      const paymentCurrency = watchedCurrency;
+      const pledgeCurrency = selectedPledgeCurrency;
+
+      if (paymentCurrency === pledgeCurrency) {
+        // Same currency, exchange rate is 1
+        form.setValue("exchangeRateToPledgeCurrency", 1, { shouldValidate: true, shouldDirty: true });
+        form.setValue("amountInPledgeCurrency", watchedAmount || 0, { shouldValidate: true, shouldDirty: true });
+      } else {
+        // Different currencies, calculate exchange rate
+        let exchangeRate = 1;
+
+        if (paymentCurrency === "USD") {
+          // Payment in USD, pledge in foreign currency
+          exchangeRate = getExchangeRate(pledgeCurrency);
+        } else if (pledgeCurrency === "USD") {
+          // Payment in foreign currency, pledge in USD
+          exchangeRate = 1 / getExchangeRate(paymentCurrency);
+        } else {
+          // Both currencies are foreign, convert through USD
+          const paymentToUsdRate = getExchangeRate(paymentCurrency);
+          const pledgeToUsdRate = getExchangeRate(pledgeCurrency);
+          exchangeRate = pledgeToUsdRate / paymentToUsdRate;
+        }
+
+        form.setValue("exchangeRateToPledgeCurrency", Math.round(exchangeRate * 10000) / 10000, {
+          shouldValidate: true,
+          shouldDirty: true,
+        });
+
+        // Calculate amount in pledge currency
+        const amountInPledgeCurrency = (watchedAmount || 0) * exchangeRate;
+        form.setValue("amountInPledgeCurrency", Math.round(amountInPledgeCurrency * 100) / 100, {
+          shouldValidate: true,
+          shouldDirty: true,
+        });
+      }
+    } else {
+      // No pledge selected or no exchange rates available
+      form.setValue("exchangeRateToPledgeCurrency", 1, { shouldValidate: true, shouldDirty: true });
+      form.setValue("amountInPledgeCurrency", watchedAmount || 0, { shouldValidate: true, shouldDirty: true });
+    }
+  }, [selectedPledgeCurrency, watchedCurrency, watchedAmount, exchangeRatesData, form]);
+
   const resetForm = useCallback(() => {
     form.reset({
       amount: 0,
@@ -473,7 +530,7 @@ export default function PaymentFormDialog({
       paymentDate: new Date().toISOString().split("T")[0],
       receivedDate: null,
       paymentMethod: "cash",
-      methodDetail: null,
+      methodDetail: undefined,
       account: "",
       checkDate: null,
       checkNumber: null,
@@ -963,7 +1020,7 @@ export default function PaymentFormDialog({
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                               <Command>
                                 <CommandInput placeholder="Search pledges..." className="h-9" />
-                                <CommandList>
+                                <CommandList className="max-h-[200px] overflow-y-auto">
                                   <CommandEmpty>No pledge found.</CommandEmpty>
                                   <CommandGroup>
                                     {pledgeOptions.map((pledge: any, index) => (
@@ -971,13 +1028,20 @@ export default function PaymentFormDialog({
                                         value={pledge.label}
                                         key={`pledge-${pledge.value}-${index}`}
                                         onSelect={() => {
-                                          field.onChange(pledge.value);
-                                          form.setValue("allocations.0.pledgeId", pledge.value);
-                                          form.setValue("allocations.0.allocatedAmount", parseFloat(pledge.balance));
-                                          form.setValue("amount", parseFloat(pledge.balance));
-                                          const currency = pledge.currency as typeof supportedCurrencies[number];
-                                          if (supportedCurrencies.includes(currency)) {
-                                            form.setValue("currency", currency);
+                                          if (field.value === pledge.value) {
+                                            field.onChange(null);
+                                            form.setValue("allocations.0.pledgeId", undefined );
+                                            form.setValue("allocations.0.allocatedAmount", 0);
+                                            form.setValue("amount", 0);
+                                          } else {
+                                            field.onChange(pledge.value);
+                                            form.setValue("allocations.0.pledgeId", pledge.value);
+                                            form.setValue("allocations.0.allocatedAmount", parseFloat(pledge.balance));
+                                            form.setValue("amount", parseFloat(pledge.balance));
+                                            const currency = pledge.currency as typeof supportedCurrencies[number];
+                                            if (supportedCurrencies.includes(currency)) {
+                                              form.setValue("currency", currency);
+                                            }
                                           }
                                         }}
                                       >
@@ -1050,7 +1114,7 @@ export default function PaymentFormDialog({
                     control={form.control}
                     name="exchangeRate"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="hidden">
                         <FormLabel>
                           Exchange Rate (1 {watchedCurrency} = {field.value} USD)
                         </FormLabel>
@@ -1061,12 +1125,42 @@ export default function PaymentFormDialog({
                     )}
                   />
 
+                  {/* Hidden USD field */}
                   <FormField
                     control={form.control}
                     name="amountUsd"
                     render={({ field }) => (
+                      <FormItem className="hidden">
+                        <FormControl>
+                          <Input type="number" step="0.01" {...field} disabled />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Pledge Exchange Rate */}
+                  <FormField
+                    control={form.control}
+                    name="exchangeRateToPledgeCurrency"
+                    render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Amount in USD</FormLabel>
+                        <FormLabel>
+                          Pledge Exchange Rate (1 {watchedCurrency} = {field.value} {selectedPledgeCurrency || "USD"})
+                        </FormLabel>
+                        <FormControl>
+                          <Input type="number" step="0.0001" {...field} disabled />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Amount in Pledge Currency */}
+                  <FormField
+                    control={form.control}
+                    name="amountInPledgeCurrency"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Amount in Pledge Currency ({selectedPledgeCurrency || "USD"})</FormLabel>
                         <FormControl>
                           <Input type="number" step="0.01" {...field} disabled />
                         </FormControl>
@@ -1161,26 +1255,28 @@ export default function PaymentFormDialog({
                           <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                             <Command>
                               <CommandInput placeholder="Search payment methods..." />
-                              <CommandEmpty>No payment method found.</CommandEmpty>
-                              <CommandGroup>
-                                {paymentMethods.map((method, index) => (
-                                  <CommandItem
-                                    value={method.label}
-                                    key={`payment-method-${method.value}-${index}`}
-                                    onSelect={() => {
-                                      form.setValue("paymentMethod", method.value, { shouldValidate: true, shouldDirty: true });
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        method.value === field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {method.label}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
+                              <CommandList className="max-h-[200px] overflow-y-auto">
+                                <CommandEmpty>No payment method found.</CommandEmpty>
+                                <CommandGroup>
+                                  {paymentMethods.map((method, index) => (
+                                    <CommandItem
+                                      value={method.label}
+                                      key={`payment-method-${method.value}-${index}`}
+                                      onSelect={() => {
+                                        form.setValue("paymentMethod", method.value, { shouldValidate: true, shouldDirty: true });
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          method.value === field.value ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {method.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
                             </Command>
                           </PopoverContent>
                         </Popover>
@@ -1216,40 +1312,42 @@ export default function PaymentFormDialog({
                           <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                             <Command>
                               <CommandInput placeholder="Search method details..." />
-                              <CommandEmpty>No method detail found.</CommandEmpty>
-                              <CommandGroup>
-                                <CommandItem
-                                  value="None"
-                                  onSelect={() => {
-                                    form.setValue("methodDetail", null, { shouldValidate: true, shouldDirty: true });
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      !field.value ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  None
-                                </CommandItem>
-                                {methodDetails.map((detail, index) => (
+                              <CommandList className="max-h-[200px] overflow-y-auto">
+                                <CommandEmpty>No method detail found.</CommandEmpty>
+                                <CommandGroup>
                                   <CommandItem
-                                    value={detail.value}
-                                    key={`method-detail-${detail.value}-${index}`}
+                                    value="None"
                                     onSelect={() => {
-                                      form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
+                                      form.setValue("methodDetail", undefined, { shouldValidate: true, shouldDirty: true });
                                     }}
                                   >
                                     <Check
                                       className={cn(
                                         "mr-2 h-4 w-4",
-                                        detail.value === field.value ? "opacity-100" : "opacity-0"
+                                        !field.value ? "opacity-100" : "opacity-0"
                                       )}
                                     />
-                                    {detail.label}
+                                    None
                                   </CommandItem>
-                                ))}
-                              </CommandGroup>
+                                  {methodDetails.map((detail, index) => (
+                                    <CommandItem
+                                      value={detail.value}
+                                      key={`method-detail-${detail.value}-${index}`}
+                                      onSelect={() => {
+                                        form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          detail.value === field.value ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {detail.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
                             </Command>
                           </PopoverContent>
                         </Popover>
@@ -1328,30 +1426,30 @@ export default function PaymentFormDialog({
                   />
 
                   <div className="flex gap-4 md:col-span-2">
-                  <FormField
-                    control={form.control}
-                    name="checkDate"
-                    render={({ field }) => (
-                      <FormItem className="flex-1">
-                        <FormLabel>Check Date</FormLabel>
-                        <FormControl>
-                          <Input type="date" {...field} value={field.value ?? ""} onInput={(e) => {
-                            const target = e.target as HTMLInputElement;
-                            const value = target.value;
-                            if (value) {
-                              const parts = value.split("-");
-                              if (parts[0] && parts[0].length > 4) {
-                                target.value = field.value ?? "";
-                                return;
+                    <FormField
+                      control={form.control}
+                      name="checkDate"
+                      render={({ field }) => (
+                        <FormItem className="flex-1">
+                          <FormLabel>Check Date</FormLabel>
+                          <FormControl>
+                            <Input type="date" {...field} value={field.value ?? ""} onInput={(e) => {
+                              const target = e.target as HTMLInputElement;
+                              const value = target.value;
+                              if (value) {
+                                const parts = value.split("-");
+                                if (parts[0] && parts[0].length > 4) {
+                                  target.value = field.value ?? "";
+                                  return;
+                                }
                               }
-                            }
-                            field.onChange(value);
-                          }} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                              field.onChange(value);
+                            }} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
                     <FormField
                       control={form.control}
                       name="checkNumber"

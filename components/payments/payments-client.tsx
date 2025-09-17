@@ -234,8 +234,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     );
   };
 
-  // UPDATED Third Party Payment Badge Component - Shows who you paid for
-  const ThirdPartyBadge = ({ payment }: { payment: ApiPayment }) => {
+    const ThirdPartyBadge = ({ payment }: { payment: ApiPayment }) => {
     if (!payment.isThirdPartyPayment) {
       return <span className="text-gray-400">-</span>;
     }
@@ -416,12 +415,22 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   // Helper function to get applied amount in pledge currency
   const getAppliedAmountPledgeCurrency = (payment: ApiPayment) => {
     if (payment.isSplitPayment && payment.allocations) {
-      // For split payments, we can't easily determine a single pledge currency
-      // so we'll show the total payment amount
-      return { amount: payment.amount, currency: payment.currency };
+      // For split payments, sum all allocated amounts in pledge currency (using allocatedAmountInPledgeCurrency)
+      const totalAllocated = payment.allocations.reduce((sum, allocation) => {
+        return sum + parseFloat(allocation.allocatedAmountInPledgeCurrency?.toString() || "0");
+      }, 0);
+      // Use the pledge currency from the first allocation's pledge if available, else fallback to payment's pledgeOriginalCurrency or payment currency
+      const pledgeCurrency =
+        payment.allocations[0]?.pledge?.currency ||
+        payment.pledgeOriginalCurrency ||
+        payment.currency;
+      return { amount: totalAllocated.toString(), currency: pledgeCurrency };
     }
-    // For non-split payments, use the payment amount and currency
-    return { amount: payment.amount, currency: payment.currency };
+    // For non-split payments, use the payment's amountInPledgeCurrency and pledgeOriginalCurrency
+    return {
+      amount: payment.amountInPledgeCurrency || payment.amount,
+      currency: payment.pledgeOriginalCurrency || payment.currency,
+    };
   };
 
   // Helper function to format method detail with proper capitalization
@@ -555,6 +564,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Applied: Plg Currency
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
+                    Applied: Payment Currency
+                  </TableHead>
+                  <TableHead className="font-semibold text-gray-900">
                     Payment Method
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
@@ -641,6 +653,21 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                               </span>
                             );
                           })()}
+                        </TableCell>
+                        <TableCell>
+                          <span className="font-medium">
+                            {(() => {
+                              if (payment.isSplitPayment && payment.allocations) {
+                                // Sum all allocated amounts in payment currency
+                                const totalPaymentCurrency = payment.allocations.reduce((sum, allocation) => {
+                                  return sum + parseFloat(allocation.allocatedAmount.toString());
+                                }, 0);
+                                return formatCurrency(totalPaymentCurrency.toString(), payment.currency).symbol + formatCurrency(totalPaymentCurrency.toString(), payment.currency).amount;
+                              }
+                              // For non-split payments, use the payment amount and currency
+                              return formatCurrency(payment.amount, payment.currency).symbol + formatCurrency(payment.amount, payment.currency).amount;
+                            })()}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <span className="font-medium text-gray-900">

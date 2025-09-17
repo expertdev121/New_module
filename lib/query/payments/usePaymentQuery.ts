@@ -91,6 +91,7 @@ export interface PaymentAllocation {
   allocatedAmount: number;
   currency: string;
   allocatedAmountUsd: string | undefined;
+  allocatedAmountInPledgeCurrency?: string | number | null;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
