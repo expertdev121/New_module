@@ -2165,9 +2165,9 @@ export default function EditPaymentDialog({
                                 <CommandEmpty>No method detail found.</CommandEmpty>
                                 <CommandGroup>
                                   <CommandItem
-                                    value="None"
+                                    value="__clear_selection__" // Use unique value that won't conflict
                                     onSelect={() => {
-                                      form.setValue("methodDetail", undefined, { shouldValidate: true, shouldDirty: true });
+                                      form.setValue("methodDetail", null, { shouldValidate: true, shouldDirty: true }); // Use null consistently
                                     }}
                                   >
                                     <Check
@@ -2180,7 +2180,7 @@ export default function EditPaymentDialog({
                                   </CommandItem>
                                   {methodDetails.map((detail, index) => (
                                     <CommandItem
-                                      value={detail.value}
+                                      value={detail.label} // Use label for search instead of value
                                       key={`method-detail-${detail.value}-${index}`}
                                       onSelect={() => {
                                         form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
