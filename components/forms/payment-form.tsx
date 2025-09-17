@@ -194,11 +194,6 @@ export default function PaymentDialog({
   pledgeDescription = "",
   onPaymentCreated,
 }: PaymentDialogProps) {
-  const {
-    data: exchangeRatesData,
-    isLoading: isLoadingRates,
-    error: ratesError,
-  } = useExchangeRates();
   const createPaymentMutation = useCreatePaymentMutation();
 
   const [showSolicitorSection, setShowSolicitorSection] = useState(false);
@@ -250,6 +245,13 @@ export default function PaymentDialog({
   const watchedExchangeRate = form.watch("exchangeRate");
   const watchedIsSplitPayment = form.watch("isSplitPayment");
   const watchedAllocations = form.watch("allocations");
+  const watchedPaymentDate = form.watch("paymentDate");
+
+  const {
+    data: exchangeRatesData,
+    isLoading: isLoadingRates,
+    error: ratesError,
+  } = useExchangeRates(watchedPaymentDate);
 
   // Update exchange rate when currency changes
   useEffect(() => {
