@@ -34,8 +34,8 @@ export const receiptTypeEnum = pgEnum("receipt_type", [
 ]);
 
 export const relationshipEnum = pgEnum("relationship", [
-    "mother",
-   "father",
+  "mother",
+  "father",
   "grandmother",
   "grandchild",
   "grandfather",
@@ -43,101 +43,101 @@ export const relationshipEnum = pgEnum("relationship", [
   "parent",
   "step-parent",
   "stepmother",
-   "stepfather",
-   "sister",
-   "brother",
-   "step-sister",
-   "step-brother",
-   "stepson",
-   "daughter",
-   "son",
-   "aunt",
-   "uncle",
-   "aunt/uncle",
-   "nephew",
-   "niece",
-   "grandson",
-   "granddaughter",
-   "cousin (m)",
-   "cousin (f)",
-   "spouse",
-   "partner",
-   "wife",
-   "husband",
-   "former husband",
-   "former wife",
-   "fiance",
-   "divorced co-parent",
-   "separated co-parent",
-   "legal guardian",
-   "legal guardian partner",
-   "friend",
-   "neighbor",
-   "relative",
-   "business",
-   "owner",
-   "chevrusa",
-   "congregant",
-   "rabbi",
-   "contact",
-   "foundation",
-   "donor",
-   "fund",
-   "rebbi contact",
+  "stepfather",
+  "sister",
+  "brother",
+  "step-sister",
+  "step-brother",
+  "stepson",
+  "daughter",
+  "son",
+  "aunt",
+  "uncle",
+  "aunt/uncle",
+  "nephew",
+  "niece",
+  "grandson",
+  "granddaughter",
+  "cousin (m)",
+  "cousin (f)",
+  "spouse",
+  "partner",
+  "wife",
+  "husband",
+  "former husband",
+  "former wife",
+  "fiance",
+  "divorced co-parent",
+  "separated co-parent",
+  "legal guardian",
+  "legal guardian partner",
+  "friend",
+  "neighbor",
+  "relative",
+  "business",
+  "owner",
+  "chevrusa",
+  "congregant",
+  "rabbi",
+  "contact",
+  "foundation",
+  "donor",
+  "fund",
+  "rebbi contact",
   "rebbi contact for",
   "employee",
   "employer",
   "machatunim",
-      "His Sister",
+  "His Sister",
   "Her Sister",
   "Her Brother",
-   "His Brother",
-   "His Aunt",
-   "Her Aunt",
-   "His Uncle",
-   "Her Uncle",
-   "His Parents",
-   "Her Parents",
-   "Her Mother",
-   "His Mother",
-   "His Father",
-   "Her Nephew",
-   "His Nephew",
-   "His Niece",
-   "Her Niece",
-   "His Grandparents",
-   "Her Grandparents",
-   "Her Father",
-   "Their Daughter",
-   "Their Son",
-   "His Daughter",
-   "His Son",
-   "Her Daughter",
-   "Her Son",
-   "His Cousin (M)",
-   "Her Grandfather",
-   "Her Grandmother",
-   "His Grandfather",
-   "His Grandmother",
-   "His Wife",
-   "Her Husband",
-   "Her Former Husband",
-   "His Former Wife",
-   "His Cousin (F)",
-   "Her Cousin (M)",
-   "Her Cousin (F)",
-   "Partner",
-   "Friend",
-   "Neighbor",
-   "Relative",
-   "Business",
-   "Chevrusa",
-   "Congregant",
-   "Contact",
-   "Donor",
-   "Fiance",
-   "Foundation",
-   "Fund",
+  "His Brother",
+  "His Aunt",
+  "Her Aunt",
+  "His Uncle",
+  "Her Uncle",
+  "His Parents",
+  "Her Parents",
+  "Her Mother",
+  "His Mother",
+  "His Father",
+  "Her Nephew",
+  "His Nephew",
+  "His Niece",
+  "Her Niece",
+  "His Grandparents",
+  "Her Grandparents",
+  "Her Father",
+  "Their Daughter",
+  "Their Son",
+  "His Daughter",
+  "His Son",
+  "Her Daughter",
+  "Her Son",
+  "His Cousin (M)",
+  "Her Grandfather",
+  "Her Grandmother",
+  "His Grandfather",
+  "His Grandmother",
+  "His Wife",
+  "Her Husband",
+  "Her Former Husband",
+  "His Former Wife",
+  "His Cousin (F)",
+  "Her Cousin (M)",
+  "Her Cousin (F)",
+  "Partner",
+  "Friend",
+  "Neighbor",
+  "Relative",
+  "Business",
+  "Chevrusa",
+  "Congregant",
+  "Contact",
+  "Donor",
+  "Fiance",
+  "Foundation",
+  "Fund",
   "Her Step Son",
   "His Step Mother",
   "Owner",
@@ -195,9 +195,9 @@ export const machzorEnum = pgEnum("machzor", [
 ]);
 
 export const paymentMethodEnum = pgEnum("payment_method", [
-    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending","bank_transfer",
-    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer",'other'
+  "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
+  "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
+  "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", 'other'
 ]);
 
 export const paymentStatusEnum = pgEnum("payment_status", [
@@ -265,6 +265,7 @@ export const installmentStatusEnum = pgEnum("installment_status", [
 
 export const contact = pgTable("contact", {
   id: serial("id").primaryKey(),
+  ghlContactId: text("ghl_contact_id"),
   firstName: text("first_name").notNull(),
   displayName: text("display_name"),
   lastName: text("last_name").notNull(),
@@ -390,7 +391,7 @@ export type CategoryItem = typeof categoryItem.$inferSelect;
 export type NewCategoryItem = typeof categoryItem.$inferInsert;
 
 export const pledge = pgTable(
-  "pledge", 
+  "pledge",
   {
     id: serial("id").primaryKey(),
     contactId: integer("contact_id")
@@ -662,21 +663,21 @@ export const payment = pgTable(
     relationshipId: integer("relationship_id").references(() => relationships.id, {
       onDelete: "set null",
     }),
-    
+
     // Third-party payment fields
     payerContactId: integer("payer_contact_id").references(() => contact.id, {
       onDelete: "set null",
     }),
     isThirdPartyPayment: boolean("is_third_party_payment").default(false).notNull(),
-    
+
     // Core payment amount and currency
     amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
     currency: currencyEnum("currency").notNull(),
-    
+
     // USD conversion (for reporting)
     amountUsd: numeric("amount_usd", { precision: 10, scale: 2 }),
     exchangeRate: numeric("exchange_rate", { precision: 10, scale: 4 }),
-    
+
     // NEW: Pledge currency conversion (for pledge balance calculations)
     amountInPledgeCurrency: numeric("amount_in_pledge_currency", {
       precision: 10,
@@ -686,7 +687,7 @@ export const payment = pgTable(
       precision: 10,
       scale: 4,
     }),
-    
+
     // NEW: Plan currency conversion (for plan tracking)
     amountInPlanCurrency: numeric("amount_in_plan_currency", {
       precision: 10,
@@ -696,7 +697,7 @@ export const payment = pgTable(
       precision: 10,
       scale: 4,
     }),
-    
+
     paymentDate: date("payment_date").notNull(),
     receivedDate: date("received_date"),
     checkDate: date("check_date"),
@@ -756,12 +757,12 @@ export const paymentAllocations = pgTable(
       () => installmentSchedule.id,
       { onDelete: "set null" }
     ),
-    
+
     // Third-party tracking
     payerContactId: integer("payer_contact_id").references(() => contact.id, {
       onDelete: "set null",
     }),
-    
+
     allocatedAmount: numeric("allocated_amount", {
       precision: 10,
       scale: 2,
@@ -1073,7 +1074,7 @@ export const bonusCalculationRelations = relations(
 export const paymentAllocationsRelations = relations(
   paymentAllocations,
   ({ one }) => ({
-    payment: one(payment, { 
+    payment: one(payment, {
       fields: [paymentAllocations.paymentId],
       references: [payment.id],
     }),
