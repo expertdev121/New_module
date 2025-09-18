@@ -708,11 +708,17 @@ export default function PaymentFormDialog({
       return acc;
     }, [] as Pledge[]);
 
-    return uniquePledges.map((pledge: Pledge) => {
+    // Filter pledges with scheduledAmount > 0
+    const filteredPledges = uniquePledges.filter((pledge) => {
+      const scheduledAmount = parseFloat((pledge as any).scheduledAmount || '0');
+      return scheduledAmount > 0;
+    });
+
+    return filteredPledges.map((pledge: Pledge) => {
       // Calculate unscheduledAmount as balance minus scheduledAmount if available
       const balanceNum = parseFloat(pledge.balance);
-      // Assume pledge.scheduledAmount is provided by API, else 0
-      const scheduledAmountNum = (pledge as any).scheduledAmount ? parseFloat((pledge as any).scheduledAmount) : 0;
+      // Parse scheduledAmount from string to number
+      const scheduledAmountNum = parseFloat((pledge as any).scheduledAmount || '0');
       const unscheduledAmountNum = Math.max(0, balanceNum - scheduledAmountNum);
 
       return {
