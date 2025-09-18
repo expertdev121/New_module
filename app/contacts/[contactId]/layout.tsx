@@ -126,9 +126,10 @@ function ContactDetails({ contactId }: { contactId: number }) {
     );
   }
 
-  const { firstName = "", lastName = "" } = data.contact;
+  const { firstName = "", lastName = "", displayName } = data.contact;
   const fullName = `${firstName} ${lastName}`.trim();
-  const initials = `${firstName?.[0] || ""}${lastName?.[0] || ""}` || "?";
+  const displayNameToShow = displayName && displayName.trim() ? displayName : fullName;
+  const initials = displayNameToShow.split(' ').map(word => word[0]).join('').toUpperCase() || "?";
 
   return (
     <nav className="sticky top-4 z-50 mb-3 flex px-4">
@@ -138,15 +139,15 @@ function ContactDetails({ contactId }: { contactId: number }) {
         </Link>
         <Avatar className="h-12 w-12 border-2 border-white/50">
           <AvatarImage
-            src={`https://api.dicebear.com/7.x/initials/svg?seed=${fullName}`}
-            alt={fullName || "Contact"}
+            src={`https://api.dicebear.com/7.x/initials/svg?seed=${displayNameToShow}`}
+            alt={displayNameToShow || "Contact"}
           />
           <AvatarFallback className="text-sm font-medium bg-gradient-to-br from-purple-500 to-blue-500 text-white">
             {initials}
           </AvatarFallback>
         </Avatar>
         <span className="text-lg font-medium text-gray-800 dark:text-gray-200">
-          {fullName || "Unknown Contact"}
+          {displayNameToShow || "Unknown Contact"}
         </span>
       </div>
     </nav>
