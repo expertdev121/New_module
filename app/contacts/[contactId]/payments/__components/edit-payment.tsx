@@ -850,9 +850,9 @@ export default function EditPaymentDialog({
     }
   }, [watchedAmount, watchedExchangeRate, form]);
 
-  // Fix pledge options with useMemo and deduplication
   const pledgeOptions = useMemo(() => {
     if (!pledgesData?.pledges) return [];
+
     // Remove duplicates by pledge ID
     const uniquePledges = pledgesData.pledges.reduce((acc, pledge) => {
       if (!acc.find(p => p.id === pledge.id)) {
@@ -861,7 +861,13 @@ export default function EditPaymentDialog({
       return acc;
     }, [] as Pledge[]);
 
-    return uniquePledges.map((pledge: Pledge) => ({
+    // Filter pledges with scheduledAmount > 0
+    const filteredPledges = uniquePledges.filter((pledge) => {
+      const scheduledAmount = parseFloat((pledge as any).scheduledAmount || '0');
+      return scheduledAmount > 0;
+    });
+
+    return filteredPledges.map((pledge: Pledge) => ({
       label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
       value: pledge.id,
       balance: parseFloat(pledge.balance),
