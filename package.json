@@ -12,7 +12,9 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:pull": "drizzle-kit pull",
-    "seed": "tsx scripts/seed-category-items.ts"
+    "seed": "tsx scripts/seed-category-items.ts",
+    "integrity:check": "tsx scripts/integrity-checker.ts check",
+    "integrity:fix-conversions": "tsx scripts/integrity-checker.ts fix-conversions"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.1.0",
@@ -54,6 +56,7 @@
     "shadcn": "^2.6.0",
     "sonner": "^2.0.5",
     "tailwind-merge": "^3.3.0",
+    "ws": "^8.18.3",
     "xlsx": "^0.18.5",
     "zod": "3.22.2"
   },
@@ -64,6 +67,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.1",
     "eslint": "^9",
     "eslint-config-next": "15.3.3",

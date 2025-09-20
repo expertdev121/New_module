@@ -709,10 +709,7 @@ export default function PaymentFormDialog({
     }, [] as Pledge[]);
 
     // Filter pledges with scheduledAmount > 0
-    const filteredPledges = uniquePledges.filter((pledge) => {
-      const scheduledAmount = parseFloat((pledge as any).scheduledAmount || '0');
-      return scheduledAmount > 0;
-    });
+        const filteredPledges = uniquePledges;
 
     return filteredPledges.map((pledge: Pledge) => {
       // Calculate unscheduledAmount as balance minus scheduledAmount if available
