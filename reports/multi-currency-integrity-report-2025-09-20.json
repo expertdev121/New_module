@@ -1,0 +1,5612 @@
+{
+  "summary": {
+    "totalIssues": 320,
+    "criticalIssues": 160,
+    "warningIssues": 160,
+    "affectedContacts": 82,
+    "timestamp": "2025-09-20T11:39:10.232Z"
+  },
+  "issues": [
+    {
+      "id": "pledge_total_paid_82",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13883,
+      "contactName": "Polk Polk Bros. Foundation",
+      "recordId": 82,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 5000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 5000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "5000.00",
+      "fixRecordId": 82
+    },
+    {
+      "id": "pledge_balance_82",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13883,
+      "contactName": "Polk Polk Bros. Foundation",
+      "recordId": 82,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 5000.00 USD, Expected: 0 USD",
+      "currentValue": 5000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 82
+    },
+    {
+      "id": "pledge_total_paid_95",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13353,
+      "contactName": "Larry Froom",
+      "recordId": 95,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 CAD, Actual: 15000 CAD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 15000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "15000.00",
+      "fixRecordId": 95
+    },
+    {
+      "id": "pledge_balance_95",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13353,
+      "contactName": "Larry Froom",
+      "recordId": 95,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 15000.00 CAD, Expected: 0 CAD",
+      "currentValue": 15000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 95
+    },
+    {
+      "id": "pledge_total_paid_50",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6982,
+      "contactName": "Kfir Ohayon",
+      "recordId": 50,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 200 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 200,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "200.00",
+      "fixRecordId": 50
+    },
+    {
+      "id": "pledge_balance_50",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6982,
+      "contactName": "Kfir Ohayon",
+      "recordId": 50,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 200.00 ILS, Expected: 0 ILS",
+      "currentValue": 200,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 50
+    },
+    {
+      "id": "pledge_total_paid_51",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 918,
+      "contactName": "Arthur Rosenzweig",
+      "recordId": 51,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 CAD, Actual: 500 CAD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "500.00",
+      "fixRecordId": 51
+    },
+    {
+      "id": "pledge_balance_51",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 918,
+      "contactName": "Arthur Rosenzweig",
+      "recordId": 51,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 500.00 CAD, Expected: 0 CAD",
+      "currentValue": 500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 51
+    },
+    {
+      "id": "pledge_total_paid_52",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11689,
+      "contactName": "Gil Rubin",
+      "recordId": 52,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 1800 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1800,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1800.00",
+      "fixRecordId": 52
+    },
+    {
+      "id": "pledge_balance_52",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11689,
+      "contactName": "Gil Rubin",
+      "recordId": 52,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1800.00 USD, Expected: 0 USD",
+      "currentValue": 1800,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 52
+    },
+    {
+      "id": "pledge_total_paid_53",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7262,
+      "contactName": "Sheffer Fialkoff",
+      "recordId": 53,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 100 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 100,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "100.00",
+      "fixRecordId": 53
+    },
+    {
+      "id": "pledge_balance_53",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7262,
+      "contactName": "Sheffer Fialkoff",
+      "recordId": 53,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 100.00 USD, Expected: 0 USD",
+      "currentValue": 100,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 53
+    },
+    {
+      "id": "pledge_total_paid_54",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 3401,
+      "contactName": "Rochelle Balaban",
+      "recordId": 54,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 CAD, Actual: 36 CAD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 36,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "36.00",
+      "fixRecordId": 54
+    },
+    {
+      "id": "pledge_balance_54",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 3401,
+      "contactName": "Rochelle Balaban",
+      "recordId": 54,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 36.00 CAD, Expected: 0 CAD",
+      "currentValue": 36,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 54
+    },
+    {
+      "id": "pledge_total_paid_56",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7342,
+      "contactName": "David Segal",
+      "recordId": 56,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 250 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 250,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "250.00",
+      "fixRecordId": 56
+    },
+    {
+      "id": "pledge_balance_56",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7342,
+      "contactName": "David Segal",
+      "recordId": 56,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 250.00 USD, Expected: 0 USD",
+      "currentValue": 250,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 56
+    },
+    {
+      "id": "pledge_total_paid_57",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12618,
+      "contactName": "Jared Dubin",
+      "recordId": 57,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 400 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 400,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "400.00",
+      "fixRecordId": 57
+    },
+    {
+      "id": "pledge_balance_57",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12618,
+      "contactName": "Jared Dubin",
+      "recordId": 57,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 400.00 USD, Expected: 0 USD",
+      "currentValue": 400,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 57
+    },
+    {
+      "id": "pledge_total_paid_94",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12939,
+      "contactName": "Barton Sobel",
+      "recordId": 94,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 14000.00 ILS, Actual: 49881.03 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 14000,
+      "expectedValue": 49881.03,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "49881.03",
+      "fixRecordId": 94
+    },
+    {
+      "id": "pledge_balance_94",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12939,
+      "contactName": "Barton Sobel",
+      "recordId": 94,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 98000.00 ILS, Expected: 62118.97 ILS",
+      "currentValue": 98000,
+      "expectedValue": 62118.97,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "62118.97",
+      "fixRecordId": 94
+    },
+    {
+      "id": "pledge_total_paid_48",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13251,
+      "contactName": "Ariel Lider",
+      "recordId": 48,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "500.00",
+      "fixRecordId": 48
+    },
+    {
+      "id": "pledge_balance_48",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13251,
+      "contactName": "Ariel Lider",
+      "recordId": 48,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 500.00 USD, Expected: 0 USD",
+      "currentValue": 500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 48
+    },
+    {
+      "id": "pledge_total_paid_74",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 74,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 27500 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 27500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "27500.00",
+      "fixRecordId": 74
+    },
+    {
+      "id": "pledge_balance_74",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 74,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 110000.00 ILS, Expected: 82500 ILS",
+      "currentValue": 110000,
+      "expectedValue": 82500,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "82500.00",
+      "fixRecordId": 74
+    },
+    {
+      "id": "pledge_total_paid_87",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6918,
+      "contactName": "Mo Kaplan",
+      "recordId": 87,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 23400 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 23400,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "23400.00",
+      "fixRecordId": 87
+    },
+    {
+      "id": "pledge_balance_87",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6918,
+      "contactName": "Mo Kaplan",
+      "recordId": 87,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 23400.00 ILS, Expected: 0 ILS",
+      "currentValue": 23400,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 87
+    },
+    {
+      "id": "pledge_total_paid_84",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 867,
+      "contactName": "Mark Platnick",
+      "recordId": 84,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 100 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 100,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "100.00",
+      "fixRecordId": 84
+    },
+    {
+      "id": "pledge_balance_84",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 867,
+      "contactName": "Mark Platnick",
+      "recordId": 84,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 100.00 USD, Expected: 0 USD",
+      "currentValue": 100,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 84
+    },
+    {
+      "id": "pledge_total_paid_68",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13260,
+      "contactName": "Natanel Gichten",
+      "recordId": 68,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 30 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 30,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "30.00",
+      "fixRecordId": 68
+    },
+    {
+      "id": "pledge_balance_68",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13260,
+      "contactName": "Natanel Gichten",
+      "recordId": 68,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 30.00 ILS, Expected: 0 ILS",
+      "currentValue": 30,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 68
+    },
+    {
+      "id": "pledge_total_paid_61",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13248,
+      "contactName": "CO: Deliniste Salford Ltd.",
+      "recordId": 61,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 4470.28 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 4470.28,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "4470.28",
+      "fixRecordId": 61
+    },
+    {
+      "id": "pledge_balance_61",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13248,
+      "contactName": "CO: Deliniste Salford Ltd.",
+      "recordId": 61,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 4470.28 ILS, Expected: 0 ILS",
+      "currentValue": 4470.28,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 61
+    },
+    {
+      "id": "pledge_total_paid_49",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 2609,
+      "contactName": "Oded Ben david",
+      "recordId": 49,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 1800 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1800,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1800.00",
+      "fixRecordId": 49
+    },
+    {
+      "id": "pledge_balance_49",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 2609,
+      "contactName": "Oded Ben david",
+      "recordId": 49,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1800.00 ILS, Expected: 0 ILS",
+      "currentValue": 1800,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 49
+    },
+    {
+      "id": "pledge_total_paid_96",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7386,
+      "contactName": "David Kallus",
+      "recordId": 96,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 166 USD (2 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 166,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "166.00",
+      "fixRecordId": 96
+    },
+    {
+      "id": "pledge_balance_96",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7386,
+      "contactName": "David Kallus",
+      "recordId": 96,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 996.00 USD, Expected: 830 USD",
+      "currentValue": 996,
+      "expectedValue": 830,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "830.00",
+      "fixRecordId": 96
+    },
+    {
+      "id": "pledge_total_paid_75",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13525,
+      "contactName": "Marc Seruya",
+      "recordId": 75,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 1400 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1400,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1400.00",
+      "fixRecordId": 75
+    },
+    {
+      "id": "pledge_balance_75",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13525,
+      "contactName": "Marc Seruya",
+      "recordId": 75,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1400.00 USD, Expected: 0 USD",
+      "currentValue": 1400,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 75
+    },
+    {
+      "id": "pledge_total_paid_76",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11252,
+      "contactName": "June Diamant",
+      "recordId": 76,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 5000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 5000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "5000.00",
+      "fixRecordId": 76
+    },
+    {
+      "id": "pledge_balance_76",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11252,
+      "contactName": "June Diamant",
+      "recordId": 76,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 5000.00 USD, Expected: 0 USD",
+      "currentValue": 5000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 76
+    },
+    {
+      "id": "pledge_total_paid_85",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 85,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 85
+    },
+    {
+      "id": "pledge_balance_85",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 85,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 85
+    },
+    {
+      "id": "pledge_total_paid_92",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5948,
+      "contactName": "Roniel Weinberg",
+      "recordId": 92,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 23000 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 23000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "23000.00",
+      "fixRecordId": 92
+    },
+    {
+      "id": "pledge_balance_92",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5948,
+      "contactName": "Roniel Weinberg",
+      "recordId": 92,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 60000.00 ILS, Expected: 37000 ILS",
+      "currentValue": 60000,
+      "expectedValue": 37000,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "37000.00",
+      "fixRecordId": 92
+    },
+    {
+      "id": "pledge_total_paid_80",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12920,
+      "contactName": "Simcha Schlanger",
+      "recordId": 80,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 80
+    },
+    {
+      "id": "pledge_balance_80",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12920,
+      "contactName": "Simcha Schlanger",
+      "recordId": 80,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 80
+    },
+    {
+      "id": "pledge_total_paid_93",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12939,
+      "contactName": "Barton Sobel",
+      "recordId": 93,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 1000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1000.00",
+      "fixRecordId": 93
+    },
+    {
+      "id": "pledge_balance_93",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12939,
+      "contactName": "Barton Sobel",
+      "recordId": 93,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1000.00 USD, Expected: 0 USD",
+      "currentValue": 1000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 93
+    },
+    {
+      "id": "pledge_total_paid_90",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11877,
+      "contactName": "Simi Sherman",
+      "recordId": 90,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 480 ILS (2 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 480,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "480.00",
+      "fixRecordId": 90
+    },
+    {
+      "id": "pledge_balance_90",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11877,
+      "contactName": "Simi Sherman",
+      "recordId": 90,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 480.00 ILS, Expected: 0 ILS",
+      "currentValue": 480,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 90
+    },
+    {
+      "id": "pledge_total_paid_91",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5948,
+      "contactName": "Roniel Weinberg",
+      "recordId": 91,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 1000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1000.00",
+      "fixRecordId": 91
+    },
+    {
+      "id": "pledge_balance_91",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5948,
+      "contactName": "Roniel Weinberg",
+      "recordId": 91,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1000.00 USD, Expected: 0 USD",
+      "currentValue": 1000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 91
+    },
+    {
+      "id": "pledge_total_paid_58",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13146,
+      "contactName": "Zvi Noe",
+      "recordId": 58,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 1000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1000.00",
+      "fixRecordId": 58
+    },
+    {
+      "id": "pledge_balance_58",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13146,
+      "contactName": "Zvi Noe",
+      "recordId": 58,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1000.00 USD, Expected: 0 USD",
+      "currentValue": 1000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 58
+    },
+    {
+      "id": "pledge_total_paid_83",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13884,
+      "contactName": "Miles Levin",
+      "recordId": 83,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 5000 USD (2 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 5000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "5000.00",
+      "fixRecordId": 83
+    },
+    {
+      "id": "pledge_balance_83",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13884,
+      "contactName": "Miles Levin",
+      "recordId": 83,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 5000.00 USD, Expected: 0 USD",
+      "currentValue": 5000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 83
+    },
+    {
+      "id": "pledge_total_paid_79",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6162,
+      "contactName": "Brett Nadritch",
+      "recordId": 79,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 5000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 5000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "5000.00",
+      "fixRecordId": 79
+    },
+    {
+      "id": "pledge_balance_79",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6162,
+      "contactName": "Brett Nadritch",
+      "recordId": 79,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 5000.00 USD, Expected: 0 USD",
+      "currentValue": 5000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 79
+    },
+    {
+      "id": "pledge_total_paid_97",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13154,
+      "contactName": "Randy Pearlman",
+      "recordId": 97,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 97
+    },
+    {
+      "id": "pledge_balance_97",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13154,
+      "contactName": "Randy Pearlman",
+      "recordId": 97,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 97
+    },
+    {
+      "id": "pledge_total_paid_98",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13887,
+      "contactName": "Shimon Etigson",
+      "recordId": 98,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 200 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 200,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "200.00",
+      "fixRecordId": 98
+    },
+    {
+      "id": "pledge_balance_98",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13887,
+      "contactName": "Shimon Etigson",
+      "recordId": 98,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 199.97 ILS, Expected: -0.030000000000001137 ILS",
+      "currentValue": 199.97,
+      "expectedValue": -0.030000000000001137,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "-0.03",
+      "fixRecordId": 98
+    },
+    {
+      "id": "pledge_total_paid_102",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 10909,
+      "contactName": "Shmuel Kligman",
+      "recordId": 102,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 200 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 200,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "200.00",
+      "fixRecordId": 102
+    },
+    {
+      "id": "pledge_balance_102",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 10909,
+      "contactName": "Shmuel Kligman",
+      "recordId": 102,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 200.00 ILS, Expected: 0 ILS",
+      "currentValue": 200,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 102
+    },
+    {
+      "id": "pledge_total_paid_101",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11867,
+      "contactName": "Misha Shmunis",
+      "recordId": 101,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 212 USD (4 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 212,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "212.00",
+      "fixRecordId": 101
+    },
+    {
+      "id": "pledge_balance_101",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11867,
+      "contactName": "Misha Shmunis",
+      "recordId": 101,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 636.00 USD, Expected: 424 USD",
+      "currentValue": 636,
+      "expectedValue": 424,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "424.00",
+      "fixRecordId": 101
+    },
+    {
+      "id": "pledge_total_paid_100",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13154,
+      "contactName": "Randy Pearlman",
+      "recordId": 100,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 35161.02 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 35161.02,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "35161.02",
+      "fixRecordId": 100
+    },
+    {
+      "id": "pledge_balance_100",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13154,
+      "contactName": "Randy Pearlman",
+      "recordId": 100,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 112000.00 ILS, Expected: 76838.98000000001 ILS",
+      "currentValue": 112000,
+      "expectedValue": 76838.98000000001,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "76838.98",
+      "fixRecordId": 100
+    },
+    {
+      "id": "pledge_total_paid_77",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12575,
+      "contactName": "Joe Danto",
+      "recordId": 77,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 10000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 10000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "10000.00",
+      "fixRecordId": 77
+    },
+    {
+      "id": "pledge_balance_77",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12575,
+      "contactName": "Joe Danto",
+      "recordId": 77,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 10000.00 USD, Expected: 0 USD",
+      "currentValue": 10000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 77
+    },
+    {
+      "id": "pledge_total_paid_104",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 104,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 1000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1000.00",
+      "fixRecordId": 104
+    },
+    {
+      "id": "pledge_balance_104",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 104,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1000.00 USD, Expected: 0 USD",
+      "currentValue": 1000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 104
+    },
+    {
+      "id": "pledge_total_paid_105",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 105,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 38000 ILS (2 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 38000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "38000.00",
+      "fixRecordId": 105
+    },
+    {
+      "id": "pledge_balance_105",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 105,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 80000.00 ILS, Expected: 42000 ILS",
+      "currentValue": 80000,
+      "expectedValue": 42000,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "42000.00",
+      "fixRecordId": 105
+    },
+    {
+      "id": "pledge_total_paid_106",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 106,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 106
+    },
+    {
+      "id": "pledge_balance_106",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 106,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 106
+    },
+    {
+      "id": "pledge_total_paid_108",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13043,
+      "contactName": "Roy Yaari",
+      "recordId": 108,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 108
+    },
+    {
+      "id": "pledge_balance_108",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13043,
+      "contactName": "Roy Yaari",
+      "recordId": 108,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 108
+    },
+    {
+      "id": "pledge_total_paid_116",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12575,
+      "contactName": "Joe Danto",
+      "recordId": 116,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 15000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 15000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "15000.00",
+      "fixRecordId": 116
+    },
+    {
+      "id": "pledge_balance_116",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12575,
+      "contactName": "Joe Danto",
+      "recordId": 116,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 15000.00 USD, Expected: 0 USD",
+      "currentValue": 15000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 116
+    },
+    {
+      "id": "pledge_total_paid_120",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12963,
+      "contactName": "Ezra Dershowitz",
+      "recordId": 120,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 120
+    },
+    {
+      "id": "pledge_balance_120",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12963,
+      "contactName": "Ezra Dershowitz",
+      "recordId": 120,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 120
+    },
+    {
+      "id": "pledge_total_paid_123",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6096,
+      "contactName": "Ezra Miller",
+      "recordId": 123,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 100 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 100,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "100.00",
+      "fixRecordId": 123
+    },
+    {
+      "id": "pledge_balance_123",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6096,
+      "contactName": "Ezra Miller",
+      "recordId": 123,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 100.00 ILS, Expected: 0 ILS",
+      "currentValue": 100,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 123
+    },
+    {
+      "id": "pledge_total_paid_124",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12059,
+      "contactName": "Moti Lax",
+      "recordId": 124,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "500.00",
+      "fixRecordId": 124
+    },
+    {
+      "id": "pledge_balance_124",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12059,
+      "contactName": "Moti Lax",
+      "recordId": 124,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 500.00 USD, Expected: 0 USD",
+      "currentValue": 500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 124
+    },
+    {
+      "id": "pledge_total_paid_114",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 9466,
+      "contactName": "Yudi Hadari",
+      "recordId": 114,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 180 USD (3 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 180,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "180.00",
+      "fixRecordId": 114
+    },
+    {
+      "id": "pledge_balance_114",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 9466,
+      "contactName": "Yudi Hadari",
+      "recordId": 114,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 720.00 USD, Expected: 540 USD",
+      "currentValue": 720,
+      "expectedValue": 540,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "540.00",
+      "fixRecordId": 114
+    },
+    {
+      "id": "pledge_total_paid_112",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12978,
+      "contactName": "Zalman Sorotzkin",
+      "recordId": 112,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 112
+    },
+    {
+      "id": "pledge_balance_112",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12978,
+      "contactName": "Zalman Sorotzkin",
+      "recordId": 112,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 112
+    },
+    {
+      "id": "pledge_total_paid_126",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11919,
+      "contactName": "Shua Lax",
+      "recordId": 126,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 100 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 100,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "100.00",
+      "fixRecordId": 126
+    },
+    {
+      "id": "pledge_balance_126",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 11919,
+      "contactName": "Shua Lax",
+      "recordId": 126,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 100.00 ILS, Expected: 0 ILS",
+      "currentValue": 100,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 126
+    },
+    {
+      "id": "pledge_total_paid_127",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13057,
+      "contactName": "Jonathan Weiss",
+      "recordId": 127,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 127
+    },
+    {
+      "id": "pledge_balance_127",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13057,
+      "contactName": "Jonathan Weiss",
+      "recordId": 127,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 127
+    },
+    {
+      "id": "pledge_total_paid_113",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12978,
+      "contactName": "Zalman Sorotzkin",
+      "recordId": 113,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 8339.91 ILS, Actual: 42680.42 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 8339.91,
+      "expectedValue": 42680.42,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "42680.42",
+      "fixRecordId": 113
+    },
+    {
+      "id": "pledge_balance_113",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12978,
+      "contactName": "Zalman Sorotzkin",
+      "recordId": 113,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 101660.09 ILS, Expected: 67319.58 ILS",
+      "currentValue": 101660.09,
+      "expectedValue": 67319.58,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "67319.58",
+      "fixRecordId": 113
+    },
+    {
+      "id": "pledge_total_paid_117",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 1001,
+      "contactName": "Danny Lewis",
+      "recordId": 117,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 5000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 5000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "5000.00",
+      "fixRecordId": 117
+    },
+    {
+      "id": "pledge_balance_117",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 1001,
+      "contactName": "Danny Lewis",
+      "recordId": 117,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 5000.00 USD, Expected: 0 USD",
+      "currentValue": 5000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 117
+    },
+    {
+      "id": "pledge_total_paid_136",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5752,
+      "contactName": "Rich Lehman",
+      "recordId": 136,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "500.00",
+      "fixRecordId": 136
+    },
+    {
+      "id": "pledge_balance_136",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5752,
+      "contactName": "Rich Lehman",
+      "recordId": 136,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 500.00 USD, Expected: 0 USD",
+      "currentValue": 500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 136
+    },
+    {
+      "id": "pledge_total_paid_129",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12997,
+      "contactName": "Cody Fox",
+      "recordId": 129,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 1000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1000.00",
+      "fixRecordId": 129
+    },
+    {
+      "id": "pledge_balance_129",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12997,
+      "contactName": "Cody Fox",
+      "recordId": 129,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1000.00 USD, Expected: 0 USD",
+      "currentValue": 1000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 129
+    },
+    {
+      "id": "pledge_total_paid_133",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13045,
+      "contactName": "Joshua Tugendhaft",
+      "recordId": 133,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 2500 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2500.00",
+      "fixRecordId": 133
+    },
+    {
+      "id": "pledge_balance_133",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13045,
+      "contactName": "Joshua Tugendhaft",
+      "recordId": 133,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2500.00 USD, Expected: 0 USD",
+      "currentValue": 2500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 133
+    },
+    {
+      "id": "pledge_total_paid_137",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5752,
+      "contactName": "Rich Lehman",
+      "recordId": 137,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 10842.67 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 10842.67,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "10842.67",
+      "fixRecordId": 137
+    },
+    {
+      "id": "pledge_balance_137",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 5752,
+      "contactName": "Rich Lehman",
+      "recordId": 137,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 12000.00 ILS, Expected: 1157.33 ILS",
+      "currentValue": 12000,
+      "expectedValue": 1157.33,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "1157.33",
+      "fixRecordId": 137
+    },
+    {
+      "id": "pledge_total_paid_148",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 148,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 540 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 540,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "540.00",
+      "fixRecordId": 148
+    },
+    {
+      "id": "pledge_balance_148",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 148,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 12960.00 ILS, Expected: 12420 ILS",
+      "currentValue": 12960,
+      "expectedValue": 12420,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "12420.00",
+      "fixRecordId": 148
+    },
+    {
+      "id": "pledge_total_paid_135",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 2010,
+      "contactName": "Mike Tabacinic",
+      "recordId": 135,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 200000 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 200000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "200000.00",
+      "fixRecordId": 135
+    },
+    {
+      "id": "pledge_balance_135",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 2010,
+      "contactName": "Mike Tabacinic",
+      "recordId": 135,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 200000.00 USD, Expected: 0 USD",
+      "currentValue": 200000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 135
+    },
+    {
+      "id": "pledge_total_paid_122",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13892,
+      "contactName": "David Cooper",
+      "recordId": 122,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 250 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 250,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "250.00",
+      "fixRecordId": 122
+    },
+    {
+      "id": "pledge_balance_122",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13892,
+      "contactName": "David Cooper",
+      "recordId": 122,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 250.00 USD, Expected: 0 USD",
+      "currentValue": 250,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 122
+    },
+    {
+      "id": "pledge_total_paid_140",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13004,
+      "contactName": "Hillel Gammal",
+      "recordId": 140,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 50 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 50,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "50.00",
+      "fixRecordId": 140
+    },
+    {
+      "id": "pledge_balance_140",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13004,
+      "contactName": "Hillel Gammal",
+      "recordId": 140,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 50.00 USD, Expected: 0 USD",
+      "currentValue": 50,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 140
+    },
+    {
+      "id": "pledge_total_paid_141",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13474,
+      "contactName": "Oded Ben David",
+      "recordId": 141,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 10 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 10,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "10.00",
+      "fixRecordId": 141
+    },
+    {
+      "id": "pledge_balance_141",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13474,
+      "contactName": "Oded Ben David",
+      "recordId": 141,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 10.00 USD, Expected: 0 USD",
+      "currentValue": 10,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 141
+    },
+    {
+      "id": "pledge_total_paid_144",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13936,
+      "contactName": "Zack Mocton",
+      "recordId": 144,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 250 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 250,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "250.00",
+      "fixRecordId": 144
+    },
+    {
+      "id": "pledge_balance_144",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13936,
+      "contactName": "Zack Mocton",
+      "recordId": 144,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 250.00 ILS, Expected: 0 ILS",
+      "currentValue": 250,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 144
+    },
+    {
+      "id": "pledge_total_paid_142",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13935,
+      "contactName": "Avi Vaknin",
+      "recordId": 142,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 2100 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 2100,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2100.00",
+      "fixRecordId": 142
+    },
+    {
+      "id": "pledge_balance_142",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13935,
+      "contactName": "Avi Vaknin",
+      "recordId": 142,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 2100.00 ILS, Expected: 0 ILS",
+      "currentValue": 2100,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 142
+    },
+    {
+      "id": "pledge_total_paid_143",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 8079,
+      "contactName": "Dovid Fertig",
+      "recordId": 143,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 USD, Actual: 59.95 USD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 59.95,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "59.95",
+      "fixRecordId": 143
+    },
+    {
+      "id": "pledge_balance_143",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 8079,
+      "contactName": "Dovid Fertig",
+      "recordId": 143,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 200.00 USD, Expected: 140.05 USD",
+      "currentValue": 200,
+      "expectedValue": 140.05,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "140.05",
+      "fixRecordId": 143
+    },
+    {
+      "id": "pledge_total_paid_150",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13102,
+      "contactName": "Jonathan Levy",
+      "recordId": 150,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 CAD, Actual: 500 CAD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 500,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "500.00",
+      "fixRecordId": 150
+    },
+    {
+      "id": "pledge_balance_150",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13102,
+      "contactName": "Jonathan Levy",
+      "recordId": 150,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 500.00 CAD, Expected: 0 CAD",
+      "currentValue": 500,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 150
+    },
+    {
+      "id": "pledge_total_paid_147",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 4634,
+      "contactName": "Yitzchak Goodman",
+      "recordId": 147,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 1000 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1000.00",
+      "fixRecordId": 147
+    },
+    {
+      "id": "pledge_balance_147",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 4634,
+      "contactName": "Yitzchak Goodman",
+      "recordId": 147,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1000.00 ILS, Expected: 0 ILS",
+      "currentValue": 1000,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 147
+    },
+    {
+      "id": "pledge_total_paid_145",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13942,
+      "contactName": "Tzippora Price",
+      "recordId": 145,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 1650 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 1650,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1650.00",
+      "fixRecordId": 145
+    },
+    {
+      "id": "pledge_balance_145",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13942,
+      "contactName": "Tzippora Price",
+      "recordId": 145,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 1650.00 ILS, Expected: 0 ILS",
+      "currentValue": 1650,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 145
+    },
+    {
+      "id": "pledge_total_paid_149",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 3642,
+      "contactName": "Gavriel Ironi",
+      "recordId": 149,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 CAD, Actual: 49.69 CAD (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 49.69,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "49.69",
+      "fixRecordId": 149
+    },
+    {
+      "id": "pledge_balance_149",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 3642,
+      "contactName": "Gavriel Ironi",
+      "recordId": 149,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 49.69 CAD, Expected: 0 CAD",
+      "currentValue": 49.69,
+      "expectedValue": 0,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "0.00",
+      "fixRecordId": 149
+    },
+    {
+      "id": "pledge_total_paid_121",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12963,
+      "contactName": "Ezra Dershowitz",
+      "recordId": 121,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 448.50 ILS, Actual: 5004.31 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 448.5,
+      "expectedValue": 5004.31,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "5004.31",
+      "fixRecordId": 121
+    },
+    {
+      "id": "pledge_balance_121",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12963,
+      "contactName": "Ezra Dershowitz",
+      "recordId": 121,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 109551.50 ILS, Expected: 104995.69 ILS",
+      "currentValue": 109551.5,
+      "expectedValue": 104995.69,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "104995.69",
+      "fixRecordId": 121
+    },
+    {
+      "id": "pledge_total_paid_107",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 107,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 0.00 ILS, Actual: 10000 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 10000,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "10000.00",
+      "fixRecordId": 107
+    },
+    {
+      "id": "pledge_balance_107",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 107,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 103000.00 ILS, Expected: 93000 ILS",
+      "currentValue": 103000,
+      "expectedValue": 93000,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "93000.00",
+      "fixRecordId": 107
+    },
+    {
+      "id": "pledge_total_paid_176",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 176,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 2310.04 ILS, Actual: 25855.58 ILS (2 converted payments, 0 need conversion)",
+      "currentValue": 2310.04,
+      "expectedValue": 25855.58,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "25855.58",
+      "fixRecordId": 176
+    },
+    {
+      "id": "pledge_balance_176",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 176,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 109689.96 ILS, Expected: 86144.42 ILS",
+      "currentValue": 109689.96,
+      "expectedValue": 86144.42,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "86144.42",
+      "fixRecordId": 176
+    },
+    {
+      "id": "pledge_total_paid_178",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12947,
+      "contactName": "Aaron Dembinsky",
+      "recordId": 178,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 1136.71 ILS, Actual: 12927.79 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 1136.71,
+      "expectedValue": 12927.79,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "12927.79",
+      "fixRecordId": 178
+    },
+    {
+      "id": "pledge_balance_178",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12947,
+      "contactName": "Aaron Dembinsky",
+      "recordId": 178,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 110863.29 ILS, Expected: 99072.20999999999 ILS",
+      "currentValue": 110863.29,
+      "expectedValue": 99072.20999999999,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "99072.21",
+      "fixRecordId": 178
+    },
+    {
+      "id": "pledge_total_paid_160",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7021,
+      "contactName": "Toby Kram",
+      "recordId": 160,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 143.26 ILS, Actual: 1668.1 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 143.26,
+      "expectedValue": 1668.1,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "1668.10",
+      "fixRecordId": 160
+    },
+    {
+      "id": "pledge_balance_160",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 7021,
+      "contactName": "Toby Kram",
+      "recordId": 160,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 17856.74 ILS, Expected: 16331.9 ILS",
+      "currentValue": 17856.74,
+      "expectedValue": 16331.9,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "16331.90",
+      "fixRecordId": 160
+    },
+    {
+      "id": "pledge_total_paid_162",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13148,
+      "contactName": "Yitzchak Newman",
+      "recordId": 162,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 1139.93 ILS, Actual: 12719.28 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 1139.93,
+      "expectedValue": 12719.28,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "12719.28",
+      "fixRecordId": 162
+    },
+    {
+      "id": "pledge_balance_162",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13148,
+      "contactName": "Yitzchak Newman",
+      "recordId": 162,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 108860.07 ILS, Expected: 97280.72 ILS",
+      "currentValue": 108860.07,
+      "expectedValue": 97280.72,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "97280.72",
+      "fixRecordId": 162
+    },
+    {
+      "id": "pledge_total_paid_170",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13083,
+      "contactName": "Daniel Khodorkovsky",
+      "recordId": 170,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 294.84 ILS, Actual: 3336.2 ILS (1 converted payments, 0 need conversion)",
+      "currentValue": 294.84,
+      "expectedValue": 3336.2,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "3336.20",
+      "fixRecordId": 170
+    },
+    {
+      "id": "pledge_balance_170",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13083,
+      "contactName": "Daniel Khodorkovsky",
+      "recordId": 170,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 111705.16 ILS, Expected: 108663.8 ILS",
+      "currentValue": 111705.16,
+      "expectedValue": 108663.8,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "108663.80",
+      "fixRecordId": 170
+    },
+    {
+      "id": "pledge_total_paid_172",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13110,
+      "contactName": "Oded Livnat",
+      "recordId": 172,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 28748.98 ILS, Actual: 31317.26 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 28748.98,
+      "expectedValue": 31317.26,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "31317.26",
+      "fixRecordId": 172
+    },
+    {
+      "id": "pledge_balance_172",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13110,
+      "contactName": "Oded Livnat",
+      "recordId": 172,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 49251.02 ILS, Expected: 46682.740000000005 ILS",
+      "currentValue": 49251.02,
+      "expectedValue": 46682.740000000005,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "46682.74",
+      "fixRecordId": 172
+    },
+    {
+      "id": "pledge_total_paid_180",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13041,
+      "contactName": "Moshe Grossman",
+      "recordId": 180,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 178.79 ILS, Actual: 2033.08 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 178.79,
+      "expectedValue": 2033.08,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "2033.08",
+      "fixRecordId": 180
+    },
+    {
+      "id": "pledge_balance_180",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13041,
+      "contactName": "Moshe Grossman",
+      "recordId": 180,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 54821.21 ILS, Expected: 52966.92 ILS",
+      "currentValue": 54821.21,
+      "expectedValue": 52966.92,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "52966.92",
+      "fixRecordId": 180
+    },
+    {
+      "id": "pledge_total_paid_174",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13063,
+      "contactName": "Dovid Hordiner",
+      "recordId": 174,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 58693.61 ILS, Actual: 64470.44 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 58693.61,
+      "expectedValue": 64470.44,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "64470.44",
+      "fixRecordId": 174
+    },
+    {
+      "id": "pledge_balance_174",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 13063,
+      "contactName": "Dovid Hordiner",
+      "recordId": 174,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 21306.39 ILS, Expected: 15529.559999999998 ILS",
+      "currentValue": 21306.39,
+      "expectedValue": 15529.559999999998,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "15529.56",
+      "fixRecordId": 174
+    },
+    {
+      "id": "pledge_total_paid_183",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12988,
+      "contactName": "Michael Deutsch",
+      "recordId": 183,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 24375.50 ILS, Actual: 29498.87 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 24375.5,
+      "expectedValue": 29498.87,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "29498.87",
+      "fixRecordId": 183
+    },
+    {
+      "id": "pledge_balance_183",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12988,
+      "contactName": "Michael Deutsch",
+      "recordId": 183,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 85624.50 ILS, Expected: 80501.13 ILS",
+      "currentValue": 85624.5,
+      "expectedValue": 80501.13,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "80501.13",
+      "fixRecordId": 183
+    },
+    {
+      "id": "pledge_total_paid_81",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12920,
+      "contactName": "Simcha Schlanger",
+      "recordId": 81,
+      "recordType": "pledge",
+      "description": "Multi-currency total paid mismatch. Recorded: 10000.00 ILS, Actual: 15004.3 ILS (3 converted payments, 0 need conversion)",
+      "currentValue": 10000,
+      "expectedValue": 15004.3,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "15004.30",
+      "fixRecordId": 81
+    },
+    {
+      "id": "pledge_balance_81",
+      "type": "pledge_balance",
+      "severity": "critical",
+      "contactId": 12920,
+      "contactName": "Simcha Schlanger",
+      "recordId": 81,
+      "recordType": "pledge",
+      "description": "Multi-currency balance incorrect. Recorded: 100000.00 ILS, Expected: 94995.7 ILS",
+      "currentValue": 100000,
+      "expectedValue": 94995.7,
+      "affectedFields": [
+        "balance"
+      ],
+      "fixValue": "94995.70",
+      "fixRecordId": 81
+    },
+    {
+      "id": "plan_total_paid_62",
+      "type": "payment_plan_amounts",
+      "severity": "critical",
+      "contactId": 9466,
+      "contactName": "Yudi Hadari",
+      "recordId": 62,
+      "recordType": "payment_plan",
+      "description": "Multi-currency plan total paid mismatch. Recorded: 0.00 USD, Actual: 180 USD (3 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 180,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "180.00",
+      "fixRecordId": 62
+    },
+    {
+      "id": "plan_remaining_62",
+      "type": "payment_plan_amounts",
+      "severity": "critical",
+      "contactId": 9466,
+      "contactName": "Yudi Hadari",
+      "recordId": 62,
+      "recordType": "payment_plan",
+      "description": "Multi-currency remaining amount incorrect. Recorded: 720.00 USD, Expected: 540 USD",
+      "currentValue": 720,
+      "expectedValue": 540,
+      "affectedFields": [
+        "remaining_amount"
+      ],
+      "fixValue": "540.00",
+      "fixRecordId": 62
+    },
+    {
+      "id": "plan_total_paid_59",
+      "type": "payment_plan_amounts",
+      "severity": "critical",
+      "contactId": 11867,
+      "contactName": "Misha Shmunis",
+      "recordId": 59,
+      "recordType": "payment_plan",
+      "description": "Multi-currency plan total paid mismatch. Recorded: 0.00 USD, Actual: 212 USD (4 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 212,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "212.00",
+      "fixRecordId": 59
+    },
+    {
+      "id": "plan_remaining_59",
+      "type": "payment_plan_amounts",
+      "severity": "critical",
+      "contactId": 11867,
+      "contactName": "Misha Shmunis",
+      "recordId": 59,
+      "recordType": "payment_plan",
+      "description": "Multi-currency remaining amount incorrect. Recorded: 636.00 USD, Expected: 424 USD",
+      "currentValue": 636,
+      "expectedValue": 424,
+      "affectedFields": [
+        "remaining_amount"
+      ],
+      "fixValue": "424.00",
+      "fixRecordId": 59
+    },
+    {
+      "id": "plan_total_paid_57",
+      "type": "payment_plan_amounts",
+      "severity": "critical",
+      "contactId": 7386,
+      "contactName": "David Kallus",
+      "recordId": 57,
+      "recordType": "payment_plan",
+      "description": "Multi-currency plan total paid mismatch. Recorded: 0.00 USD, Actual: 166 USD (2 converted payments, 0 need conversion)",
+      "currentValue": 0,
+      "expectedValue": 166,
+      "affectedFields": [
+        "total_paid"
+      ],
+      "fixValue": "166.00",
+      "fixRecordId": 57
+    },
+    {
+      "id": "plan_remaining_57",
+      "type": "payment_plan_amounts",
+      "severity": "critical",
+      "contactId": 7386,
+      "contactName": "David Kallus",
+      "recordId": 57,
+      "recordType": "payment_plan",
+      "description": "Multi-currency remaining amount incorrect. Recorded: 996.00 USD, Expected: 830 USD",
+      "currentValue": 996,
+      "expectedValue": 830,
+      "affectedFields": [
+        "remaining_amount"
+      ],
+      "fixValue": "830.00",
+      "fixRecordId": 57
+    },
+    {
+      "id": "payment_usd_conversion_92",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 3401,
+      "contactName": "Rochelle Balaban",
+      "recordId": 92,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 36.00 CAD → Recorded: $26.14, Expected: $26.12",
+      "currentValue": 26.14,
+      "expectedValue": 26.12,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "26.12|0.7256630746344472",
+      "fixRecordId": 92
+    },
+    {
+      "id": "payment_usd_conversion_133",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 133,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 133
+    },
+    {
+      "id": "payment_usd_conversion_86",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 2609,
+      "contactName": "Oded Ben david",
+      "recordId": 86,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.2% error). 1800.00 ILS → Recorded: $532.8, Expected: $539.54",
+      "currentValue": 532.8,
+      "expectedValue": 539.54,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "539.54|0.2997417724630231",
+      "fixRecordId": 86
+    },
+    {
+      "id": "payment_usd_conversion_97",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13146,
+      "contactName": "Zvi Noe",
+      "recordId": 97,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (2.3% error). 80000.00 ILS → Recorded: $23427.67, Expected: $23979.34",
+      "currentValue": 23427.67,
+      "expectedValue": 23979.34,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "23979.34|0.2997417724630231",
+      "fixRecordId": 97
+    },
+    {
+      "id": "payment_usd_conversion_89",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 918,
+      "contactName": "Arthur Rosenzweig",
+      "recordId": 89,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.3% error). 500.00 CAD → Recorded: $363.94, Expected: $362.83",
+      "currentValue": 363.94,
+      "expectedValue": 362.83,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "362.83|0.7256630746344472",
+      "fixRecordId": 89
+    },
+    {
+      "id": "payment_usd_conversion_134",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 134,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 134
+    },
+    {
+      "id": "payment_usd_conversion_135",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 135,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 135
+    },
+    {
+      "id": "payment_usd_conversion_136",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 136,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 136
+    },
+    {
+      "id": "payment_usd_conversion_212",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 212,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 33000.00 ILS → Recorded: $9866.9, Expected: $9891.48",
+      "currentValue": 9866.9,
+      "expectedValue": 9891.48,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "9891.48|0.2997417724630231",
+      "fixRecordId": 212
+    },
+    {
+      "id": "payment_usd_conversion_108",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13248,
+      "contactName": "CO: Deliniste Salford Ltd.",
+      "recordId": 108,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.6% error). 4470.28 ILS → Recorded: $1318.39, Expected: $1339.93",
+      "currentValue": 1318.39,
+      "expectedValue": 1339.93,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1339.93|0.2997417724630231",
+      "fixRecordId": 108
+    },
+    {
+      "id": "payment_usd_conversion_214",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 214,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 5000.00 ILS → Recorded: $1500, Expected: $1498.71",
+      "currentValue": 1500,
+      "expectedValue": 1498.71,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1498.71|0.2997417724630231",
+      "fixRecordId": 214
+    },
+    {
+      "id": "payment_usd_conversion_216",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 216,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 10000.00 ILS → Recorded: $3000, Expected: $2997.42",
+      "currentValue": 3000,
+      "expectedValue": 2997.42,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2997.42|0.2997417724630231",
+      "fixRecordId": 216
+    },
+    {
+      "id": "payment_usd_conversion_217",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 217,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 10000.00 ILS → Recorded: $3000, Expected: $2997.42",
+      "currentValue": 3000,
+      "expectedValue": 2997.42,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2997.42|0.2997417724630231",
+      "fixRecordId": 217
+    },
+    {
+      "id": "payment_usd_conversion_218",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 218,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 7000.00 ILS → Recorded: $2100, Expected: $2098.19",
+      "currentValue": 2100,
+      "expectedValue": 2098.19,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2098.19|0.2997417724630231",
+      "fixRecordId": 218
+    },
+    {
+      "id": "payment_usd_conversion_114",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13260,
+      "contactName": "Natanel Gichten",
+      "recordId": 114,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.6% error). 30.00 ILS → Recorded: $8.85, Expected: $8.99",
+      "currentValue": 8.85,
+      "expectedValue": 8.99,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "8.99|0.2997417724630231",
+      "fixRecordId": 114
+    },
+    {
+      "id": "payment_usd_conversion_115",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 115,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 22500.00 ILS → Recorded: $6750, Expected: $6744.19",
+      "currentValue": 6750,
+      "expectedValue": 6744.19,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "6744.19|0.2997417724630231",
+      "fixRecordId": 115
+    },
+    {
+      "id": "payment_usd_conversion_117",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 117,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 15000.00 ILS → Recorded: $4500, Expected: $4496.13",
+      "currentValue": 4500,
+      "expectedValue": 4496.13,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4496.13|0.2997417724630231",
+      "fixRecordId": 117
+    },
+    {
+      "id": "payment_usd_conversion_118",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 118,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 15000.00 ILS → Recorded: $4500, Expected: $4496.13",
+      "currentValue": 4500,
+      "expectedValue": 4496.13,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4496.13|0.2997417724630231",
+      "fixRecordId": 118
+    },
+    {
+      "id": "payment_usd_conversion_119",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 119,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 15000.00 ILS → Recorded: $4500, Expected: $4496.13",
+      "currentValue": 4500,
+      "expectedValue": 4496.13,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4496.13|0.2997417724630231",
+      "fixRecordId": 119
+    },
+    {
+      "id": "payment_usd_conversion_209",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 10909,
+      "contactName": "Shmuel Kligman",
+      "recordId": 209,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 200.00 ILS → Recorded: $60.02, Expected: $59.95",
+      "currentValue": 60.02,
+      "expectedValue": 59.95,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "59.95|0.2997417724630231",
+      "fixRecordId": 209
+    },
+    {
+      "id": "payment_usd_conversion_137",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 137,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 137
+    },
+    {
+      "id": "payment_usd_conversion_138",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 138,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 138
+    },
+    {
+      "id": "payment_usd_conversion_139",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 139,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 139
+    },
+    {
+      "id": "payment_usd_conversion_141",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 141,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 141
+    },
+    {
+      "id": "payment_usd_conversion_140",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 140,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 140
+    },
+    {
+      "id": "payment_usd_conversion_142",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 142,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 142
+    },
+    {
+      "id": "payment_usd_conversion_144",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 144,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 144
+    },
+    {
+      "id": "payment_usd_conversion_143",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12944,
+      "contactName": "Eric De Louya",
+      "recordId": 143,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.5% error). 2000.00 CAD → Recorded: $1444.79, Expected: $1451.33",
+      "currentValue": 1444.79,
+      "expectedValue": 1451.33,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1451.33|0.7256630746344472",
+      "fixRecordId": 143
+    },
+    {
+      "id": "payment_usd_conversion_149",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 11877,
+      "contactName": "Simi Sherman",
+      "recordId": 149,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 360.00 ILS → Recorded: $107.23, Expected: $107.91",
+      "currentValue": 107.23,
+      "expectedValue": 107.91,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "107.91|0.2997417724630231",
+      "fixRecordId": 149
+    },
+    {
+      "id": "payment_usd_conversion_150",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 11877,
+      "contactName": "Simi Sherman",
+      "recordId": 150,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 120.00 ILS → Recorded: $35.74, Expected: $35.97",
+      "currentValue": 35.74,
+      "expectedValue": 35.97,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "35.97|0.2997417724630231",
+      "fixRecordId": 150
+    },
+    {
+      "id": "payment_usd_conversion_148",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 0,
+      "contactName": "Unknown Contact",
+      "recordId": 148,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.4% error). 8846.63 ILS → Recorded: $2613.4, Expected: $2651.7",
+      "currentValue": 2613.4,
+      "expectedValue": 2651.7,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2651.70|0.2997417724630231",
+      "fixRecordId": 148
+    },
+    {
+      "id": "payment_usd_conversion_213",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 213,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 5000.00 ILS → Recorded: $1494.99, Expected: $1498.71",
+      "currentValue": 1494.99,
+      "expectedValue": 1498.71,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1498.71|0.2997417724630231",
+      "fixRecordId": 213
+    },
+    {
+      "id": "payment_usd_conversion_155",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12939,
+      "contactName": "Barton Sobel",
+      "recordId": 155,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 19200.00 ILS → Recorded: $5718.89, Expected: $5755.04",
+      "currentValue": 5718.89,
+      "expectedValue": 5755.04,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5755.04|0.2997417724630231",
+      "fixRecordId": 155
+    },
+    {
+      "id": "payment_usd_conversion_146",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6918,
+      "contactName": "Mo Kaplan",
+      "recordId": 146,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 23400.00 ILS → Recorded: $6969.9, Expected: $7013.96",
+      "currentValue": 6969.9,
+      "expectedValue": 7013.96,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "7013.96|0.2997417724630231",
+      "fixRecordId": 146
+    },
+    {
+      "id": "payment_usd_conversion_152",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 5948,
+      "contactName": "Roniel Weinberg",
+      "recordId": 152,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 23000.00 ILS → Recorded: $6850.76, Expected: $6894.06",
+      "currentValue": 6850.76,
+      "expectedValue": 6894.06,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "6894.06|0.2997417724630231",
+      "fixRecordId": 152
+    },
+    {
+      "id": "payment_usd_conversion_157",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13353,
+      "contactName": "Larry Froom",
+      "recordId": 157,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 15000.00 CAD → Recorded: $10875.32, Expected: $10884.95",
+      "currentValue": 10875.32,
+      "expectedValue": 10884.95,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "10884.95|0.7256630746344472",
+      "fixRecordId": 157
+    },
+    {
+      "id": "payment_usd_conversion_172",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13887,
+      "contactName": "Shimon Etigson",
+      "recordId": 172,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.3% error). 200.00 ILS → Recorded: $59.8, Expected: $59.95",
+      "currentValue": 59.8,
+      "expectedValue": 59.95,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "59.95|0.2997417724630231",
+      "fixRecordId": 172
+    },
+    {
+      "id": "payment_usd_conversion_173",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 173,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 173
+    },
+    {
+      "id": "payment_usd_conversion_174",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 174,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 174
+    },
+    {
+      "id": "payment_usd_conversion_175",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 175,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 175
+    },
+    {
+      "id": "payment_usd_conversion_176",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 176,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 176
+    },
+    {
+      "id": "payment_usd_conversion_177",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 177,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 177
+    },
+    {
+      "id": "payment_usd_conversion_178",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 178,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 178
+    },
+    {
+      "id": "payment_usd_conversion_179",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 179,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 179
+    },
+    {
+      "id": "payment_usd_conversion_180",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 180,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 180
+    },
+    {
+      "id": "payment_usd_conversion_181",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 181,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 181
+    },
+    {
+      "id": "payment_usd_conversion_182",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 182,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 182
+    },
+    {
+      "id": "payment_usd_conversion_183",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 183,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 183
+    },
+    {
+      "id": "payment_usd_conversion_184",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6397,
+      "contactName": "Aharon Mendlowitz",
+      "recordId": 184,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 600.00 ILS → Recorded: $180, Expected: $179.85",
+      "currentValue": 180,
+      "expectedValue": 179.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "179.85|0.2997417724630231",
+      "fixRecordId": 184
+    },
+    {
+      "id": "payment_usd_conversion_220",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 220,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 10000.00 ILS → Recorded: $2989.97, Expected: $2997.42",
+      "currentValue": 2989.97,
+      "expectedValue": 2997.42,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2997.42|0.2997417724630231",
+      "fixRecordId": 220
+    },
+    {
+      "id": "payment_usd_conversion_301",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13045,
+      "contactName": "Joshua Tugendhaft",
+      "recordId": 301,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.4% error). 20000.00 ILS → Recorded: $5908.24, Expected: $5994.84",
+      "currentValue": 5908.24,
+      "expectedValue": 5994.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5994.84|0.2997417724630231",
+      "fixRecordId": 301
+    },
+    {
+      "id": "payment_usd_conversion_303",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 303,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.4% error). 27500.00 ILS → Recorded: $8123.83, Expected: $8242.9",
+      "currentValue": 8123.83,
+      "expectedValue": 8242.9,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "8242.90|0.2997417724630231",
+      "fixRecordId": 303
+    },
+    {
+      "id": "payment_usd_conversion_311",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13936,
+      "contactName": "Zack Mocton",
+      "recordId": 311,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.3% error). 250.00 ILS → Recorded: $74.71, Expected: $74.94",
+      "currentValue": 74.71,
+      "expectedValue": 74.94,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "74.94|0.2997417724630231",
+      "fixRecordId": 311
+    },
+    {
+      "id": "payment_usd_conversion_312",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13942,
+      "contactName": "Tzippora Price",
+      "recordId": 312,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1650.00 ILS → Recorded: $494.81, Expected: $494.57",
+      "currentValue": 494.81,
+      "expectedValue": 494.57,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "494.57|0.2997417724630231",
+      "fixRecordId": 312
+    },
+    {
+      "id": "payment_usd_conversion_298",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13045,
+      "contactName": "Joshua Tugendhaft",
+      "recordId": 298,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.4% error). 22500.00 ILS → Recorded: $6647.8, Expected: $6744.19",
+      "currentValue": 6647.8,
+      "expectedValue": 6744.19,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "6744.19|0.2997417724630231",
+      "fixRecordId": 298
+    },
+    {
+      "id": "payment_usd_conversion_287",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6096,
+      "contactName": "Ezra Miller",
+      "recordId": 287,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 100.00 ILS → Recorded: $29.9, Expected: $29.97",
+      "currentValue": 29.9,
+      "expectedValue": 29.97,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "29.97|0.2997417724630231",
+      "fixRecordId": 287
+    },
+    {
+      "id": "payment_usd_conversion_289",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 11919,
+      "contactName": "Shua Lax",
+      "recordId": 289,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 100.00 ILS → Recorded: $29.9, Expected: $29.97",
+      "currentValue": 29.9,
+      "expectedValue": 29.97,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "29.97|0.2997417724630231",
+      "fixRecordId": 289
+    },
+    {
+      "id": "payment_usd_conversion_300",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13045,
+      "contactName": "Joshua Tugendhaft",
+      "recordId": 300,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.4% error). 20000.00 ILS → Recorded: $5908.24, Expected: $5994.84",
+      "currentValue": 5908.24,
+      "expectedValue": 5994.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5994.84|0.2997417724630231",
+      "fixRecordId": 300
+    },
+    {
+      "id": "payment_usd_conversion_302",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13045,
+      "contactName": "Joshua Tugendhaft",
+      "recordId": 302,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.4% error). 20000.00 ILS → Recorded: $5908.24, Expected: $5994.84",
+      "currentValue": 5908.24,
+      "expectedValue": 5994.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5994.84|0.2997417724630231",
+      "fixRecordId": 302
+    },
+    {
+      "id": "payment_usd_conversion_88",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6982,
+      "contactName": "Kfir Ohayon",
+      "recordId": 88,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.3% error). 200.00 ILS → Recorded: $59.77, Expected: $59.95",
+      "currentValue": 59.77,
+      "expectedValue": 59.95,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "59.95|0.2997417724630231",
+      "fixRecordId": 88
+    },
+    {
+      "id": "payment_usd_conversion_309",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13935,
+      "contactName": "Avi Vaknin",
+      "recordId": 309,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.3% error). 2100.00 ILS → Recorded: $627.57, Expected: $629.46",
+      "currentValue": 627.57,
+      "expectedValue": 629.46,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "629.46|0.2997417724630231",
+      "fixRecordId": 309
+    },
+    {
+      "id": "payment_usd_conversion_310",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 8079,
+      "contactName": "Dovid Fertig",
+      "recordId": 310,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.3% error). 200.00 ILS → Recorded: $59.77, Expected: $59.95",
+      "currentValue": 59.77,
+      "expectedValue": 59.95,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "59.95|0.2997417724630231",
+      "fixRecordId": 310
+    },
+    {
+      "id": "payment_usd_conversion_315",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 315,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 315
+    },
+    {
+      "id": "payment_pledge_conversion_368",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 7021,
+      "contactName": "Toby Kram",
+      "recordId": 368,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 1187.50 USD → Recorded: 3978.77 ILS, Expected: 3961.74 ILS",
+      "currentValue": 3978.77,
+      "expectedValue": 3961.74,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "3961.74|3.336205",
+      "fixRecordId": 368
+    },
+    {
+      "id": "payment_usd_conversion_363",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4586,
+      "contactName": "Jonathan Silver",
+      "recordId": 363,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.4% error). 111963.00 ILS → Recorded: $33416.4, Expected: $33559.99",
+      "currentValue": 33416.4,
+      "expectedValue": 33559.99,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "33559.99|0.2997417724630231",
+      "fixRecordId": 363
+    },
+    {
+      "id": "payment_pledge_conversion_365",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 7021,
+      "contactName": "Toby Kram",
+      "recordId": 365,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 1187.50 USD → Recorded: 3978.77 ILS, Expected: 3961.74 ILS",
+      "currentValue": 3978.77,
+      "expectedValue": 3961.74,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "3961.74|3.336205",
+      "fixRecordId": 365
+    },
+    {
+      "id": "payment_pledge_conversion_366",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 7021,
+      "contactName": "Toby Kram",
+      "recordId": 366,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 1187.50 USD → Recorded: 3978.77 ILS, Expected: 3961.74 ILS",
+      "currentValue": 3978.77,
+      "expectedValue": 3961.74,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "3961.74|3.336205",
+      "fixRecordId": 366
+    },
+    {
+      "id": "payment_pledge_conversion_367",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 7021,
+      "contactName": "Toby Kram",
+      "recordId": 367,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 1187.50 USD → Recorded: 3978.77 ILS, Expected: 3961.74 ILS",
+      "currentValue": 3978.77,
+      "expectedValue": 3961.74,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "3961.74|3.336205",
+      "fixRecordId": 367
+    },
+    {
+      "id": "payment_pledge_conversion_373",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4546,
+      "contactName": "Anton Smirnov",
+      "recordId": 373,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 642.86 USD → Recorded: 2153.93 ILS, Expected: 2144.71 ILS",
+      "currentValue": 2153.93,
+      "expectedValue": 2144.71,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2144.71|3.336205",
+      "fixRecordId": 373
+    },
+    {
+      "id": "payment_pledge_conversion_374",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4546,
+      "contactName": "Anton Smirnov",
+      "recordId": 374,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 642.86 USD → Recorded: 2153.93 ILS, Expected: 2144.71 ILS",
+      "currentValue": 2153.93,
+      "expectedValue": 2144.71,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2144.71|3.336205",
+      "fixRecordId": 374
+    },
+    {
+      "id": "payment_pledge_conversion_375",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4546,
+      "contactName": "Anton Smirnov",
+      "recordId": 375,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 642.86 USD → Recorded: 2153.93 ILS, Expected: 2144.71 ILS",
+      "currentValue": 2153.93,
+      "expectedValue": 2144.71,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2144.71|3.336205",
+      "fixRecordId": 375
+    },
+    {
+      "id": "payment_pledge_conversion_376",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4546,
+      "contactName": "Anton Smirnov",
+      "recordId": 376,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 642.86 USD → Recorded: 2153.93 ILS, Expected: 2144.71 ILS",
+      "currentValue": 2153.93,
+      "expectedValue": 2144.71,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2144.71|3.336205",
+      "fixRecordId": 376
+    },
+    {
+      "id": "payment_pledge_conversion_377",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4546,
+      "contactName": "Anton Smirnov",
+      "recordId": 377,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 642.86 USD → Recorded: 2153.93 ILS, Expected: 2144.71 ILS",
+      "currentValue": 2153.93,
+      "expectedValue": 2144.71,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2144.71|3.336205",
+      "fixRecordId": 377
+    },
+    {
+      "id": "payment_pledge_conversion_378",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4546,
+      "contactName": "Anton Smirnov",
+      "recordId": 378,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 642.86 USD → Recorded: 2153.93 ILS, Expected: 2144.71 ILS",
+      "currentValue": 2153.93,
+      "expectedValue": 2144.71,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2144.71|3.336205",
+      "fixRecordId": 378
+    },
+    {
+      "id": "payment_pledge_conversion_379",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4546,
+      "contactName": "Anton Smirnov",
+      "recordId": 379,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 642.86 USD → Recorded: 2153.93 ILS, Expected: 2144.71 ILS",
+      "currentValue": 2153.93,
+      "expectedValue": 2144.71,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2144.71|3.336205",
+      "fixRecordId": 379
+    },
+    {
+      "id": "payment_usd_conversion_314",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 314,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 540.00 ILS → Recorded: $161.94, Expected: $161.86",
+      "currentValue": 161.94,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 314
+    },
+    {
+      "id": "payment_usd_conversion_316",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 316,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 316
+    },
+    {
+      "id": "payment_usd_conversion_317",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 317,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 317
+    },
+    {
+      "id": "payment_usd_conversion_318",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 318,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 318
+    },
+    {
+      "id": "payment_usd_conversion_319",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 319,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 319
+    },
+    {
+      "id": "payment_usd_conversion_320",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 320,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 320
+    },
+    {
+      "id": "payment_usd_conversion_321",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 321,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 321
+    },
+    {
+      "id": "payment_usd_conversion_322",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 322,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 322
+    },
+    {
+      "id": "payment_usd_conversion_324",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 324,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 324
+    },
+    {
+      "id": "payment_usd_conversion_325",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 325,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 325
+    },
+    {
+      "id": "payment_usd_conversion_326",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 326,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 326
+    },
+    {
+      "id": "payment_usd_conversion_327",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 327,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 327
+    },
+    {
+      "id": "payment_usd_conversion_328",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 328,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 328
+    },
+    {
+      "id": "payment_usd_conversion_329",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 329,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 329
+    },
+    {
+      "id": "payment_usd_conversion_331",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 331,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 331
+    },
+    {
+      "id": "payment_usd_conversion_332",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 332,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 332
+    },
+    {
+      "id": "payment_usd_conversion_333",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 333,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 333
+    },
+    {
+      "id": "payment_usd_conversion_334",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 334,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 334
+    },
+    {
+      "id": "payment_usd_conversion_335",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 335,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 335
+    },
+    {
+      "id": "payment_usd_conversion_336",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 336,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 336
+    },
+    {
+      "id": "payment_usd_conversion_337",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 337,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 337
+    },
+    {
+      "id": "payment_usd_conversion_340",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13102,
+      "contactName": "Jonathan Levy",
+      "recordId": 340,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 500.00 CAD → Recorded: $362.11, Expected: $362.83",
+      "currentValue": 362.11,
+      "expectedValue": 362.83,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "362.83|0.7256630746344472",
+      "fixRecordId": 340
+    },
+    {
+      "id": "payment_usd_conversion_382",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 14030,
+      "contactName": "Johannes Hermanus",
+      "recordId": 382,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 100.00 ILS → Recorded: $29.9, Expected: $29.97",
+      "currentValue": 29.9,
+      "expectedValue": 29.97,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "29.97|0.2997417724630231",
+      "fixRecordId": 382
+    },
+    {
+      "id": "payment_pledge_conversion_390",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13063,
+      "contactName": "Dovid Hordiner",
+      "recordId": 390,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (4.5% error). 5200.00 USD → Recorded: 18131.65 ILS, Expected: 17348.27 ILS",
+      "currentValue": 18131.65,
+      "expectedValue": 17348.27,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "17348.27|3.336205",
+      "fixRecordId": 390
+    },
+    {
+      "id": "payment_usd_conversion_392",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13063,
+      "contactName": "Dovid Hordiner",
+      "recordId": 392,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (4.3% error). 40000.00 ILS → Recorded: $11471.66, Expected: $11989.67",
+      "currentValue": 11471.66,
+      "expectedValue": 11989.67,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "11989.67|0.2997417724630231",
+      "fixRecordId": 392
+    },
+    {
+      "id": "payment_pledge_conversion_396",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 396,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 3875.00 USD → Recorded: 12983.34 ILS, Expected: 12927.79 ILS",
+      "currentValue": 12983.34,
+      "expectedValue": 12927.79,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "12927.79|3.336205",
+      "fixRecordId": 396
+    },
+    {
+      "id": "payment_pledge_conversion_397",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 397,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 3875.00 USD → Recorded: 12983.34 ILS, Expected: 12927.79 ILS",
+      "currentValue": 12983.34,
+      "expectedValue": 12927.79,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "12927.79|3.336205",
+      "fixRecordId": 397
+    },
+    {
+      "id": "payment_pledge_conversion_398",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 398,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 3875.00 USD → Recorded: 12983.34 ILS, Expected: 12927.79 ILS",
+      "currentValue": 12983.34,
+      "expectedValue": 12927.79,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "12927.79|3.336205",
+      "fixRecordId": 398
+    },
+    {
+      "id": "payment_pledge_conversion_399",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 399,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 3875.00 USD → Recorded: 12983.34 ILS, Expected: 12927.79 ILS",
+      "currentValue": 12983.34,
+      "expectedValue": 12927.79,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "12927.79|3.336205",
+      "fixRecordId": 399
+    },
+    {
+      "id": "payment_pledge_conversion_400",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 400,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 3875.00 USD → Recorded: 12983.34 ILS, Expected: 12927.79 ILS",
+      "currentValue": 12983.34,
+      "expectedValue": 12927.79,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "12927.79|3.336205",
+      "fixRecordId": 400
+    },
+    {
+      "id": "payment_pledge_conversion_412",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12988,
+      "contactName": "Michael Deutsch",
+      "recordId": 412,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.6% error). 1687.50 USD → Recorded: 5719.02 ILS, Expected: 5629.85 ILS",
+      "currentValue": 5719.02,
+      "expectedValue": 5629.85,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "5629.85|3.336205",
+      "fixRecordId": 412
+    },
+    {
+      "id": "payment_usd_conversion_420",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13821,
+      "contactName": "NCSY NCSY Michlelet",
+      "recordId": 420,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 56125.00 ILS → Recorded: $16714.82, Expected: $16823.01",
+      "currentValue": 16714.82,
+      "expectedValue": 16823.01,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "16823.01|0.2997417724630231",
+      "fixRecordId": 420
+    },
+    {
+      "id": "payment_usd_conversion_415",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 5665,
+      "contactName": "Shalom Woodrow",
+      "recordId": 415,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 1500.00 ILS → Recorded: $446.72, Expected: $449.61",
+      "currentValue": 446.72,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 415
+    },
+    {
+      "id": "payment_usd_conversion_414",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12988,
+      "contactName": "Michael Deutsch",
+      "recordId": 414,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (4.3% error). 18150.00 ILS → Recorded: $5206.07, Expected: $5440.31",
+      "currentValue": 5206.07,
+      "expectedValue": 5440.31,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5440.31|0.2997417724630231",
+      "fixRecordId": 414
+    },
+    {
+      "id": "payment_pledge_conversion_369",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12978,
+      "contactName": "Zalman Sorotzkin",
+      "recordId": 369,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.0% error). 2500.00 USD → Recorded: 8339.91 ILS, Expected: 8340.51 ILS",
+      "currentValue": 8339.91,
+      "expectedValue": 8340.51,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "8340.51|3.336205",
+      "fixRecordId": 369
+    },
+    {
+      "id": "payment_pledge_conversion_423",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 423,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.5% error). 2000.00 USD → Recorded: 6706.71 ILS, Expected: 6672.41 ILS",
+      "currentValue": 6706.71,
+      "expectedValue": 6672.41,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "6672.41|3.336205",
+      "fixRecordId": 423
+    },
+    {
+      "id": "payment_pledge_conversion_424",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 424,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.6% error). 250.00 USD → Recorded: 838.65 ILS, Expected: 834.05 ILS",
+      "currentValue": 838.65,
+      "expectedValue": 834.05,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "834.05|3.336205",
+      "fixRecordId": 424
+    },
+    {
+      "id": "payment_pledge_conversion_425",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 425,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (2.9% error). 1000.00 USD → Recorded: 3432.51 ILS, Expected: 3336.2 ILS",
+      "currentValue": 3432.51,
+      "expectedValue": 3336.2,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "3336.20|3.336205",
+      "fixRecordId": 425
+    },
+    {
+      "id": "payment_pledge_conversion_426",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 426,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.3% error). 4500.00 USD → Recorded: 15058.1 ILS, Expected: 15012.92 ILS",
+      "currentValue": 15058.1,
+      "expectedValue": 15012.92,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "15012.92|3.336205",
+      "fixRecordId": 426
+    },
+    {
+      "id": "payment_pledge_conversion_427",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 427,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.4% error). 4500.00 USD → Recorded: 15218.46 ILS, Expected: 15012.92 ILS",
+      "currentValue": 15218.46,
+      "expectedValue": 15012.92,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "15012.92|3.336205",
+      "fixRecordId": 427
+    },
+    {
+      "id": "payment_pledge_conversion_428",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 428,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.4% error). 1000.00 USD → Recorded: 3323.06 ILS, Expected: 3336.2 ILS",
+      "currentValue": 3323.06,
+      "expectedValue": 3336.2,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "3336.20|3.336205",
+      "fixRecordId": 428
+    },
+    {
+      "id": "payment_pledge_conversion_429",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 429,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.4% error). 500.00 USD → Recorded: 1691.58 ILS, Expected: 1668.1 ILS",
+      "currentValue": 1691.58,
+      "expectedValue": 1668.1,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "1668.10|3.336205",
+      "fixRecordId": 429
+    },
+    {
+      "id": "payment_usd_conversion_430",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 430,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (5.5% error). 27500.00 ILS → Recorded: $7791.47, Expected: $8242.9",
+      "currentValue": 7791.47,
+      "expectedValue": 8242.9,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "8242.90|0.2997417724630231",
+      "fixRecordId": 430
+    },
+    {
+      "id": "payment_pledge_conversion_431",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 431,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.2% error). 1800.00 USD → Recorded: 6019.75 ILS, Expected: 6005.17 ILS",
+      "currentValue": 6019.75,
+      "expectedValue": 6005.17,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "6005.17|3.336205",
+      "fixRecordId": 431
+    },
+    {
+      "id": "payment_usd_conversion_433",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12904,
+      "contactName": "Reuven Sarett",
+      "recordId": 433,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (2.6% error). 2300.00 ILS → Recorded: $671.49, Expected: $689.41",
+      "currentValue": 671.49,
+      "expectedValue": 689.41,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "689.41|0.2997417724630231",
+      "fixRecordId": 433
+    },
+    {
+      "id": "payment_usd_conversion_434",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 8650,
+      "contactName": "Ilan Casper",
+      "recordId": 434,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.3% error). 320.00 ILS → Recorded: $95.68, Expected: $95.92",
+      "currentValue": 95.68,
+      "expectedValue": 95.92,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "95.92|0.2997417724630231",
+      "fixRecordId": 434
+    },
+    {
+      "id": "payment_usd_conversion_436",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 436,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 436
+    },
+    {
+      "id": "payment_usd_conversion_437",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 437,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 437
+    },
+    {
+      "id": "payment_usd_conversion_438",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 438,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 438
+    },
+    {
+      "id": "payment_usd_conversion_439",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 439,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 439
+    },
+    {
+      "id": "payment_usd_conversion_440",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 440,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 440
+    },
+    {
+      "id": "payment_usd_conversion_441",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 441,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 441
+    },
+    {
+      "id": "payment_usd_conversion_442",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 442,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 442
+    },
+    {
+      "id": "payment_usd_conversion_443",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 443,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 443
+    },
+    {
+      "id": "payment_usd_conversion_444",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 444,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 444
+    },
+    {
+      "id": "payment_usd_conversion_445",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 445,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 445
+    },
+    {
+      "id": "payment_usd_conversion_446",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 446,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 1500.00 ILS → Recorded: $449.48, Expected: $449.61",
+      "currentValue": 449.48,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 446
+    },
+    {
+      "id": "payment_usd_conversion_450",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12902,
+      "contactName": "Justin Brasch",
+      "recordId": 450,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 20000.00 ILS → Recorded: $5993.13, Expected: $5994.84",
+      "currentValue": 5993.13,
+      "expectedValue": 5994.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5994.84|0.2997417724630231",
+      "fixRecordId": 450
+    },
+    {
+      "id": "payment_usd_conversion_451",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12902,
+      "contactName": "Justin Brasch",
+      "recordId": 451,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 20000.00 ILS → Recorded: $5993.13, Expected: $5994.84",
+      "currentValue": 5993.13,
+      "expectedValue": 5994.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5994.84|0.2997417724630231",
+      "fixRecordId": 451
+    },
+    {
+      "id": "payment_usd_conversion_452",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12902,
+      "contactName": "Justin Brasch",
+      "recordId": 452,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 20000.00 ILS → Recorded: $5993.13, Expected: $5994.84",
+      "currentValue": 5993.13,
+      "expectedValue": 5994.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5994.84|0.2997417724630231",
+      "fixRecordId": 452
+    },
+    {
+      "id": "payment_usd_conversion_453",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 14035,
+      "contactName": "Menachem Fuchs",
+      "recordId": 453,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.7% error). 200.00 ILS → Recorded: $59.56, Expected: $59.95",
+      "currentValue": 59.56,
+      "expectedValue": 59.95,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "59.95|0.2997417724630231",
+      "fixRecordId": 453
+    },
+    {
+      "id": "payment_pledge_conversion_453",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 14035,
+      "contactName": "Menachem Fuchs",
+      "recordId": 453,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (0.7% error). 200.00 ILS → Recorded: 59.56 USD, Expected: 59.95 USD",
+      "currentValue": 59.56,
+      "expectedValue": 59.95,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "59.95|0.2997417724630231",
+      "fixRecordId": 453
+    },
+    {
+      "id": "payment_usd_conversion_456",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 456,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 14000.00 ILS → Recorded: $4195.19, Expected: $4196.38",
+      "currentValue": 4195.19,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 456
+    },
+    {
+      "id": "payment_usd_conversion_457",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 457,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 14000.00 ILS → Recorded: $4195.19, Expected: $4196.38",
+      "currentValue": 4195.19,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 457
+    },
+    {
+      "id": "payment_usd_conversion_458",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 458,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 14000.00 ILS → Recorded: $4195.19, Expected: $4196.38",
+      "currentValue": 4195.19,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 458
+    },
+    {
+      "id": "payment_usd_conversion_459",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 459,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 14000.00 ILS → Recorded: $4195.19, Expected: $4196.38",
+      "currentValue": 4195.19,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 459
+    },
+    {
+      "id": "payment_usd_conversion_460",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 460,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 14000.00 ILS → Recorded: $4195.19, Expected: $4196.38",
+      "currentValue": 4195.19,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 460
+    },
+    {
+      "id": "payment_usd_conversion_462",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 462,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 14000.00 ILS → Recorded: $4195.19, Expected: $4196.38",
+      "currentValue": 4195.19,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 462
+    },
+    {
+      "id": "payment_usd_conversion_461",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 461,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.0% error). 14000.00 ILS → Recorded: $4195.19, Expected: $4196.38",
+      "currentValue": 4195.19,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 461
+    },
+    {
+      "id": "payment_usd_conversion_435",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 9293,
+      "contactName": "Coby Romanoski",
+      "recordId": 435,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 1500.00 ILS → Recorded: $448.49, Expected: $449.61",
+      "currentValue": 448.49,
+      "expectedValue": 449.61,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "449.61|0.2997417724630231",
+      "fixRecordId": 435
+    },
+    {
+      "id": "payment_usd_conversion_463",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13045,
+      "contactName": "Joshua Tugendhaft",
+      "recordId": 463,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.4% error). 27500.00 ILS → Recorded: $8208.33, Expected: $8242.9",
+      "currentValue": 8208.33,
+      "expectedValue": 8242.9,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "8242.90|0.2997417724630231",
+      "fixRecordId": 463
+    },
+    {
+      "id": "payment_usd_conversion_449",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12902,
+      "contactName": "Justin Brasch",
+      "recordId": 449,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.7% error). 20000.00 ILS → Recorded: $5893.19, Expected: $5994.84",
+      "currentValue": 5893.19,
+      "expectedValue": 5994.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5994.84|0.2997417724630231",
+      "fixRecordId": 449
+    },
+    {
+      "id": "payment_usd_conversion_447",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12920,
+      "contactName": "Simcha Schlanger",
+      "recordId": 447,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.8% error). 10000.00 ILS → Recorded: $2972.96, Expected: $2997.42",
+      "currentValue": 2972.96,
+      "expectedValue": 2997.42,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2997.42|0.2997417724630231",
+      "fixRecordId": 447
+    },
+    {
+      "id": "payment_usd_conversion_455",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13095,
+      "contactName": "Robert Lederer",
+      "recordId": 455,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (1.2% error). 14000.00 ILS → Recorded: $4145.61, Expected: $4196.38",
+      "currentValue": 4145.61,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 455
+    },
+    {
+      "id": "payment_usd_conversion_154",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12939,
+      "contactName": "Barton Sobel",
+      "recordId": 154,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.4% error). 14000.00 ILS → Recorded: $4177.8, Expected: $4196.38",
+      "currentValue": 4177.8,
+      "expectedValue": 4196.38,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4196.38|0.2997417724630231",
+      "fixRecordId": 154
+    },
+    {
+      "id": "payment_usd_conversion_466",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1766,
+      "contactName": "Marc Merrill",
+      "recordId": 466,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 100.00 ILS → Recorded: $29.9, Expected: $29.97",
+      "currentValue": 29.9,
+      "expectedValue": 29.97,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "29.97|0.2997417724630231",
+      "fixRecordId": 466
+    },
+    {
+      "id": "payment_usd_conversion_467",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13626,
+      "contactName": "Kehillat Kehillat Mishkan Shilo",
+      "recordId": 467,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.6% error). 4710.21 ILS → Recorded: $1402.77, Expected: $1411.85",
+      "currentValue": 1402.77,
+      "expectedValue": 1411.85,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "1411.85|0.2997417724630231",
+      "fixRecordId": 467
+    },
+    {
+      "id": "payment_usd_conversion_215",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 215,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 10000.00 ILS → Recorded: $3000, Expected: $2997.42",
+      "currentValue": 3000,
+      "expectedValue": 2997.42,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2997.42|0.2997417724630231",
+      "fixRecordId": 215
+    },
+    {
+      "id": "payment_usd_conversion_116",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13156,
+      "contactName": "Chananya Noe",
+      "recordId": 116,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 15000.00 ILS → Recorded: $4500, Expected: $4496.13",
+      "currentValue": 4500,
+      "expectedValue": 4496.13,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "4496.13|0.2997417724630231",
+      "fixRecordId": 116
+    },
+    {
+      "id": "payment_usd_conversion_245",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12978,
+      "contactName": "Zalman Sorotzkin",
+      "recordId": 245,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 26000.00 ILS → Recorded: $7773.92, Expected: $7793.29",
+      "currentValue": 7773.92,
+      "expectedValue": 7793.29,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "7793.29|0.2997417724630231",
+      "fixRecordId": 245
+    },
+    {
+      "id": "payment_usd_conversion_185",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13154,
+      "contactName": "Randy Pearlman",
+      "recordId": 185,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 18480.00 ILS → Recorded: $5525.46, Expected: $5539.23",
+      "currentValue": 5525.46,
+      "expectedValue": 5539.23,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "5539.23|0.2997417724630231",
+      "fixRecordId": 185
+    },
+    {
+      "id": "payment_usd_conversion_313",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 4634,
+      "contactName": "Yitzchak Goodman",
+      "recordId": 313,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.4% error). 1000.00 ILS → Recorded: $301.05, Expected: $299.74",
+      "currentValue": 301.05,
+      "expectedValue": 299.74,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "299.74|0.2997417724630231",
+      "fixRecordId": 313
+    },
+    {
+      "id": "payment_usd_conversion_323",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 323,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 323
+    },
+    {
+      "id": "payment_usd_conversion_330",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 1769,
+      "contactName": "Eli Lehman",
+      "recordId": 330,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.1% error). 540.00 ILS → Recorded: $162, Expected: $161.86",
+      "currentValue": 162,
+      "expectedValue": 161.86,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "161.86|0.2997417724630231",
+      "fixRecordId": 330
+    },
+    {
+      "id": "payment_usd_conversion_339",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 3642,
+      "contactName": "Gavriel Ironi",
+      "recordId": 339,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (0.2% error). 49.69 CAD → Recorded: $35.99, Expected: $36.06",
+      "currentValue": 35.99,
+      "expectedValue": 36.06,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "36.06|0.7256630746344472",
+      "fixRecordId": 339
+    }
+  ],
+  "generatedAt": "2025-09-20T11:39:10.266Z"
+}

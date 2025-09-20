@@ -861,11 +861,7 @@ export default function EditPaymentDialog({
       return acc;
     }, [] as Pledge[]);
 
-    // Filter pledges with scheduledAmount > 0
-    const filteredPledges = uniquePledges.filter((pledge) => {
-      const scheduledAmount = parseFloat((pledge as any).scheduledAmount || '0');
-      return scheduledAmount > 0;
-    });
+    const filteredPledges = uniquePledges;
 
     return filteredPledges.map((pledge: Pledge) => ({
       label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`,
