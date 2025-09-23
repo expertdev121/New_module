@@ -1,0 +1,372 @@
+{
+  "summary": {
+    "totalIssues": 20,
+    "criticalIssues": 0,
+    "warningIssues": 20,
+    "affectedContacts": 14,
+    "timestamp": "2025-09-22T05:36:47.148Z"
+  },
+  "issues": [
+    {
+      "id": "payment_usd_conversion_212",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 212,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (10.1% error). 33000.00 ILS → Recorded: 9891.48, Expected: 8986.27 (rate: 0.27231113180675715, date: 2025-03-27)",
+      "currentValue": 9891.48,
+      "expectedValue": 8986.27,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "8986.27|0.27231113180675715",
+      "fixRecordId": 212
+    },
+    {
+      "id": "payment_pledge_conversion_126",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12920,
+      "contactName": "Simcha Schlanger",
+      "recordId": 126,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.0% error). 750.00 USD → Recorded: 2502.15 ILS, Expected: 2527.88 ILS (rate: 3.370504, date: 2025-08-23)",
+      "currentValue": 2502.15,
+      "expectedValue": 2527.88,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "2527.88|3.370504",
+      "fixRecordId": 126
+    },
+    {
+      "id": "payment_usd_conversion_245",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12978,
+      "contactName": "Zalman Sorotzkin",
+      "recordId": 245,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (11.4% error). 26000.00 ILS → Recorded: 7793.29, Expected: 6994.23 (rate: 0.2690089093060673, date: 2025-03-23)",
+      "currentValue": 7793.29,
+      "expectedValue": 6994.23,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "6994.23|0.2690089093060673",
+      "fixRecordId": 245
+    },
+    {
+      "id": "payment_usd_conversion_148",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 0,
+      "contactName": "Unknown Contact",
+      "recordId": 148,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (6.3% error). 8846.63 ILS → Recorded: 2651.7, Expected: 2495.14 (rate: 0.28204448405602534, date: 2025-02-19)",
+      "currentValue": 2651.7,
+      "expectedValue": 2495.14,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2495.14|0.28204448405602534",
+      "fixRecordId": 148
+    },
+    {
+      "id": "payment_pledge_conversion_199",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13154,
+      "contactName": "Randy Pearlman",
+      "recordId": 199,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.4% error). 100.00 USD → Recorded: 333.62 ILS, Expected: 338.19 ILS (rate: 3.38188, date: 2025-08-14)",
+      "currentValue": 333.62,
+      "expectedValue": 338.19,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "338.19|3.38188",
+      "fixRecordId": 199
+    },
+    {
+      "id": "payment_usd_conversion_220",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 6791,
+      "contactName": "Richard Adler",
+      "recordId": 220,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (10.6% error). 10000.00 ILS → Recorded: 2997.42, Expected: 2709.99 (rate: 0.27099867075151995, date: 2024-09-26)",
+      "currentValue": 2997.42,
+      "expectedValue": 2709.99,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "2709.99|0.27099867075151995",
+      "fixRecordId": 220
+    },
+    {
+      "id": "payment_pledge_conversion_310",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 8079,
+      "contactName": "Dovid Fertig",
+      "recordId": 310,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (2.5% error). 200.00 ILS → Recorded: 59.95 USD, Expected: 58.49 USD (rate: 0.29247206160631506, date: 2025-08-12)",
+      "currentValue": 59.95,
+      "expectedValue": 58.49,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "58.49|0.29247206160631506",
+      "fixRecordId": 310
+    },
+    {
+      "id": "payment_pledge_conversion_305",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 5752,
+      "contactName": "Rich Lehman",
+      "recordId": 305,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (4.0% error). 3250.00 USD → Recorded: 10842.67 ILS, Expected: 11295.25 ILS (rate: 3.47546, date: 2022-11-21)",
+      "currentValue": 10842.67,
+      "expectedValue": 11295.25,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "11295.25|3.47546",
+      "fixRecordId": 305
+    },
+    {
+      "id": "payment_usd_conversion_356",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13120,
+      "contactName": "Larry Masri",
+      "recordId": 356,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (6.9% error). 28000.00 ILS → Recorded: 8392.77, Expected: 7848.84 (rate: 0.2803158037845437, date: 2025-05-12)",
+      "currentValue": 8392.77,
+      "expectedValue": 7848.84,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "7848.84|0.2803158037845437",
+      "fixRecordId": 356
+    },
+    {
+      "id": "payment_pledge_conversion_364",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 7021,
+      "contactName": "Toby Kram",
+      "recordId": 364,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (4.3% error). 500.00 USD → Recorded: 1668.1 ILS, Expected: 1743.43 ILS (rate: 3.486855, date: 2025-06-10)",
+      "currentValue": 1668.1,
+      "expectedValue": 1743.43,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "1743.43|3.486855",
+      "fixRecordId": 364
+    },
+    {
+      "id": "payment_pledge_conversion_405",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13041,
+      "contactName": "Moshe Grossman",
+      "recordId": 405,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.7% error). 203.13 USD → Recorded: 677.68 ILS, Expected: 689.37 ILS (rate: 3.393745, date: 2025-08-19)",
+      "currentValue": 677.68,
+      "expectedValue": 689.37,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "689.37|3.393745",
+      "fixRecordId": 405
+    },
+    {
+      "id": "payment_pledge_conversion_411",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 12988,
+      "contactName": "Michael Deutsch",
+      "recordId": 411,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (2.4% error). 1687.50 USD → Recorded: 5629.85 ILS, Expected: 5769.78 ILS (rate: 3.41913, date: 2025-08-12)",
+      "currentValue": 5629.85,
+      "expectedValue": 5769.78,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "5769.78|3.41913",
+      "fixRecordId": 411
+    },
+    {
+      "id": "payment_usd_conversion_392",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13063,
+      "contactName": "Dovid Hordiner",
+      "recordId": 392,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (7.5% error). 40000.00 ILS → Recorded: 11989.67, Expected: 11148.44 (rate: 0.2787110727728547, date: 2025-06-15)",
+      "currentValue": 11989.67,
+      "expectedValue": 11148.44,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "11148.44|0.2787110727728547",
+      "fixRecordId": 392
+    },
+    {
+      "id": "payment_pledge_conversion_394",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 394,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (3.5% error). 3875.00 USD → Recorded: 12927.79 ILS, Expected: 13397.72 ILS (rate: 3.457475, date: 2025-08-05)",
+      "currentValue": 12927.79,
+      "expectedValue": 13397.72,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "13397.72|3.457475",
+      "fixRecordId": 394
+    },
+    {
+      "id": "payment_pledge_conversion_395",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13028,
+      "contactName": "Jordan Wexler",
+      "recordId": 395,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.6% error). 3875.00 USD → Recorded: 12927.79 ILS, Expected: 13132.57 ILS (rate: 3.38905, date: 2025-09-02)",
+      "currentValue": 12927.79,
+      "expectedValue": 13132.57,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "13132.57|3.38905",
+      "fixRecordId": 395
+    },
+    {
+      "id": "payment_pledge_conversion_407",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13041,
+      "contactName": "Moshe Grossman",
+      "recordId": 407,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.6% error). 203.14 USD → Recorded: 677.72 ILS, Expected: 688.45 ILS (rate: 3.38905, date: 2025-09-02)",
+      "currentValue": 677.72,
+      "expectedValue": 688.45,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "688.45|3.38905",
+      "fixRecordId": 407
+    },
+    {
+      "id": "payment_pledge_conversion_425",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 425,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (2.8% error). 1000.00 USD → Recorded: 3336.2 ILS, Expected: 3432.51 ILS (rate: 3.43251, date: 2025-08-09)",
+      "currentValue": 3336.2,
+      "expectedValue": 3432.51,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "3432.51|3.43251",
+      "fixRecordId": 425
+    },
+    {
+      "id": "payment_pledge_conversion_427",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 427,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.4% error). 4500.00 USD → Recorded: 15012.92 ILS, Expected: 15218.46 ILS (rate: 3.38188, date: 2025-08-14)",
+      "currentValue": 15012.92,
+      "expectedValue": 15218.46,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "15218.46|3.38188",
+      "fixRecordId": 427
+    },
+    {
+      "id": "payment_pledge_conversion_429",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 429,
+      "recordType": "payment",
+      "description": "Pledge currency conversion incorrect (1.4% error). 500.00 USD → Recorded: 1668.1 ILS, Expected: 1691.58 ILS (rate: 3.38315, date: 2025-07-01)",
+      "currentValue": 1668.1,
+      "expectedValue": 1691.58,
+      "affectedFields": [
+        "amount_in_pledge_currency",
+        "pledge_currency_exchange_rate"
+      ],
+      "fixValue": "1691.58|3.38315",
+      "fixRecordId": 429
+    },
+    {
+      "id": "payment_usd_conversion_430",
+      "type": "payment_conversion",
+      "severity": "warning",
+      "contactId": 13101,
+      "contactName": "Gabriel Jansenson",
+      "recordId": 430,
+      "recordType": "payment",
+      "description": "USD conversion incorrect (5.8% error). 27500.00 ILS → Recorded: 8242.9, Expected: 7791.47 (rate: 0.2833263304508657, date: 2025-06-11)",
+      "currentValue": 8242.9,
+      "expectedValue": 7791.47,
+      "affectedFields": [
+        "amount_usd",
+        "exchange_rate"
+      ],
+      "fixValue": "7791.47|0.2833263304508657",
+      "fixRecordId": 430
+    }
+  ],
+  "generatedAt": "2025-09-22T05:36:47.179Z"
+}

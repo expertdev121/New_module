@@ -359,6 +359,7 @@ async function updatePledgeTotals(pledgeId: number) {
       amountInPledgeCurrency: payment.amountInPledgeCurrency,
       paymentStatus: payment.paymentStatus,
       currency: payment.currency,
+      receivedDate: payment.receivedDate,
       paymentDate: payment.paymentDate,
     })
     .from(payment)
@@ -377,6 +378,7 @@ async function updatePledgeTotals(pledgeId: number) {
       allocatedAmountInPledgeCurrency: paymentAllocations.allocatedAmountInPledgeCurrency,
       currency: paymentAllocations.currency,
       paymentStatus: payment.paymentStatus,
+      receivedDate: payment.receivedDate,
       paymentDate: payment.paymentDate,
     })
     .from(paymentAllocations)
@@ -393,6 +395,8 @@ async function updatePledgeTotals(pledgeId: number) {
   let totalPaidUsd = 0;
 
   for (const p of payments) {
+    const exchangeRateDate = p.receivedDate || new Date().toISOString().split('T')[0];
+    
     if (p.amountInPledgeCurrency) {
       totalPaidInPledgeCurrency += parseFloat(p.amountInPledgeCurrency);
     } else {
@@ -400,7 +404,7 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(p.amount),
         p.currency,
         pledgeCurrency,
-        p.paymentDate
+        exchangeRateDate
       );
       totalPaidInPledgeCurrency += convertedAmount;
     }
@@ -412,13 +416,15 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(p.amount),
         p.currency,
         'USD',
-        p.paymentDate
+        exchangeRateDate
       );
       totalPaidUsd += convertedAmount;
     }
   }
 
   for (const a of allocatedPayments) {
+    const exchangeRateDate = a.receivedDate || new Date().toISOString().split('T')[0];
+    
     if (a.allocatedAmountInPledgeCurrency) {
       totalPaidInPledgeCurrency += parseFloat(a.allocatedAmountInPledgeCurrency);
     } else {
@@ -426,7 +432,7 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(a.allocatedAmount),
         a.currency,
         pledgeCurrency,
-        a.paymentDate
+        exchangeRateDate
       );
       totalPaidInPledgeCurrency += convertedAmount;
     }
@@ -438,7 +444,7 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(a.allocatedAmount),
         a.currency,
         'USD',
-        a.paymentDate
+        exchangeRateDate
       );
       totalPaidUsd += convertedAmount;
     }
@@ -516,6 +522,7 @@ export async function PATCH(
         bonusRuleId: payment.bonusRuleId,
         exchangeRate: payment.exchangeRate,
         paymentDate: payment.paymentDate,
+        receivedDate: payment.receivedDate,
         payerContactId: payment.payerContactId,
         isThirdPartyPayment: payment.isThirdPartyPayment,
         contactId: sql<number>`(
@@ -618,12 +625,13 @@ export async function PATCH(
         updatedAt: new Date(),
       };
 
-      const paymentDate = data.paymentDate || currentPayment.paymentDate;
+      // UPDATED: Use receivedDate when present, fall back to today's date
+      const exchangeRateDate = data.receivedDate || new Date().toISOString().split('T')[0];
       const newCurrency = data.currency || currentPayment.currency;
       const newAmount = data.amount || parseFloat(currentPayment.amount);
 
       if (data.amount || data.currency) {
-        const usdConversion = await convertCurrency(newAmount, newCurrency, 'USD', paymentDate);
+        const usdConversion = await convertCurrency(newAmount, newCurrency, 'USD', exchangeRateDate);
         baseUpdateData.amountUsd = usdConversion.convertedAmount.toFixed(2);
         baseUpdateData.exchangeRate = usdConversion.exchangeRate.toFixed(4);
       }
@@ -639,7 +647,7 @@ export async function PATCH(
           
           if (pledgeData.length > 0) {
             const pledgeCurrency = pledgeData[0].currency;
-            const pledgeConversion = await convertCurrency(newAmount, newCurrency, pledgeCurrency, paymentDate);
+            const pledgeConversion = await convertCurrency(newAmount, newCurrency, pledgeCurrency, exchangeRateDate);
             baseUpdateData.amountInPledgeCurrency = pledgeConversion.convertedAmount.toFixed(2);
             baseUpdateData.pledgeCurrencyExchangeRate = pledgeConversion.exchangeRate.toFixed(4);
           }
@@ -657,7 +665,7 @@ export async function PATCH(
           
           if (planData.length > 0) {
             const planCurrency = planData[0].currency;
-            const planConversion = await convertCurrency(newAmount, newCurrency, planCurrency, paymentDate);
+            const planConversion = await convertCurrency(newAmount, newCurrency, planCurrency, exchangeRateDate);
             baseUpdateData.amountInPlanCurrency = planConversion.convertedAmount.toFixed(2);
             baseUpdateData.planCurrencyExchangeRate = planConversion.exchangeRate.toFixed(4);
           }
@@ -793,7 +801,8 @@ export async function PATCH(
 
       await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
 
-      const paymentDate = validatedData.paymentDate || currentPayment.paymentDate;
+      // UPDATED: Use receivedDate when present, fall back to today's date
+      const exchangeRateDate = validatedData.receivedDate || new Date().toISOString().split('T')[0];
       const paymentCurrency = validatedData.currency || currentPayment.currency;
 
       for (const alloc of validatedData.allocations) {
@@ -804,14 +813,14 @@ export async function PATCH(
           alloc.allocatedAmount,
           allocationCurrency,
           'USD',
-          paymentDate
+          exchangeRateDate
         );
 
         const pledgeConversion = await convertCurrency(
           alloc.allocatedAmount,
           allocationCurrency,
           pledgeInfo.currency,
-          paymentDate
+          exchangeRateDate
         );
 
         const allocationToInsert: NewPaymentAllocation = {
@@ -940,7 +949,8 @@ export async function PATCH(
         
         await db.update(payment).set(updateData).where(eq(payment.id, paymentId));
 
-        const paymentDate = validatedData.paymentDate || currentPayment.paymentDate;
+        // UPDATED: Use receivedDate when present, fall back to today's date
+        const exchangeRateDate = validatedData.receivedDate || new Date().toISOString().split('T')[0];
         const paymentCurrency = validatedData.currency || currentPayment.currency;
 
         for (const allocation of validatedData.allocations) {
@@ -951,14 +961,14 @@ export async function PATCH(
             allocation.allocatedAmount,
             allocationCurrency,
             'USD',
-            paymentDate
+            exchangeRateDate
           );
 
           const pledgeConversion = await convertCurrency(
             allocation.allocatedAmount,
             allocationCurrency,
             pledgeInfo.currency,
-            paymentDate
+            exchangeRateDate
           );
 
           if (allocation.id) {

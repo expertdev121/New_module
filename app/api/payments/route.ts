@@ -268,6 +268,7 @@ async function updatePaymentPlanTotals(paymentPlanId: number) {
       amountInPlanCurrency: payment.amountInPlanCurrency,
       paymentStatus: payment.paymentStatus,
       paymentDate: payment.paymentDate,
+      receivedDate: payment.receivedDate,
     })
     .from(payment)
     .where(and(
@@ -283,6 +284,9 @@ async function updatePaymentPlanTotals(paymentPlanId: number) {
   const installmentsPaid = payments.length;
 
   for (const p of payments) {
+    // UPDATED: Use receivedDate when present, fall back to today's date
+    const exchangeRateDate = p.receivedDate || new Date().toISOString().split('T')[0];
+    
     // Use existing plan currency conversion or calculate new one
     if (p.amountInPlanCurrency) {
       totalPaid += parseFloat(p.amountInPlanCurrency);
@@ -291,7 +295,7 @@ async function updatePaymentPlanTotals(paymentPlanId: number) {
         parseFloat(p.amount),
         p.currency,
         planCurrency,
-        p.paymentDate,
+        exchangeRateDate,
         undefined,
         'plan_total_update'
       );
@@ -306,7 +310,7 @@ async function updatePaymentPlanTotals(paymentPlanId: number) {
         parseFloat(p.amount),
         p.currency,
         'USD',
-        p.paymentDate,
+        exchangeRateDate,
         undefined,
         'usd_reporting'
       );
@@ -397,6 +401,7 @@ async function updatePledgeTotals(pledgeId: number) {
       paymentStatus: payment.paymentStatus,
       currency: payment.currency,
       paymentDate: payment.paymentDate,
+      receivedDate: payment.receivedDate,
     })
     .from(payment)
     .where(and(
@@ -416,6 +421,7 @@ async function updatePledgeTotals(pledgeId: number) {
       currency: paymentAllocations.currency,
       paymentStatus: payment.paymentStatus,
       paymentDate: payment.paymentDate,
+      receivedDate: payment.receivedDate,
     })
     .from(paymentAllocations)
     .innerJoin(payment, eq(paymentAllocations.paymentId, payment.id))
@@ -432,6 +438,9 @@ async function updatePledgeTotals(pledgeId: number) {
 
   // Calculate totals from direct payments
   for (const p of payments) {
+    // UPDATED: Use receivedDate when present, fall back to today's date
+    const exchangeRateDate = p.receivedDate || new Date().toISOString().split('T')[0];
+    
     // Use existing pledge currency conversion or calculate new one
     if (p.amountInPledgeCurrency) {
       totalPaidInPledgeCurrency += parseFloat(p.amountInPledgeCurrency);
@@ -440,7 +449,7 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(p.amount),
         p.currency,
         pledgeCurrency,
-        p.paymentDate,
+        exchangeRateDate,
         undefined,
         'pledge_total_update'
       );
@@ -455,7 +464,7 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(p.amount),
         p.currency,
         'USD',
-        p.paymentDate,
+        exchangeRateDate,
         undefined,
         'usd_reporting'
       );
@@ -465,6 +474,9 @@ async function updatePledgeTotals(pledgeId: number) {
 
   // Calculate totals from allocated payments (split payments)
   for (const a of allocatedPayments) {
+    // UPDATED: Use receivedDate when present, fall back to today's date
+    const exchangeRateDate = a.receivedDate || new Date().toISOString().split('T')[0];
+    
     // Use existing pledge currency conversion or calculate new one
     if (a.allocatedAmountInPledgeCurrency) {
       totalPaidInPledgeCurrency += parseFloat(a.allocatedAmountInPledgeCurrency);
@@ -473,7 +485,7 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(a.allocatedAmount),
         a.currency,
         pledgeCurrency,
-        a.paymentDate,
+        exchangeRateDate,
         undefined,
         'pledge_total_update'
       );
@@ -488,7 +500,7 @@ async function updatePledgeTotals(pledgeId: number) {
         parseFloat(a.allocatedAmount),
         a.currency,
         'USD',
-        a.paymentDate,
+        exchangeRateDate,
         undefined,
         'usd_reporting'
       );
@@ -548,6 +560,9 @@ export async function POST(request: NextRequest) {
     const paymentDate = validatedData.paymentDate;
     const receivedDate = validatedData.receivedDate ?? null;
     const checkDate = validatedData.checkDate ?? null;
+
+    // UPDATED: Use receivedDate when present, fall back to today's date for exchange rate calculations
+    const exchangeRateDate = receivedDate || new Date().toISOString().split('T')[0];
 
     const commonPaymentData = {
       currency: validatedData.currency,
@@ -638,12 +653,12 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Calculate all currency conversions for the main payment
+      // Calculate all currency conversions for the main payment using exchangeRateDate
       const amountUsd = await convertCurrency(
         validatedData.amount,
         validatedData.currency,
         'USD',
-        paymentDate,
+        exchangeRateDate,
         undefined,
         'usd_reporting'
       );
@@ -665,7 +680,7 @@ export async function POST(request: NextRequest) {
             validatedData.amount,
             validatedData.currency,
             planCurrency,
-            paymentDate,
+            exchangeRateDate,
             undefined,
             'plan'
           );
@@ -695,7 +710,7 @@ export async function POST(request: NextRequest) {
         validatedData.amount,
         validatedData.currency,
         'USD',
-        paymentDate,
+        exchangeRateDate,
         createdPayment.id,
         'usd_reporting'
       );
@@ -705,7 +720,7 @@ export async function POST(request: NextRequest) {
           validatedData.amount,
           validatedData.currency,
           validatedData.currency, // Plan currency, but we need the actual plan currency here
-          paymentDate,
+          exchangeRateDate,
           createdPayment.id,
           'plan'
         );
@@ -730,7 +745,7 @@ export async function POST(request: NextRequest) {
           allocatedAmountUsd = (allocation.allocatedAmount * rate).toFixed(2);
         }
 
-        // Calculate pledge currency conversion for allocation
+        // Calculate pledge currency conversion for allocation using exchangeRateDate
         let allocatedAmountInPledgeCurrency: string | null = null;
         if (allocationCurrency === pledgeInfo.currency) {
           allocatedAmountInPledgeCurrency = allocation.allocatedAmount.toFixed(2);
@@ -739,7 +754,7 @@ export async function POST(request: NextRequest) {
             allocation.allocatedAmount,
             allocationCurrency,
             pledgeInfo.currency,
-            paymentDate,
+            exchangeRateDate,
             createdPayment.id,
             'pledge'
           );
@@ -814,12 +829,12 @@ export async function POST(request: NextRequest) {
 
       const pledgeData = currentPledge[0];
 
-      // Calculate all currency conversions
+      // Calculate all currency conversions using exchangeRateDate
       const amountUsd = await convertCurrency(
         validatedData.amount,
         validatedData.currency,
         'USD',
-        paymentDate,
+        exchangeRateDate,
         undefined,
         'usd_reporting'
       );
@@ -828,7 +843,7 @@ export async function POST(request: NextRequest) {
         validatedData.amount,
         validatedData.currency,
         pledgeData.currency,
-        paymentDate,
+        exchangeRateDate,
         undefined,
         'pledge'
       );
@@ -850,7 +865,7 @@ export async function POST(request: NextRequest) {
             validatedData.amount,
             validatedData.currency,
             planCurrency,
-            paymentDate,
+            exchangeRateDate,
             undefined,
             'plan'
           );
@@ -883,7 +898,7 @@ export async function POST(request: NextRequest) {
         validatedData.amount,
         validatedData.currency,
         'USD',
-        paymentDate,
+        exchangeRateDate,
         createdPayment.id,
         'usd_reporting'
       );
@@ -892,7 +907,7 @@ export async function POST(request: NextRequest) {
         validatedData.amount,
         validatedData.currency,
         pledgeData.currency,
-        paymentDate,
+        exchangeRateDate,
         createdPayment.id,
         'pledge'
       );
@@ -902,7 +917,7 @@ export async function POST(request: NextRequest) {
           validatedData.amount,
           validatedData.currency,
           planCurrency,
-          paymentDate,
+          exchangeRateDate,
           createdPayment.id,
           'plan'
         );
@@ -1300,7 +1315,7 @@ export async function GET(request: NextRequest) {
         "X-Total-Count": response.pagination.totalCount.toString(),
       },
     });
-  } catch (err: unknown) {
+  } catch (err: unknown) { 
     if (err instanceof AppError) {
       return NextResponse.json(
         { error: err.message, ...(err.details ? { details: err.details } : {}) },
