@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { payment, pledge, paymentAllocations, installmentSchedule, paymentPlan, solicitor, exchangeRate, currencyConversionLog, currencyEnum } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, installmentSchedule, paymentPlan, solicitor, exchangeRate, currencyConversionLog, currencyEnum, contact } from "@/lib/db/schema";
 import { sql, eq, and, or, lte, desc } from "drizzle-orm";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
@@ -82,6 +82,11 @@ const paymentCreateSchema = z.object({
   amount: z.number().positive(),
   currency: z.enum(supportedCurrencies),
   exchangeRate: z.number().positive(),
+  // Form provides these but we'll calculate them
+  amountUsd: z.number().optional(),
+  amountInPledgeCurrency: z.number().optional(),
+  exchangeRateToPledgeCurrency: z.number().optional(),
+  
   paymentDate: z.string().refine((date) => !isNaN(new Date(date).getTime()), { message: "Invalid date format" }),
   receivedDate: z.string().refine((date) => !isNaN(new Date(date).getTime()), { message: "Invalid date format" }).optional().nullable(),
   checkDate: z.string().refine((date) => !isNaN(new Date(date).getTime()), { message: "Invalid date format" }).optional().nullable(),
@@ -103,7 +108,9 @@ const paymentCreateSchema = z.object({
   paymentPlanId: z.number().positive().optional().nullable(),
   installmentScheduleId: z.number().positive().optional().nullable(),
   
+  // Updated third-party payment fields to match form
   isThirdPartyPayment: z.boolean().optional(),
+  thirdPartyContactId: z.number().positive().optional().nullable(),
   payerContactId: z.number().positive().optional().nullable(),
   
   pledgeId: z.preprocess((val) => {
@@ -113,6 +120,7 @@ const paymentCreateSchema = z.object({
   }, z.number().positive().nullable()).optional(),
   
   isSplitPayment: z.boolean().optional(),
+  isMultiContactPayment: z.boolean().optional(),
   allocations: z.array(allocationCreateSchema).optional(),
   
   autoAdjustAllocations: z.boolean().optional(),
@@ -122,7 +130,7 @@ const paymentCreateSchema = z.object({
   const hasAllocations = data.allocations && data.allocations.length > 0;
   const hasPledgeId = data.pledgeId !== null && data.pledgeId !== undefined && data.pledgeId > 0;
   
-  const isSplit = data.isSplitPayment === true || (hasAllocations && !hasPledgeId);
+  const isSplit = data.isSplitPayment === true || data.isMultiContactPayment === true || (hasAllocations && !hasPledgeId);
 
   if (isSplit) {
     if (!hasAllocations) {
@@ -284,7 +292,7 @@ async function updatePaymentPlanTotals(paymentPlanId: number) {
   const installmentsPaid = payments.length;
 
   for (const p of payments) {
-    // UPDATED: Use receivedDate when present, fall back to today's date
+    // Use receivedDate when present, fall back to today's date
     const exchangeRateDate = p.receivedDate || new Date().toISOString().split('T')[0];
     
     // Use existing plan currency conversion or calculate new one
@@ -438,7 +446,7 @@ async function updatePledgeTotals(pledgeId: number) {
 
   // Calculate totals from direct payments
   for (const p of payments) {
-    // UPDATED: Use receivedDate when present, fall back to today's date
+    // Use receivedDate when present, fall back to today's date
     const exchangeRateDate = p.receivedDate || new Date().toISOString().split('T')[0];
     
     // Use existing pledge currency conversion or calculate new one
@@ -474,7 +482,7 @@ async function updatePledgeTotals(pledgeId: number) {
 
   // Calculate totals from allocated payments (split payments)
   for (const a of allocatedPayments) {
-    // UPDATED: Use receivedDate when present, fall back to today's date
+    // Use receivedDate when present, fall back to today's date
     const exchangeRateDate = a.receivedDate || new Date().toISOString().split('T')[0];
     
     // Use existing pledge currency conversion or calculate new one
@@ -561,8 +569,23 @@ export async function POST(request: NextRequest) {
     const receivedDate = validatedData.receivedDate ?? null;
     const checkDate = validatedData.checkDate ?? null;
 
-    // UPDATED: Use receivedDate when present, fall back to today's date for exchange rate calculations
+    // Use receivedDate when present, fall back to today's date for exchange rate calculations
     const exchangeRateDate = receivedDate || new Date().toISOString().split('T')[0];
+
+    // Handle third-party payment setup
+    const isThirdParty = validatedData.isThirdPartyPayment || false;
+    const thirdPartyContactId = validatedData.thirdPartyContactId;
+    const payerContactId = validatedData.payerContactId;
+
+    // Determine the actual payer contact ID for the payment
+    let actualPayerContactId = null;
+    if (isThirdParty) {
+      if (payerContactId) {
+        actualPayerContactId = payerContactId;
+      } else if (thirdPartyContactId) {
+        actualPayerContactId = thirdPartyContactId;
+      }
+    }
 
     const commonPaymentData = {
       currency: validatedData.currency,
@@ -592,8 +615,9 @@ export async function POST(request: NextRequest) {
       paymentPlanId: validatedData.paymentPlanId || null,
       installmentScheduleId: validatedData.installmentScheduleId || null,
       
-      isThirdPartyPayment: validatedData.isThirdPartyPayment ?? false,
-      payerContactId: validatedData.payerContactId || null,
+      // Third-party payment fields
+      isThirdPartyPayment: isThirdParty,
+      payerContactId: actualPayerContactId,
       
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -601,13 +625,18 @@ export async function POST(request: NextRequest) {
 
     const hasAllocations = validatedData.allocations && validatedData.allocations.length > 0;
     const hasPledgeId = validatedData.pledgeId && validatedData.pledgeId > 0;
-    const isSplitPayment = validatedData.isSplitPayment === true || (hasAllocations && !hasPledgeId);
+    const isSplitPayment = validatedData.isSplitPayment === true || 
+                          validatedData.isMultiContactPayment === true || 
+                          (hasAllocations && !hasPledgeId);
 
     console.log("Payment type detection:", {
       isSplitPaymentFlag: validatedData.isSplitPayment,
+      isMultiContactPaymentFlag: validatedData.isMultiContactPayment,
       hasAllocations,
       hasPledgeId,
-      finalIsSplitPayment: isSplitPayment
+      finalIsSplitPayment: isSplitPayment,
+      isThirdParty,
+      actualPayerContactId
     });
 
     // --- Split payment flow ---
@@ -739,10 +768,15 @@ export async function POST(request: NextRequest) {
         if (allocationCurrency === 'USD') {
           allocatedAmountUsd = allocation.allocatedAmount.toFixed(2);
         } else {
-          const rate = typeof allocation.exchangeRate === 'number'
-            ? allocation.exchangeRate
-            : validatedData.exchangeRate;
-          allocatedAmountUsd = (allocation.allocatedAmount * rate).toFixed(2);
+          const usdConversion = await convertCurrency(
+            allocation.allocatedAmount,
+            allocationCurrency,
+            'USD',
+            exchangeRateDate,
+            createdPayment.id,
+            'usd_reporting'
+          );
+          allocatedAmountUsd = usdConversion.convertedAmount.toFixed(2);
         }
 
         // Calculate pledge currency conversion for allocation using exchangeRateDate
@@ -764,7 +798,7 @@ export async function POST(request: NextRequest) {
         const allocationToInsert: NewPaymentAllocation = {
           paymentId: createdPayment.id,
           pledgeId: allocation.pledgeId,
-          payerContactId: validatedData.payerContactId || null,
+          payerContactId: actualPayerContactId,
           allocatedAmount: allocation.allocatedAmount.toFixed(2),
           allocatedAmountUsd: allocatedAmountUsd,
           allocatedAmountInPledgeCurrency: allocatedAmountInPledgeCurrency,
@@ -1186,7 +1220,7 @@ export async function GET(request: NextRequest) {
             WHEN ${payment.pledgeId} IS NOT NULL THEN 
               (SELECT CONCAT(c.first_name, ' ', c.last_name)
                FROM ${pledge} p
-               JOIN contact c ON p.contact_id = c.id
+               JOIN ${contact} c ON p.contact_id = c.id
                WHERE p.id = ${payment.pledgeId})
             ELSE NULL
           END
@@ -1196,7 +1230,7 @@ export async function GET(request: NextRequest) {
           CASE 
             WHEN ${payment.payerContactId} IS NOT NULL THEN 
               (SELECT CONCAT(c.first_name, ' ', c.last_name)
-               FROM contact c 
+               FROM ${contact} c 
                WHERE c.id = ${payment.payerContactId})
             ELSE NULL
           END
@@ -1207,7 +1241,7 @@ export async function GET(request: NextRequest) {
             WHEN ${payment.solicitorId} IS NOT NULL THEN 
               (SELECT CONCAT(c.first_name, ' ', c.last_name)
                FROM ${solicitor} s
-               JOIN contact c ON s.contact_id = c.id
+               JOIN ${contact} c ON s.contact_id = c.id
                WHERE s.id = ${payment.solicitorId})
             ELSE NULL
           END
@@ -1277,7 +1311,7 @@ export async function GET(request: NextRequest) {
               pledgeOwnerName: sql<string>`(
                 SELECT CONCAT(c.first_name, ' ', c.last_name)
                 FROM ${pledge} p
-                JOIN contact c ON p.contact_id = c.id
+                JOIN ${contact} c ON p.contact_id = c.id
                 WHERE p.id = ${paymentAllocations.pledgeId}
               )`.as("pledgeOwnerName"),
               pledgeCurrency: sql<string>`(

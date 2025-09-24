@@ -1534,11 +1534,21 @@ export async function PATCH(
     // Build multi-contact allocations response if applicable
     let multiContactAllocations = null;
     if (finalIsMultiContact && allocations) {
-      const contactAllocationsMap = new Map();
+      const contactAllocationsMap = new Map<number, {
+        contactId: number;
+        contactName: string;
+        pledges: Array<{
+          pledgeId: number;
+          pledgeDescription: string;
+          currency: string;
+          balance: number;
+          allocatedAmount: number;
+        }>;
+      }>();
 
       for (const alloc of allocations) {
-        const contactId = (alloc as any).contactId;
-        const contactName = (alloc as any).contactName;
+        const contactId = (alloc as unknown as { contactId: number }).contactId;
+        const contactName = (alloc as unknown as { contactName: string }).contactName;
 
         if (!contactAllocationsMap.has(contactId)) {
           contactAllocationsMap.set(contactId, {
@@ -1548,9 +1558,9 @@ export async function PATCH(
           });
         }
 
-        contactAllocationsMap.get(contactId).pledges.push({
+        contactAllocationsMap.get(contactId)!.pledges.push({
           pledgeId: alloc.pledgeId,
-          pledgeDescription: (alloc as any).pledgeDescription || "No description",
+          pledgeDescription: (alloc as unknown as { pledgeDescription: string }).pledgeDescription || "No description",
           currency: alloc.currency || updatedPayment.currency,
           balance: 0, // This would need to be fetched separately if needed
           allocatedAmount: alloc.allocatedAmount

@@ -75,8 +75,10 @@ interface Pledge {
   balance: string;
   originalAmount: string;
   remainingBalance?: number;
+  contactId?: number;
   contact?: {
     fullName: string;
+    id?: number;
   };
 }
 
@@ -84,7 +86,8 @@ interface Contact {
   id: number;
   firstName: string;
   lastName: string;
-  fullName: string;
+  displayName?: string | null;
+  fullName?: string; // Make optional since API may not provide it
 }
 
 interface ContactAllocation {
@@ -96,7 +99,29 @@ interface ContactAllocation {
     currency: string;
     balance: number;
     allocatedAmount: number;
+    receiptNumber?: string | null;
+    receiptType?: string | null;
+    receiptIssued?: boolean;
   }[];
+}
+
+interface MultiContactAllocation {
+  contactId: number;
+  pledgeId: number;
+  allocatedAmount: number;
+  notes: string | null;
+  receiptNumber?: string | null;
+  receiptType?: string | null;
+  receiptIssued?: boolean;
+}
+
+interface ContactOption {
+  label: string;
+  value: number;
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
 }
 
 const useSolicitors = (params: { search?: string; status?: "active" | "inactive" | "suspended" } = {}) =>
@@ -113,6 +138,7 @@ const useSolicitors = (params: { search?: string; status?: "active" | "inactive"
     },
   });
 
+// Updated useContacts hook to handle missing fullName field
 const useContacts = (search?: string) =>
   useQuery<{ contacts: Contact[] }>({
     queryKey: ["contacts", search],
@@ -120,7 +146,19 @@ const useContacts = (search?: string) =>
       if (!search || search.length < 2) return { contacts: [] };
       const response = await fetch(`/api/contacts/search?q=${encodeURIComponent(search)}`);
       if (!response.ok) throw new Error("Failed to fetch contacts");
-      return response.json();
+      const data = await response.json();
+
+      // Transform contacts to ensure fullName is available
+      if (data.contacts) {
+        data.contacts = data.contacts.map((contact: Contact) => ({
+          ...contact,
+          fullName: contact.fullName ||
+            contact.displayName ||
+            `${contact.firstName} ${contact.lastName}`.trim()
+        }));
+      }
+
+      return data;
     },
     enabled: !!search && search.length >= 2,
   });
@@ -381,73 +419,37 @@ export default function PaymentFormDialog({
   const [pledgeDialogOpen, setPledgeDialogOpen] = useState(false);
   const [contactSearch, setContactSearch] = useState("");
   const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
-  const [selectedContacts, setSelectedContacts] = useState<Contact[]>([]);
-  const [contactAllocations, setContactAllocations] = useState<ContactAllocation[]>([]);
   const [showMultiContactSection, setShowMultiContactSection] = useState(false);
-  const [multiContactSearch, setMultiContactSearch] = useState("");
-  const [selectedMultiContacts, setSelectedMultiContacts] = useState<Contact[]>([]);
-  const [multiContactAllocations, setMultiContactAllocations] = useState<ContactAllocation[]>([]);
+  const [multiContactAllocations, setMultiContactAllocations] = useState<MultiContactAllocation[]>([]);
 
   // Multi-contact allocation functions
-  const addMultiContact = (contact: Contact) => {
-    if (!selectedMultiContacts.find(c => c.id === contact.id)) {
-      setSelectedMultiContacts([...selectedMultiContacts, contact]);
-      // Initialize allocation for this contact
-      const newAllocation: ContactAllocation = {
-        contactId: contact.id,
-        contactName: contact.fullName,
-        pledges: []
-      };
-      setMultiContactAllocations([...multiContactAllocations, newAllocation]);
-    }
-    setMultiContactSearch("");
+  const addMultiContactAllocation = (preSelectedContactId?: number) => {
+    setMultiContactAllocations([...multiContactAllocations, {
+      contactId: preSelectedContactId || 0,
+      pledgeId: 0,
+      allocatedAmount: 0,
+      notes: null,
+      receiptNumber: null,
+      receiptType: null,
+      receiptIssued: false,
+    }]);
   };
 
-  const removeMultiContact = (contactId: number) => {
-    setSelectedMultiContacts(selectedMultiContacts.filter(c => c.id !== contactId));
-    setMultiContactAllocations(multiContactAllocations.filter(a => a.contactId !== contactId));
+  const removeMultiContactAllocation = (index: number) => {
+    setMultiContactAllocations(multiContactAllocations.filter((_, i) => i !== index));
   };
 
-  const updateMultiContactAllocation = (contactId: number, pledgeId: number, amount: number) => {
+  const updateMultiContactAllocation = (index: number, field: keyof MultiContactAllocation, value: any) => {
     setMultiContactAllocations(prev =>
-      prev.map(allocation => {
-        if (allocation.contactId === contactId) {
-          const existingPledgeIndex = allocation.pledges.findIndex(p => p.pledgeId === pledgeId);
-          if (existingPledgeIndex >= 0) {
-            // Update existing pledge allocation
-            const updatedPledges = [...allocation.pledges];
-            updatedPledges[existingPledgeIndex] = {
-              ...updatedPledges[existingPledgeIndex],
-              allocatedAmount: amount
-            };
-            return { ...allocation, pledges: updatedPledges };
-          } else {
-            // Add new pledge allocation
-            const pledge = allPledgesData?.find(p => p.id === pledgeId);
-            if (pledge) {
-              return {
-                ...allocation,
-                pledges: [...allocation.pledges, {
-                  pledgeId,
-                  pledgeDescription: pledge.description || "No description",
-                  currency: pledge.currency,
-                  balance: parseFloat(pledge.balance),
-                  allocatedAmount: amount
-                }]
-              };
-            }
-          }
-        }
-        return allocation;
-      })
+      prev.map((allocation, i) =>
+        i === index ? { ...allocation, [field]: value } : allocation
+      )
     );
   };
 
   const getTotalMultiContactAllocation = () => {
     return multiContactAllocations.reduce((total, allocation) => {
-      return total + allocation.pledges.reduce((contactTotal, pledge) => {
-        return contactTotal + pledge.allocatedAmount;
-      }, 0);
+      return total + allocation.allocatedAmount;
     }, 0);
   };
 
@@ -458,12 +460,38 @@ export default function PaymentFormDialog({
 
   const contactId = useContactId() || propContactId;
 
-  const { data: contactsData, isLoading: isLoadingContacts } = useContacts(contactSearch);
-  const { data: multiContactsData, isLoading: isLoadingMultiContacts } = useContacts(multiContactSearch);
+  // Contact data for third-party (only when third-party is enabled and not multi-contact)
+  const { data: contactsData, isLoading: isLoadingContacts } = useContacts(
+    watchedIsThirdParty && !showMultiContactSection ? contactSearch : undefined
+  );
 
-  // Get pledges for all selected contacts in multi-contact mode
-  // Get pledges for all selected contacts in multi-contact mode
-  const multiContactIds = selectedMultiContacts.map(c => c.id);
+  // Multi-contact allocation contact IDs
+  const multiContactIds = useMemo(() => {
+    return [...new Set(multiContactAllocations.map(a => a.contactId).filter(id => id > 0))];
+  }, [multiContactAllocations]);
+
+  // Get pledges for selected contacts in multi-contact section - Updated to handle fullName
+  const { data: allContactsForAllocations } = useQuery({
+    queryKey: ['all-contacts-for-multi-contact'],
+    queryFn: async () => {
+      const response = await fetch(`/api/contacts?limit=100`);
+      if (!response.ok) throw new Error('Failed to fetch contacts');
+      const data = await response.json();
+
+      // Transform contacts to ensure fullName is available
+      if (data.contacts) {
+        data.contacts = data.contacts.map((contact: Contact) => ({
+          ...contact,
+          fullName: contact.fullName ||
+            contact.displayName ||
+            `${contact.firstName} ${contact.lastName}`.trim()
+        }));
+      }
+
+      return data.contacts || [];
+    },
+    enabled: showMultiContactSection,
+  });
 
   // Use a single query for all multi-contact pledges
   const { data: multiContactPledgesData } = useQuery({
@@ -479,7 +507,7 @@ export default function PaymentFormDialog({
       });
 
       const results = await Promise.all(pledgePromises);
-      const allPledges = results.flat(); // Use flat() instead of flatMap for arrays
+      const allPledges = results.flat();
 
       return { pledges: allPledges };
     },
@@ -490,7 +518,6 @@ export default function PaymentFormDialog({
   const allPledgesData = useMemo(() => {
     return multiContactPledgesData?.pledges || [];
   }, [multiContactPledgesData]);
-
 
   // Get pledges for the current contact or third-party contact
   const targetContactId = selectedThirdPartyContact?.id || contactId;
@@ -690,9 +717,7 @@ export default function PaymentFormDialog({
     setShowSolicitorSection(false);
     setSelectedThirdPartyContact(null);
     setContactSearch("");
-    setSelectedMultiContacts([]);
     setMultiContactAllocations([]);
-    setMultiContactSearch("");
     setShowMultiContactSection(false);
   }, [form, initialPledgeId]);
 
@@ -725,7 +750,7 @@ export default function PaymentFormDialog({
 
       const isSplit = data.isSplitPayment;
       const isThirdParty = !!(data.isThirdPartyPayment && selectedThirdPartyContact);
-      const isMultiContact = watchedIsMultiContactPayment && selectedMultiContacts.length > 0;
+      const isMultiContact = watchedIsMultiContactPayment && multiContactAllocations.length > 0;
 
       // Build base payload with correct type assertions
       const basePayload = {
@@ -756,46 +781,56 @@ export default function PaymentFormDialog({
           throw new Error("Multi-contact payment allocation amounts must equal the total payment amount");
         }
 
+        // Group allocations by contact
+        const contactGroups = multiContactAllocations.reduce((groups, allocation) => {
+          if (!groups[allocation.contactId] && allocation.pledgeId > 0 && allocation.allocatedAmount > 0) {
+            groups[allocation.contactId] = [];
+          }
+          if (allocation.pledgeId > 0 && allocation.allocatedAmount > 0) {
+            groups[allocation.contactId].push(allocation);
+          }
+          return groups;
+        }, {} as Record<number, MultiContactAllocation[]>);
+
         // Create individual payments for each contact's allocations
         const paymentPromises: Promise<any>[] = [];
 
-        for (const contactAllocation of multiContactAllocations) {
-          if (contactAllocation.pledges.length > 0) {
-            const contactTotal = contactAllocation.pledges.reduce((sum, pledge) => sum + pledge.allocatedAmount, 0);
+        for (const [contactIdStr, contactAllocations] of Object.entries(contactGroups)) {
+          const contactId = parseInt(contactIdStr);
+          const contactTotal = contactAllocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
 
-            if (contactTotal > 0) {
-              // Create allocations array for this contact
-              const allocations = contactAllocation.pledges.map((pledge) => ({
-                pledgeId: Number(pledge.pledgeId),
-                installmentScheduleId: null,
-                allocatedAmount: Number(pledge.allocatedAmount),
-                currency: data.currency,
-                notes: null,
-                receiptNumber: null,
-                receiptType: null,
-                receiptIssued: false,
-              }));
+          if (contactTotal > 0) {
+            // Create allocations array for this contact
+            const allocations = contactAllocations.map((allocation) => ({
+              pledgeId: Number(allocation.pledgeId),
+              installmentScheduleId: null,
+              allocatedAmount: Number(allocation.allocatedAmount),
+              currency: data.currency,
+              notes: allocation.notes,
+              receiptNumber: allocation.receiptNumber,
+              receiptType: allocation.receiptType,
+              receiptIssued: allocation.receiptIssued || false,
+            }));
 
-              const contactPaymentPayload = {
-                ...basePayload,
-                amount: contactTotal,
-                amountUsd: contactTotal / exchangeRateNum, // Convert to USD
-                pledgeId: 0, // Split payment across multiple pledges
-                isThirdPartyPayment: true,
-                payerContactId: contactId,
-                thirdPartyContactId: contactAllocation.contactId,
-                allocations: allocations as any,
-              };
+            const contactPaymentPayload = {
+              ...basePayload,
+              amount: contactTotal,
+              amountUsd: contactTotal / exchangeRateNum, // Convert to USD
+              pledgeId: 0, // Split payment across multiple pledges
+              isThirdPartyPayment: true,
+              payerContactId: contactId,
+              thirdPartyContactId: contactId,
+              allocations: allocations as any,
+            };
 
-              paymentPromises.push(createPaymentMutation.mutateAsync(contactPaymentPayload as any));
-            }
+            paymentPromises.push(createPaymentMutation.mutateAsync(contactPaymentPayload as any));
           }
         }
 
         // Execute all payments
         await Promise.all(paymentPromises);
 
-        toast.success(`Multi-contact payment created successfully for ${selectedMultiContacts.length} contacts!`);
+        toast.success(`Multi-contact payment created successfully for ${Object.keys(contactGroups).length} contacts!`);
 
       } else if (isSplit) {
         if (!data.allocations || data.allocations.length === 0) {
@@ -914,25 +949,31 @@ export default function PaymentFormDialog({
     }));
   }, [solicitorsData?.solicitors]);
 
-  const contactOptions = useMemo(() => {
+  const contactOptions = useMemo((): ContactOption[] => {
     if (!contactsData?.contacts) return [];
 
-    return contactsData.contacts.map((contact: Contact) => ({
-      label: contact.fullName,
+    return contactsData.contacts.map((contact: Contact): ContactOption => ({
+      label: contact.fullName || `${contact.firstName} ${contact.lastName}`.trim(),
       value: contact.id,
-      ...contact,
+      id: contact.id,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      fullName: contact.fullName || `${contact.firstName} ${contact.lastName}`.trim(),
     }));
   }, [contactsData?.contacts]);
 
-  const multiContactOptions = useMemo(() => {
-    if (!multiContactsData?.contacts) return [];
+  const multiContactOptions = useMemo((): ContactOption[] => {
+    if (!allContactsForAllocations) return [];
 
-    return multiContactsData.contacts.map((contact: Contact) => ({
-      label: contact.fullName,
+    return allContactsForAllocations.map((contact: Contact): ContactOption => ({
+      label: contact.fullName || `${contact.firstName} ${contact.lastName}`.trim(),
       value: contact.id,
-      ...contact,
+      id: contact.id,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      fullName: contact.fullName || `${contact.firstName} ${contact.lastName}`.trim(),
     }));
-  }, [multiContactsData?.contacts]);
+  }, [allContactsForAllocations]);
 
   const addAllocation = () => {
     append({
@@ -956,6 +997,10 @@ export default function PaymentFormDialog({
       setSelectedThirdPartyContact(null);
       setContactSearch("");
       form.setValue("thirdPartyContactId", null);
+      // Reset multi-contact section when third party is disabled
+      setShowMultiContactSection(false);
+      form.setValue("isMultiContactPayment", false);
+      setMultiContactAllocations([]);
     }
   };
 
@@ -982,9 +1027,7 @@ export default function PaymentFormDialog({
     setShowMultiContactSection(checked);
     form.setValue("isMultiContactPayment", checked);
     if (!checked) {
-      setSelectedMultiContacts([]);
       setMultiContactAllocations([]);
-      setMultiContactSearch("");
       // Reset split payment if multi-contact is disabled
       form.setValue("isSplitPayment", false);
     } else {
@@ -992,6 +1035,24 @@ export default function PaymentFormDialog({
       form.setValue("isSplitPayment", true);
       form.setValue("pledgeId", null);
     }
+  };
+
+  const getExchangeRateForPledge = (pledgeId: number) => {
+    if (!exchangeRatesData?.data?.rates || !watchedCurrency || pledgeId === 0) return 1;
+
+    const pledge = allPledgesData.find(p => p.id === pledgeId);
+    if (!pledge || pledge.currency === watchedCurrency) return 1;
+
+    const paymentRate = parseFloat(exchangeRatesData.data.rates[watchedCurrency]) || 1;
+    const pledgeRate = parseFloat(exchangeRatesData.data.rates[pledge.currency]) || 1;
+
+    return pledgeRate / paymentRate;
+  };
+
+  // FIXED: Get amount in pledge currency (using corrected exchange rate)
+  const getAmountInPledgeCurrency = (amount: number, pledgeId: number) => {
+    const exchangeRate = getExchangeRateForPledge(pledgeId);
+    return Math.round(amount * exchangeRate * 100) / 100;
   };
 
   return (
@@ -1056,25 +1117,28 @@ export default function PaymentFormDialog({
 
                   {watchedIsThirdParty && (
                     <div className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Search for Contact</label>
-                        <div className="relative">
-                          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                          <Input
-                            placeholder="Type to search contacts..."
-                            value={contactSearch}
-                            onChange={(e) => setContactSearch(e.target.value)}
-                            className="pl-10"
-                          />
+                      {/* Contact Search - Only show when multi-contact is disabled */}
+                      {!showMultiContactSection && (
+                        <div className="space-y-2">
+                          <label className="text-sm font-medium">Search for Contact</label>
+                          <div className="relative">
+                            <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                            <Input
+                              placeholder="Type to search contacts..."
+                              value={contactSearch}
+                              onChange={(e) => setContactSearch(e.target.value)}
+                              className="pl-10"
+                            />
+                          </div>
                         </div>
-                      </div>
+                      )}
 
-                      {contactSearch.length >= 2 && (
+                      {!showMultiContactSection && contactSearch.length >= 2 && (
                         <div className="border rounded-md max-h-40 overflow-y-auto">
                           {isLoadingContacts ? (
                             <div className="p-3 text-center text-gray-500">Loading contacts...</div>
                           ) : contactOptions.length > 0 ? (
-                            contactOptions.map((contact, index) => (
+                            contactOptions.map((contact: ContactOption, index: number) => (
                               <button
                                 key={`contact-${contact.value}-${index}`}
                                 type="button"
@@ -1090,7 +1154,7 @@ export default function PaymentFormDialog({
                         </div>
                       )}
 
-                      {selectedThirdPartyContact && (
+                      {!showMultiContactSection && selectedThirdPartyContact && (
                         <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                           <div className="flex items-center justify-between">
                             <div>
@@ -1115,33 +1179,37 @@ export default function PaymentFormDialog({
                           </div>
                         </div>
                       )}
+
+                      {/* Multi-Contact Toggle */}
+                      <div className="border-t pt-4">
+                        <div className="flex items-center space-x-2">
+                          <Switch
+                            id="isMultiContactPayment"
+                            checked={showMultiContactSection}
+                            onCheckedChange={handleMultiContactToggle}
+                          />
+                          <label
+                            htmlFor="isMultiContactPayment"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                          >
+                            Multi-Contact Payment (Split payment across multiple contacts)
+                          </label>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               </CardContent>
             </Card>
 
+            {/* Payment Details */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Payment Details</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex items-center space-x-2 md:col-span-2">
-                    <Switch
-                      id="isMultiContactPayment"
-                      checked={showMultiContactSection}
-                      onCheckedChange={handleMultiContactToggle}
-                    />
-                    <label
-                      htmlFor="isMultiContactPayment"
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                      Multi-Contact Payment (Split payment across multiple contacts)
-                    </label>
-                  </div>
-
-                  {!watchedIsMultiContactPayment && (
+                  {!watchedIsMultiContactPayment && !watchedIsThirdParty && (
                     <div className="flex items-center space-x-2 md:col-span-2">
                       <Switch
                         id="isSplitPayment"
@@ -1243,7 +1311,7 @@ export default function PaymentFormDialog({
                                 <CommandList className="max-h-[200px] overflow-y-auto">
                                   <CommandEmpty>No pledge found.</CommandEmpty>
                                   <CommandGroup>
-                                    {pledgeOptions.map((pledge: any, index) => (
+                                    {pledgeOptions.map((pledge: any, index: number) => (
                                       <CommandItem
                                         value={pledge.label}
                                         key={`pledge-${pledge.value}-${index}`}
@@ -1442,6 +1510,652 @@ export default function PaymentFormDialog({
               </CardContent>
             </Card>
 
+            {/* Multi-Contact Payment Section - With Searchable Dropdowns */}
+            {showMultiContactSection && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-4 w-4" />
+                    Multi-Contact Payment Allocation
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="text-sm text-green-700">
+                    <p className="font-medium mb-1">Multi-Contact Payment Allocation</p>
+                    <p>Allocate this payment across multiple contacts and their pledges.</p>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Multi-Contact Allocations */}
+                    {multiContactAllocations.map((allocation, index) => (
+                      <Card key={index} className="p-4 bg-white border border-green-200">
+                        <div className="flex items-start justify-between mb-4">
+                          <h4 className="font-medium text-green-800">Allocation #{index + 1}</h4>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeMultiContactAllocation(index)}
+                            className="text-red-600 hover:text-red-800 hover:bg-red-50"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          {/* Contact Selection - Searchable */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Contact</label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className={cn(
+                                    "w-full justify-between",
+                                    !allocation.contactId && "text-muted-foreground"
+                                  )}
+                                >
+                                  {allocation.contactId && allocation.contactId > 0
+                                    ? multiContactOptions.find((contact: ContactOption) => contact.id === allocation.contactId)?.label || "Unknown Contact"
+                                    : "Select contact..."}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <Command>
+                                  <CommandInput placeholder="Search contacts..." className="h-9" />
+                                  <CommandList className="max-h-[200px] overflow-y-auto">
+                                    <CommandEmpty>No contact found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {multiContactOptions.map((contact: ContactOption, contactIndex: number) => (
+                                        <CommandItem
+                                          value={contact.label}
+                                          key={`multi-contact-option-${contact.id}-${contactIndex}`}
+                                          onSelect={() => {
+                                            updateMultiContactAllocation(index, 'contactId', contact.id);
+                                            // Reset pledge when contact changes
+                                            updateMultiContactAllocation(index, 'pledgeId', 0);
+                                          }}
+                                        >
+                                          <Check
+                                            className={cn(
+                                              "mr-2 h-4 w-4",
+                                              contact.id === allocation.contactId ? "opacity-100" : "opacity-0"
+                                            )}
+                                          />
+                                          {contact.label}
+                                        </CommandItem>
+                                      ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+
+                          {/* Pledge Selection - Searchable */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Pledge</label>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  role="combobox"
+                                  className={cn(
+                                    "w-full justify-between",
+                                    (!allocation.pledgeId || allocation.pledgeId === 0) && "text-muted-foreground"
+                                  )}
+                                  disabled={!allocation.contactId || allocation.contactId === 0}
+                                >
+                                  {allocation.pledgeId && allocation.pledgeId > 0
+                                    ? (() => {
+                                      const pledge = allPledgesData.find(p => p.id === allocation.pledgeId);
+                                      return pledge
+                                        ? `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`
+                                        : "Unknown Pledge";
+                                    })()
+                                    : allocation.contactId && allocation.contactId > 0
+                                      ? "Select pledge..."
+                                      : "Select contact first"}
+                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
+                                <Command>
+                                  <CommandInput placeholder="Search pledges..." className="h-9" />
+                                  <CommandList className="max-h-[200px] overflow-y-auto">
+                                    <CommandEmpty>No pledge found.</CommandEmpty>
+                                    <CommandGroup>
+                                      {allPledgesData
+                                        .filter(pledge => pledge.contactId === allocation.contactId)
+                                        .map((pledge, pledgeIndex: number) => (
+                                          <CommandItem
+                                            value={`#${pledge.id} - ${pledge.description || "No description"}`}
+                                            key={`pledge-option-${pledge.id}-${pledgeIndex}`}
+                                            onSelect={() => {
+                                              updateMultiContactAllocation(index, 'pledgeId', pledge.id);
+                                            }}
+                                          >
+                                            <Check
+                                              className={cn(
+                                                "mr-2 h-4 w-4",
+                                                pledge.id === allocation.pledgeId ? "opacity-100" : "opacity-0"
+                                              )}
+                                            />
+                                            #{pledge.id} - {pledge.description || "No description"} ({pledge.currency} {parseFloat(pledge.balance).toLocaleString()})
+                                          </CommandItem>
+                                        ))}
+                                    </CommandGroup>
+                                  </CommandList>
+                                </Command>
+                              </PopoverContent>
+                            </Popover>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 mb-4">
+                          {/* Allocated Amount */}
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">
+                              Allocated Amount ({watchedCurrency || "USD"})
+                            </label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={allocation.allocatedAmount || ""}
+                              onChange={(e) => updateMultiContactAllocation(index, 'allocatedAmount', parseFloat(e.target.value) || 0)}
+                              placeholder="0.00"
+                            />
+                          </div>
+
+                          {/* Amount in Pledge Currency */}
+                          {allocation.pledgeId > 0 && (
+                            <div>
+                              <label className="text-sm font-medium mb-2 block">
+                                Amount in Pledge Currency
+                              </label>
+                              <Input
+                                type="text"
+                                disabled
+                                value={(() => {
+                                  const pledge = allPledgesData.find(p => p.id === allocation.pledgeId);
+                                  if (!pledge || !allocation.allocatedAmount) return "0.00";
+                                  const convertedAmount = getAmountInPledgeCurrency(allocation.allocatedAmount, allocation.pledgeId);
+                                  return `${pledge.currency} ${convertedAmount.toLocaleString()}`;
+                                })()}
+                                className="bg-gray-50"
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Receipt Fields */}
+                        <div className="grid grid-cols-3 gap-4 mb-4">
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Receipt Number</label>
+                            <Input
+                              value={allocation.receiptNumber || ""}
+                              onChange={(e) => updateMultiContactAllocation(index, 'receiptNumber', e.target.value || null)}
+                              placeholder="Optional receipt number"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-sm font-medium mb-2 block">Receipt Type</label>
+                            <Select
+                              value={allocation.receiptType || "none"}
+                              onValueChange={(value) => updateMultiContactAllocation(index, 'receiptType', value === "none" ? null : value)}
+                            >
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select type..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+                                {receiptTypes.map((type) => (
+                                  <SelectItem key={type.value} value={type.value}>
+                                    {type.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          <div className="flex items-end">
+                            <div className="flex items-center space-x-2">
+                              <Switch
+                                id={`receipt-issued-${index}`}
+                                checked={allocation.receiptIssued || false}
+                                onCheckedChange={(checked) => updateMultiContactAllocation(index, 'receiptIssued', checked)}
+                              />
+                              <label htmlFor={`receipt-issued-${index}`} className="text-sm">
+                                Receipt Issued
+                              </label>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Notes */}
+                        <div>
+                          <label className="text-sm font-medium mb-2 block">Notes (Optional)</label>
+                          <Textarea
+                            value={allocation.notes || ""}
+                            onChange={(e) => updateMultiContactAllocation(index, 'notes', e.target.value || null)}
+                            placeholder="Add any notes for this allocation..."
+                            rows={2}
+                          />
+                        </div>
+
+                        {/* Pledge Balance Display */}
+                        {allocation.pledgeId > 0 && (
+                          <div className="mt-4 p-3 bg-gray-50 rounded-md">
+                            <div className="text-sm">
+                              <div className="flex justify-between">
+                                <span>Pledge Balance:</span>
+                                <span className="font-medium">
+                                  {(() => {
+                                    const pledge = allPledgesData.find(p => p.id === allocation.pledgeId);
+                                    return pledge ? `${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()}` : "Unknown";
+                                  })()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>Amount in Pledge Currency:</span>
+                                <span className="font-medium">
+                                  {(() => {
+                                    const pledge = allPledgesData.find(p => p.id === allocation.pledgeId);
+                                    if (!pledge || !allocation.allocatedAmount) return "0.00";
+                                    const convertedAmount = getAmountInPledgeCurrency(allocation.allocatedAmount, allocation.pledgeId);
+                                    return `${pledge.currency} ${convertedAmount.toLocaleString()}`;
+                                  })()}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span>After allocation:</span>
+                                <span className="font-medium">
+                                  {(() => {
+                                    const pledge = allPledgesData.find(p => p.id === allocation.pledgeId);
+                                    if (!pledge || !allocation.allocatedAmount) return pledge ? `${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()}` : "Unknown";
+                                    const convertedAmount = getAmountInPledgeCurrency(allocation.allocatedAmount, allocation.pledgeId);
+                                    const afterAllocation = parseFloat(pledge.balance) - convertedAmount;
+                                    return `${pledge.currency} ${afterAllocation.toLocaleString()}`;
+                                  })()}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </Card>
+                    ))}
+
+                    {/* Add New Allocation Button */}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => addMultiContactAllocation()}
+                      className="w-full flex items-center gap-2 border-green-300 text-green-700 hover:bg-green-100"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Add Another Allocation
+                    </Button>
+
+                    {/* Multi-Contact Summary */}
+                    <div className="p-4 bg-white border border-green-200 rounded-lg">
+                      <h4 className="font-medium text-green-800 mb-3">Payment Summary</h4>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span>Payment Amount:</span>
+                          <span className="font-medium">{watchedCurrency || "USD"} {(watchedAmount || 0).toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total Allocated:</span>
+                          <span className="font-medium">{watchedCurrency || "USD"} {getTotalMultiContactAllocation().toLocaleString()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Remaining:</span>
+                          <span className={cn(
+                            "font-medium",
+                            Math.abs((watchedAmount || 0) - getTotalMultiContactAllocation()) > 0.01
+                              ? "text-red-600"
+                              : "text-green-600"
+                          )}>
+                            {watchedCurrency || "USD"} {((watchedAmount || 0) - getTotalMultiContactAllocation()).toLocaleString()}
+                          </span>
+                        </div>
+                      </div>
+                      {Math.abs((watchedAmount || 0) - getTotalMultiContactAllocation()) > 0.01 && (
+                        <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                          ⚠️ Total allocations must equal payment amount
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Split Payment Allocations Section */}
+            {watchedIsSplitPayment && !showMultiContactSection && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Split className="h-5 w-5" />
+                    Payment Allocations
+                    <Badge variant="secondary" className="ml-2">
+                      {fields.length} allocation{fields.length !== 1 ? "s" : ""}
+                    </Badge>
+                  </CardTitle>
+                  <DialogDescription>
+                    {watchedIsThirdParty && selectedThirdPartyContact
+                      ? `Add allocation amounts for this split payment to ${selectedThirdPartyContact.fullName}'s pledges`
+                      : "Add allocation amounts for this split payment"}
+                  </DialogDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {fields.length > 0 ? (
+                    fields.map((field, index) => (
+                      <div
+                        key={`${field.id}-${index}`}
+                        className="border border-gray-300 rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-lg font-semibold">Allocation #{index + 1}</h4>
+                          {fields.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeAllocation(index)}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800"
+                              aria-label={`Remove allocation ${index + 1}`}
+                            >
+                              <X className="h-5 w-5" />
+                            </Button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Pledge Selection */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.pledgeId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>
+                                  Pledge *
+                                  {watchedIsThirdParty && selectedThirdPartyContact && (
+                                    <span className="text-sm text-muted-foreground ml-2">
+                                      (from {selectedThirdPartyContact.fullName}&apos;s pledges)
+                                    </span>
+                                  )}
+                                </FormLabel>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <FormControl>
+                                      <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className={cn(
+                                          "w-full flex justify-between items-center min-w-0",
+                                          (!field.value || field.value === 0) && "text-muted-foreground"
+                                        )}
+                                        disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
+                                      >
+                                        <span className="block truncate max-w-[calc(100%-1.5rem)]" style={{ minWidth: 0 }}>
+                                          {field.value && field.value !== 0
+                                            ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
+                                            : isLoadingPledges
+                                              ? "Loading pledges..."
+                                              : watchedIsThirdParty && !selectedThirdPartyContact
+                                                ? "Select a contact first"
+                                                : "Select pledge"}
+                                        </span>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                      </Button>
+                                    </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[400px] p-0">
+                                    <Command>
+                                      <CommandInput placeholder="Search pledges..." className="h-9" />
+                                      <CommandList>
+                                        <CommandEmpty>No pledge found.</CommandEmpty>
+                                        <CommandGroup>
+                                          {pledgeOptions.map((pledge, pledgeIndex: number) => (
+                                            <CommandItem
+                                              value={pledge.label}
+                                              key={`pledge-allocation-${pledge.value}-${pledgeIndex}`}
+                                              onSelect={() => {
+                                                field.onChange(pledge.value);
+                                              }}
+                                            >
+                                              <Check
+                                                className={cn(
+                                                  "mr-2 h-4 w-4",
+                                                  pledge.value === field.value ? "opacity-100" : "opacity-0"
+                                                )}
+                                              />
+                                              <span className="block truncate">{pledge.label}</span>
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Allocated Amount */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.allocatedAmount`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Allocated Amount *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    {...field}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      field.onChange(value ? parseFloat(value) : 0);
+                                    }}
+                                    value={field.value || 0}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Receipt Fields */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptNumber`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Number</FormLabel>
+                                <FormControl>
+                                  <Input {...field} value={field.value || ""} />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptType`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Receipt Type</FormLabel>
+                                <Select onValueChange={field.onChange} value={field.value || "none"}>
+                                  <FormControl>
+                                    <SelectTrigger>
+                                      <SelectValue placeholder="Select type" />
+                                    </SelectTrigger>
+                                  </FormControl>
+                                  <SelectContent>
+                                    <SelectItem value="none">None</SelectItem>
+                                    {receiptTypes.map((type) => (
+                                      <SelectItem key={type.value} value={type.value}>
+                                        {type.label}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Receipt Issued Switch */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.receiptIssued`}
+                            render={({ field }) => (
+                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                                <div className="space-y-0.5">
+                                  <FormLabel>Receipt Issued</FormLabel>
+                                </div>
+                                <FormControl>
+                                  <Switch
+                                    checked={field.value || false}
+                                    onCheckedChange={field.onChange}
+                                  />
+                                </FormControl>
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Notes field spanning full width */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.notes`}
+                            render={({ field }) => (
+                              <FormItem className="md:col-span-2">
+                                <FormLabel>Notes</FormLabel>
+                                <FormControl>
+                                  <Textarea
+                                    {...field}
+                                    value={field.value || ""}
+                                    placeholder="Add notes for this allocation..."
+                                    rows={3}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        {/* Pledge Balance Information */}
+                        {watchedAllocations?.[index]?.pledgeId && (
+                          <div className="mt-4 p-3 bg-blue-50 rounded-md">
+                            {(() => {
+                              const pledgeOption = pledgeOptions.find(p => p.value === watchedAllocations[index].pledgeId);
+                              const allocatedAmount = watchedAllocations[index]?.allocatedAmount || 0;
+                              const paymentCurrency = watchedCurrency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR";
+                              const pledgeCurrency = pledgeOption?.currency || paymentCurrency;
+
+                              let amountInPledgeCurrency = allocatedAmount;
+                              let exchangeRateToPledge = 1;
+
+                              // Calculate conversion if currencies differ
+                              if (paymentCurrency !== pledgeCurrency && exchangeRatesData?.data?.rates) {
+                                const paymentRate = parseFloat(exchangeRatesData.data.rates[paymentCurrency]) || 1;
+                                const pledgeRate = parseFloat(exchangeRatesData.data.rates[pledgeCurrency]) || 1;
+                                exchangeRateToPledge = pledgeRate / paymentRate;
+                                amountInPledgeCurrency = allocatedAmount * exchangeRateToPledge;
+                              }
+
+                              return (
+                                <div className="text-sm space-y-1">
+                                  <div className="font-medium text-blue-800 mb-2">
+                                    Pledge Balance: {pledgeOption?.label || `Pledge #${watchedAllocations[index].pledgeId}`}
+                                  </div>
+                                  <div className="flex justify-between">
+                                    <span>Amount in Pledge Currency ({pledgeCurrency}):</span>
+                                    <span className="font-medium">
+                                      {pledgeCurrency} {amountInPledgeCurrency.toLocaleString()}
+                                    </span>
+                                  </div>
+                                  {paymentCurrency !== pledgeCurrency && (
+                                    <div className="flex justify-between text-xs text-blue-600">
+                                      <span>Exchange Rate ({paymentCurrency} to {pledgeCurrency}):</span>
+                                      <span>{exchangeRateToPledge.toFixed(4)}</span>
+                                    </div>
+                                  )}
+                                  <div className="flex justify-between">
+                                    <span>After allocation:</span>
+                                    <span className="font-medium">
+                                      {pledgeCurrency} {((pledgeOption?.balance || 0) - amountInPledgeCurrency).toLocaleString()}
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center text-gray-500 py-8">
+                      No allocations added yet. Click &quot;Add Allocation&quot; to get started.
+                    </div>
+                  )}
+
+                  {/* Add Allocation Button */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={addAllocation}
+                    className="w-full flex items-center justify-center gap-2 border-dashed border-2 py-6"
+                  >
+                    <Plus className="h-5 w-5" />
+                    Add Another Allocation
+                  </Button>
+
+                  {/* Summary Section */}
+                  <div className="bg-gray-50 rounded-lg p-4 border">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="font-semibold text-gray-800">Allocation Summary</h4>
+                      <Badge variant={Math.abs(remainingToAllocate) < 0.01 ? "default" : "destructive"}>
+                        {Math.abs(remainingToAllocate) < 0.01 ? "Balanced" : "Unbalanced"}
+                      </Badge>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span>Total Payment Amount:</span>
+                        <span className="font-medium">{watchedCurrency} {(watchedAmount || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Total Allocated:</span>
+                        <span className="font-medium">{watchedCurrency} {totalAllocatedAmount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-2">
+                        <span>Remaining to Allocate:</span>
+                        <span className={cn(
+                          "font-medium",
+                          Math.abs(remainingToAllocate) < 0.01 ? "text-green-600" : "text-red-600"
+                        )}>
+                          {watchedCurrency} {remainingToAllocate.toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    {Math.abs(remainingToAllocate) >= 0.01 && (
+                      <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
+                        ⚠️ Total allocations must equal the payment amount before submitting.
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Payment Method & Status */}
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg">Payment Method & Status</CardTitle>
@@ -1775,7 +2489,7 @@ export default function PaymentFormDialog({
                                 <CommandList>
                                   <CommandEmpty>No solicitor found.</CommandEmpty>
                                   <CommandGroup>
-                                    {solicitorOptions.map((solicitor: any, index) => (
+                                    {solicitorOptions.map((solicitor: any, index: number) => (
                                       <CommandItem
                                         value={solicitor.label}
                                         key={`solicitor-${solicitor.value}-${index}`}
@@ -1865,561 +2579,6 @@ export default function PaymentFormDialog({
               </Card>
             )}
 
-            {/* Multi-Contact Payment Section */}
-            {showMultiContactSection && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Multi-Contact Payment
-                    <Badge variant="secondary" className="ml-2">
-                      {selectedMultiContacts.length} contact{selectedMultiContacts.length !== 1 ? "s" : ""}
-                    </Badge>
-                  </CardTitle>
-                  <DialogDescription>
-                    Split this payment across multiple contacts and their pledges
-                  </DialogDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {/* Contact Search and Selection */}
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium">Search and Add Contacts</label>
-                      <div className="relative">
-                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                        <Input
-                          placeholder="Type to search contacts..."
-                          value={multiContactSearch}
-                          onChange={(e) => setMultiContactSearch(e.target.value)}
-                          className="pl-10"
-                        />
-                      </div>
-                    </div>
-
-                    {multiContactSearch.length >= 2 && (
-                      <div className="border rounded-md max-h-40 overflow-y-auto">
-                        {isLoadingMultiContacts ? (
-                          <div className="p-3 text-center text-gray-500">Loading contacts...</div>
-                        ) : multiContactOptions.length > 0 ? (
-                          multiContactOptions.map((contact, index) => (
-                            <button
-                              key={`multi-contact-${contact.value}-${index}`}
-                              type="button"
-                              className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 flex items-center justify-between"
-                              onClick={() => addMultiContact(contact)}
-                            >
-                              <div className="font-medium">{contact.label}</div>
-                              <UserPlus className="h-4 w-4 text-blue-600" />
-                            </button>
-                          ))
-                        ) : (
-                          <div className="p-3 text-center text-gray-500">No contacts found</div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Selected Contacts */}
-                    {selectedMultiContacts.length > 0 && (
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium">Selected Contacts</label>
-                        <div className="flex flex-wrap gap-2">
-                          {selectedMultiContacts.map((contact) => (
-                            <Badge key={contact.id} variant="default" className="flex items-center gap-2">
-                              {contact.fullName}
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => removeMultiContact(contact.id)}
-                                className="h-4 w-4 p-0 hover:bg-transparent"
-                              >
-                                <X className="h-3 w-3" />
-                              </Button>
-                            </Badge>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Multi-Contact Allocation Matrix */}
-                  {selectedMultiContacts.length > 0 && (
-                    <div className="space-y-4">
-                      <div className="border-t pt-4">
-                        <h4 className="text-md font-semibold mb-3">Allocation Matrix</h4>
-                        {allPledgesData.length > 0 ? (
-                          <div className="overflow-x-auto">
-                            <table className="w-full border-collapse border border-gray-300">
-                              <thead>
-                                <tr className="bg-gray-50">
-                                  <th className="border border-gray-300 p-2 text-left font-medium">Contact</th>
-                                  {selectedMultiContacts.map((contact) => {
-                                    // Get pledges specific to this contact
-                                    const contactPledges = allPledgesData.filter(pledge => {
-                                      // Assuming pledge has contactId or similar field to identify ownership
-                                      return pledge.contactId === contact.id || pledge.contact?.id === contact.id;
-                                    });
-
-                                    return contactPledges.map((pledge) => (
-                                      <th key={`${contact.id}-${pledge.id}`} className="border border-gray-300 p-2 text-center font-medium min-w-[120px]">
-                                        {pledge.description || `Pledge #${pledge.id}`}
-                                        <br />
-                                        <span className="text-xs text-gray-600">
-                                          {pledge.currency} {parseFloat(pledge.balance).toLocaleString()}
-                                        </span>
-                                        <br />
-                                        <span className="text-xs text-blue-600">
-                                          {contact.fullName}
-                                        </span>
-                                      </th>
-                                    ));
-                                  })}
-                                  <th className="border border-gray-300 p-2 text-center font-medium min-w-[100px]">Total</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {selectedMultiContacts.map((contact) => {
-                                  // Get pledges specific to this contact
-                                  const contactPledges = allPledgesData.filter(pledge =>
-                                    pledge.contactId === contact.id || pledge.contact?.id === contact.id
-                                  );
-
-                                  return (
-                                    <tr key={contact.id} className="hover:bg-gray-50">
-                                      <td className="border border-gray-300 p-2 font-medium">
-                                        {contact.fullName}
-                                      </td>
-                                      {selectedMultiContacts.map((headerContact) => {
-                                        const headerContactPledges = allPledgesData.filter(pledge =>
-                                          pledge.contactId === headerContact.id || pledge.contact?.id === headerContact.id
-                                        );
-
-                                        return headerContactPledges.map((pledge) => {
-                                          // Only show input if this pledge belongs to the current row contact
-                                          const isOwnPledge = pledge.contactId === contact.id || pledge.contact?.id === contact.id;
-                                          const allocation = multiContactAllocations
-                                            .find(a => a.contactId === contact.id)
-                                            ?.pledges.find(p => p.pledgeId === pledge.id);
-
-                                          return (
-                                            <td key={`${headerContact.id}-${pledge.id}`} className="border border-gray-300 p-2">
-                                              {isOwnPledge ? (
-                                                <Input
-                                                  type="number"
-                                                  step="0.01"
-                                                  value={allocation?.allocatedAmount || 0}
-                                                  onChange={(e) => {
-                                                    const amount = parseFloat(e.target.value) || 0;
-                                                    updateMultiContactAllocation(contact.id, pledge.id, amount);
-                                                  }}
-                                                  className="w-full text-center"
-                                                  placeholder="0.00"
-                                                />
-                                              ) : (
-                                                <div className="w-full text-center text-gray-300 py-2">-</div>
-                                              )}
-                                            </td>
-                                          );
-                                        });
-                                      })}
-                                      <td className="border border-gray-300 p-2 text-center font-medium">
-                                        {(multiContactAllocations
-                                          .find(a => a.contactId === contact.id)
-                                          ?.pledges.reduce((sum, pledge) => sum + pledge.allocatedAmount, 0) || 0)
-                                          .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                                {/* Total Row */}
-                                <tr className="bg-gray-50 font-medium">
-                                  <td className="border border-gray-300 p-2 text-right">Total Allocated:</td>
-                                  {selectedMultiContacts.map((contact) => {
-                                    const contactPledges = allPledgesData.filter(pledge =>
-                                      pledge.contactId === contact.id || pledge.contact?.id === contact.id
-                                    );
-
-                                    return contactPledges.map((pledge) => {
-                                      const totalForPledge = multiContactAllocations.reduce((sum, allocation) => {
-                                        const pledgeAllocation = allocation.pledges.find(p => p.pledgeId === pledge.id);
-                                        return sum + (pledgeAllocation?.allocatedAmount || 0);
-                                      }, 0);
-
-                                      return (
-                                        <td key={`total-${contact.id}-${pledge.id}`} className="border border-gray-300 p-2 text-center">
-                                          {totalForPledge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </td>
-                                      );
-                                    });
-                                  })}
-                                  <td className="border border-gray-300 p-2 text-center">
-                                    {getTotalMultiContactAllocation().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </td>
-                                </tr>
-                              </tbody>
-                            </table>
-                          </div>
-                        ) : (
-                          <div className="text-center py-8 text-gray-500">
-                            <div className="mb-2">No pledges found for selected contacts</div>
-                            <div className="text-sm">Make sure the selected contacts have active pledges</div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Validation Summary */}
-                      {allPledgesData.length > 0 && (
-                        <div className="border-t pt-4">
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                            <div className="flex justify-between">
-                              <span>Payment Amount:</span>
-                              <span className="font-medium">
-                                {watchedCurrency} {(watchedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Total Allocated:</span>
-                              <span className={cn(
-                                "font-medium",
-                                getTotalMultiContactAllocation() === (watchedAmount || 0) ? "text-green-600" : "text-red-600"
-                              )}>
-                                {watchedCurrency} {getTotalMultiContactAllocation().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span>Remaining:</span>
-                              <span className={cn(
-                                "font-medium",
-                                (watchedAmount || 0) - getTotalMultiContactAllocation() >= 0 ? "text-gray-600" : "text-red-600"
-                              )}>
-                                {watchedCurrency} {((watchedAmount || 0) - getTotalMultiContactAllocation()).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </div>
-                          </div>
-
-                          {getTotalMultiContactAllocation() !== (watchedAmount || 0) && getTotalMultiContactAllocation() > 0 && (
-                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
-                              <p className="text-sm text-red-600 font-medium">⚠️ Allocation Mismatch</p>
-                              <p className="text-xs text-red-600 mt-1">
-                                Total allocated amount ({getTotalMultiContactAllocation().toFixed(2)}) must equal payment amount (
-                                {(watchedAmount || 0).toFixed(2)})
-                              </p>
-                            </div>
-                          )}
-
-                          {getTotalMultiContactAllocation() === (watchedAmount || 0) && getTotalMultiContactAllocation() > 0 && (
-                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                              <p className="text-sm text-green-600 font-medium">✓ Allocations Balanced</p>
-                              <p className="text-xs text-green-600 mt-1">All allocations are properly balanced</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Split Payment Allocations Section */}
-            {watchedIsSplitPayment && !showMultiContactSection && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Payment Allocations
-                    <Badge variant="secondary" className="ml-2">
-                      {fields.length} allocation{fields.length !== 1 ? "s" : ""}
-                    </Badge>
-                  </CardTitle>
-                  <DialogDescription>
-                    {watchedIsThirdParty && selectedThirdPartyContact
-                      ? `Add allocation amounts for this split payment to ${selectedThirdPartyContact.fullName}'s pledges`
-                      : "Add allocation amounts for this split payment"}
-                  </DialogDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {fields.length > 0 ? (
-                    fields.map((field, index) => (
-                      <div
-                        key={`${field.id}-${index}`}
-                        className="border border-gray-300 rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
-                      >
-                        <div className="flex items-center justify-between mb-4">
-                          <h4 className="text-lg font-semibold">Allocation #{index + 1}</h4>
-                          {fields.length > 1 && (
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeAllocation(index)}
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800"
-                              aria-label={`Remove allocation ${index + 1}`}
-                            >
-                              <X className="h-5 w-5" />
-                            </Button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Pledge Selection */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.pledgeId`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>
-                                  Pledge *
-                                  {watchedIsThirdParty && selectedThirdPartyContact && (
-                                    <span className="text-sm text-muted-foreground ml-2">
-                                      (from {selectedThirdPartyContact.fullName}&apos;s pledges)
-                                    </span>
-                                  )}
-                                </FormLabel>
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <FormControl>
-                                      <Button
-                                        variant="outline"
-                                        role="combobox"
-                                        className={cn(
-                                          "w-full flex justify-between items-center min-w-0",
-                                          (!field.value || field.value === 0) && "text-muted-foreground"
-                                        )}
-                                        disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
-                                      >
-                                        <span className="block truncate max-w-[calc(100%-1.5rem)]" style={{ minWidth: 0 }}>
-                                          {field.value
-                                            ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
-                                            : isLoadingPledges
-                                              ? "Loading pledges..."
-                                              : watchedIsThirdParty && !selectedThirdPartyContact
-                                                ? "Select a contact first"
-                                                : "Select pledge"}
-                                        </span>
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                      </Button>
-                                    </FormControl>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-[400px] p-0">
-                                    <Command>
-                                      <CommandInput placeholder="Search pledges..." className="h-9" />
-                                      <CommandList>
-                                        <CommandEmpty>No pledge found.</CommandEmpty>
-                                        <CommandGroup>
-                                          {pledgeOptions.map((pledge, pledgeIndex) => (
-                                            <CommandItem
-                                              value={pledge.label}
-                                              key={`allocation-${index}-pledge-${pledge.value}-${pledgeIndex}`}
-                                              onSelect={() => {
-                                                field.onChange(pledge.value);
-                                              }}
-                                            >
-                                              <Check
-                                                className={cn(
-                                                  "mr-2 h-4 w-4",
-                                                  pledge.value === field.value ? "opacity-100" : "opacity-0"
-                                                )}
-                                              />
-                                              <div className="flex flex-col">
-                                                <span>{pledge.description}</span>
-                                                <span className="text-sm text-muted-foreground">
-                                                  {pledge.currency} {pledge.unscheduledAmount.toLocaleString()}
-                                                </span>
-                                              </div>
-                                            </CommandItem>
-                                          ))}
-                                        </CommandGroup>
-                                      </CommandList>
-                                    </Command>
-                                  </PopoverContent>
-                                </Popover>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          {/* Allocated Amount */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.allocatedAmount`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Allocated Amount *</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    placeholder="0.00"
-                                    {...field}
-                                    onChange={(e) => {
-                                      const value = e.target.value;
-                                      field.onChange(value ? parseFloat(value) : 0);
-                                    }}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          {/* Notes */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.notes`}
-                            render={({ field }) => (
-                              <FormItem className="md:col-span-2">
-                                <FormLabel>Notes</FormLabel>
-                                <FormControl>
-                                  <Textarea
-                                    placeholder="Optional notes for this allocation..."
-                                    className="min-h-[80px]"
-                                    {...field}
-                                    value={field.value || ""}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          {/* Receipt Information */}
-                          <div className="md:col-span-2 border-t pt-4">
-                            <h5 className="text-md font-medium mb-3">Receipt Information</h5>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                              <FormField
-                                control={form.control}
-                                name={`allocations.${index}.receiptNumber`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Receipt Number</FormLabel>
-                                    <FormControl>
-                                      <Input
-                                        placeholder="Enter receipt number"
-                                        {...field}
-                                        value={field.value || ""}
-                                      />
-                                    </FormControl>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name={`allocations.${index}.receiptType`}
-                                render={({ field }) => (
-                                  <FormItem>
-                                    <FormLabel>Receipt Type</FormLabel>
-                                    <Select onValueChange={field.onChange} value={field.value || ""}>
-                                      <FormControl>
-                                        <SelectTrigger>
-                                          <SelectValue placeholder="Select type" />
-                                        </SelectTrigger>
-                                      </FormControl>
-                                      <SelectContent>
-                                        {receiptTypes.map((type) => (
-                                          <SelectItem key={type.value} value={type.value}>
-                                            {type.label}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <FormMessage />
-                                  </FormItem>
-                                )}
-                              />
-
-                              <FormField
-                                control={form.control}
-                                name={`allocations.${index}.receiptIssued`}
-                                render={({ field }) => (
-                                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
-                                    <div className="space-y-0.5">
-                                      <FormLabel className="text-base">Receipt Issued</FormLabel>
-                                    </div>
-                                    <FormControl>
-                                      <Switch
-                                        checked={field.value}
-                                        onCheckedChange={field.onChange}
-                                      />
-                                    </FormControl>
-                                  </FormItem>
-                                )}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Split className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                      <p>No allocations added yet.</p>
-                      <p className="text-sm">Click "Add Allocation" to get started.</p>
-                    </div>
-                  )}
-
-                  {/* Add Allocation Button */}
-                  <div className="flex justify-center pt-4">
-                    <Button type="button" onClick={addAllocation} variant="outline" className="flex items-center gap-2">
-                      <Plus className="h-4 w-4" />
-                      Add Allocation
-                    </Button>
-                  </div>
-
-                  {/* Allocation Summary */}
-                  {fields.length > 0 && (
-                    <div className="border-t pt-4 mt-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                        <div className="flex justify-between">
-                          <span>Payment Amount:</span>
-                          <span className="font-medium">
-                            {watchedCurrency} {(watchedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Total Allocated:</span>
-                          <span className={cn(
-                            "font-medium",
-                            totalAllocatedAmount === (watchedAmount || 0) ? "text-green-600" : "text-red-600"
-                          )}>
-                            {watchedCurrency} {totalAllocatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span>Remaining:</span>
-                          <span className={cn(
-                            "font-medium",
-                            remainingToAllocate >= 0 ? "text-gray-600" : "text-red-600"
-                          )}>
-                            {watchedCurrency} {remainingToAllocate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        </div>
-                      </div>
-
-                      {remainingToAllocate !== 0 && (
-                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
-                          <p className="text-sm text-yellow-600 font-medium">⚠️ Allocation Mismatch</p>
-                          <p className="text-xs text-yellow-600 mt-1">
-                            {remainingToAllocate > 0
-                              ? `You have ${remainingToAllocate.toFixed(2)} ${watchedCurrency} remaining to allocate.`
-                              : `You have over-allocated by ${Math.abs(remainingToAllocate).toFixed(2)} ${watchedCurrency}.`}
-                          </p>
-                        </div>
-                      )}
-
-                      {remainingToAllocate === 0 && (
-                        <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                          <p className="text-sm text-green-600 font-medium">✓ Allocations Balanced</p>
-                          <p className="text-xs text-green-600 mt-1">All allocations are properly balanced</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
             {/* Notes Section */}
             <FormField
               control={form.control}
@@ -2428,48 +2587,48 @@ export default function PaymentFormDialog({
                 <FormItem>
                   <FormLabel>Notes</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Optional payment notes..."
-                      className="min-h-[100px]"
-                      {...field}
-                      value={field.value || ""}
-                    />
+                    <Textarea {...field} value={field.value || ""} placeholder="Add any notes about this payment..." />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <div className="flex justify-end space-x-2 pt-6 border-t">
+            {/* Action Buttons */}
+            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t">
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => handleOpenChange(false)}
+                onClick={() => setOpen(false)}
+                className="sm:order-1"
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={createPaymentMutation.isPending}
+                disabled={
+                  createPaymentMutation.isPending ||
+                  (watchedIsSplitPayment && Math.abs(remainingToAllocate) >= 0.01 && !showMultiContactSection) ||
+                  (showMultiContactSection && Math.abs((watchedAmount || 0) - getTotalMultiContactAllocation()) >= 0.01) ||
+                  (!watchedMainPledgeId && !watchedIsSplitPayment && !watchedIsMultiContactPayment)
+                }
+                className="sm:order-2"
               >
                 {createPaymentMutation.isPending ? "Creating..." : "Create Payment"}
               </Button>
             </div>
+
+            {/* Additional Dialogs */}
+            {contactId && (
+              <PledgeDialog
+                contactId={contactId}
+                open={pledgeDialogOpen}
+                onOpenChange={setPledgeDialogOpen}
+              />
+            )}
           </form>
         </Form>
       </DialogContent>
-
-      {(selectedThirdPartyContact?.id || contactId) && (
-        <PledgeDialog
-          open={pledgeDialogOpen}
-          onOpenChange={setPledgeDialogOpen}
-          contactId={selectedThirdPartyContact?.id || contactId!}
-          onPledgeCreated={(pledgeId) => {
-            form.setValue("pledgeId", pledgeId);
-            setPledgeDialogOpen(false);
-          }}
-        />
-      )}
     </Dialog>
   );
 }
