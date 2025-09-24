@@ -7,6 +7,9 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { config } from 'dotenv';
 import ws from 'ws';
+import * as https from 'https';
+import * as http from 'http';
+import { URL } from 'url';
 
 // Load environment variables
 config();
@@ -63,15 +66,56 @@ interface CheckSummary {
 interface ExchangeRatesResponse {
   success: boolean;
   data: {
-    rates: Record<string, number>;
+    rates: Record<string, string>;
     date: string;
   } | null;
   error?: string;
 }
 
+/**
+ * Simple HTTP(S) request function to replace node-fetch
+ */
+function httpRequest(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const module = parsedUrl.protocol === 'https:' ? https : http;
+
+    const req = module.request(url, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(JSON.parse(data));
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+          }
+        } catch (error) {
+          reject(new Error(`Failed to parse JSON response: ${error}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
+    req.end();
+  });
+}
+
 class CurrencyIntegrityService {
   private db: ReturnType<typeof drizzle>;
-  private exchangeRateCache: Map<string, { rates: Record<string, number>; date: string }> = new Map();
+  private exchangeRateCache: Map<string, { rates: Record<string, string>; date: string }> = new Map();
 
   constructor() {
     const pool = new Pool({
@@ -162,16 +206,19 @@ class CurrencyIntegrityService {
     // 1. Use receivedDate if it exists and is not in future
     if (paymentRecord.receivedDate) {
       const receivedDate = new Date(paymentRecord.receivedDate).toISOString().split('T')[0];
+
       // Only use received date if it's not in the future
       if (receivedDate <= today) {
+        console.log(`📅 Using received_date: ${receivedDate}`);
         return receivedDate;
       } else {
-        console.log(`⚠️ Future received date detected (${receivedDate}), using today's date (${today})`);
+        console.log(`⚠️ Future received_date detected (${receivedDate}), using today's date (${today})`);
         return today;
       }
     }
 
-    // 2. Always fallback to today's date (NEVER use paymentDate for future plans)
+    // 2. NEVER use payment_date - always fallback to today's date
+    console.log(`📅 No received_date found, using today's date: ${today}`);
     return today;
   }
 
@@ -196,8 +243,8 @@ class CurrencyIntegrityService {
   }
 
   /**
-   * Fetch exchange rates using the same API as your form
-   * This matches the useExchangeRates hook pattern
+   * Fetch exchange rates using your existing API endpoint
+   * Updated to work with your API structure using built-in Node.js HTTP
    */
   private async fetchExchangeRatesFromAPI(date?: string): Promise<ExchangeRatesResponse> {
     const targetDate = date || new Date().toISOString().split('T')[0];
@@ -216,33 +263,35 @@ class CurrencyIntegrityService {
     }
 
     try {
-      // Use the same API endpoint as your form
-      console.log(`🔍 Fetching exchange rates from API for ${targetDate}`);
+      // Use environment variable for API base URL, fallback to localhost for dev
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+      const apiUrl = `${baseUrl}/api/exchange-rates?date=${targetDate}`;
 
-      const response = await fetch(`http://localhost:3000/api/exchange-rates?date=${targetDate}`);
+      console.log(`🔍 Fetching exchange rates from API: ${apiUrl}`);
 
-      if (!response.ok) {
-        throw new Error(`API request failed: ${response.status} ${response.statusText}`);
-      }
+      // Use built-in Node.js HTTP instead of fetch or node-fetch
+      const apiData = await httpRequest(apiUrl);
 
-      const data: ExchangeRatesResponse = await response.json();
-
-      if (data.success && data.data) {
+      if (apiData.data && apiData.data.rates) {
         // Cache the result
         this.exchangeRateCache.set(cacheKey, {
-          rates: data.data.rates,
-          date: data.data.date
+          rates: apiData.data.rates,
+          date: targetDate
         });
 
-        console.log(`✅ Retrieved exchange rates from API for ${data.data.date}`);
-        return data;
+        console.log(`✅ Retrieved exchange rates from API for ${targetDate}`);
+        return {
+          success: true,
+          data: {
+            rates: apiData.data.rates,
+            date: targetDate
+          }
+        };
       } else {
-        throw new Error(data.error || 'API returned unsuccessful response');
+        throw new Error("Invalid API response structure");
       }
-
     } catch (error) {
       console.warn(`⚠️ API request failed: ${error instanceof Error ? error.message : String(error)}`);
-
       return {
         success: false,
         data: null,
@@ -340,8 +389,8 @@ class CurrencyIntegrityService {
       const apiResult = await this.fetchExchangeRatesFromAPI(useDate);
 
       if (apiResult.success && apiResult.data?.rates) {
-        const fromRate = apiResult.data.rates[fromCurrency];
-        const toRate = apiResult.data.rates[toCurrency];
+        const fromRate = parseFloat(apiResult.data.rates[fromCurrency]);
+        const toRate = parseFloat(apiResult.data.rates[toCurrency]);
 
         if (fromRate && toRate) {
           // Convert through USD: fromCurrency -> USD -> toCurrency
@@ -976,10 +1025,10 @@ class CurrencyIntegrityService {
 
           const conversionDate = this.getConversionDate(paymentRecord);
 
-          console.log(`🔍 Checking third-party payment ${paymentRecord.id}:`);
-          console.log(`  - Payer: ${contactName}`);
+          console.log(`🔍 Checking payment ${paymentRecord.id}:`);
+          console.log(`  - Contact: ${contactName}`);
           console.log(`  - Payment: ${paymentRecord.amount} ${paymentRecord.currency}`);
-          console.log(`  - Conversion date: ${conversionDate}`);
+          console.log(`  - Conversion date: ${conversionDate} (from ${paymentRecord.receivedDate ? 'received_date' : 'today'})`);
 
           // Check USD conversion for non-USD third-party payments
           if (paymentRecord.currency !== 'USD') {
@@ -1889,7 +1938,8 @@ async function main() {
 🔗 CONSISTENT API Multi-Currency Integrity Service
 ==================================================
 
-✅ USES SAME API AS YOUR FORM - 100% Consistency!
+✅ NO EXTERNAL DEPENDENCIES REQUIRED!
+• Uses built-in Node.js HTTP/HTTPS modules
 • Calls your /api/exchange-rates endpoint (same as useExchangeRates)
 • Uses identical rate calculation logic as your forms
 • Eliminates discrepancies between form and integrity checker
@@ -1912,7 +1962,7 @@ Commands:
   check                        Run full check and auto-fix critical issues  
   fix-conversions             Focus on currency conversion fixes only
 
-🎯 Perfect Consistency: Your forms and integrity checker now use 
+🎯 Perfect CongetConversionDatesistency: Your forms and integrity checker now use 
 the EXACT SAME exchange rate API and logic - no more discrepancies!
         `);
         break;

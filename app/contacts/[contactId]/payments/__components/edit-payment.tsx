@@ -93,6 +93,18 @@ interface Contact {
   fullName: string;
 }
 
+interface ContactAllocation {
+  contactId: number;
+  contactName: string;
+  pledges: {
+    pledgeId: number;
+    pledgeDescription: string;
+    currency: string;
+    balance: number;
+    allocatedAmount: number;
+  }[];
+}
+
 interface Allocation {
   id?: number;
   pledgeId: number;
@@ -143,6 +155,9 @@ interface Payment {
   isThirdPartyPayment?: boolean;
   thirdPartyContactId?: number | null;
   payerContactId?: number | null;
+  // Multi-contact payment fields
+  isMultiContactPayment?: boolean;
+  multiContactAllocations?: ContactAllocation[];
 }
 
 const useSolicitors = (params: { search?: string; status?: "active" | "inactive" | "suspended" } = {}) => {
@@ -339,6 +354,9 @@ const editPaymentSchema = z
     thirdPartyContactId: z.number().positive().optional().nullable(),
     payerContactId: z.number().positive().optional().nullable(),
 
+    // Multi-contact payment fields
+    isMultiContactPayment: z.boolean().optional(),
+
     allocations: z
       .array(
         z.object({
@@ -408,8 +426,15 @@ export default function EditPaymentDialog({
   const [contactSearch, setContactSearch] = useState("");
   const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
 
-  // Check if this payment is already a third-party payment
+  // Multi-contact payment state
+  const [selectedMultiContacts, setSelectedMultiContacts] = useState<Contact[]>([]);
+  const [multiContactAllocations, setMultiContactAllocations] = useState<ContactAllocation[]>([]);
+  const [showMultiContactSection, setShowMultiContactSection] = useState(false);
+  const [multiContactSearch, setMultiContactSearch] = useState("");
+
+  // Check if this payment is already a third-party or multi-contact payment
   const isExistingThirdPartyPayment = payment.isThirdPartyPayment || false;
+  const isExistingMultiContactPayment = payment.isMultiContactPayment || false;
   const existingThirdPartyContactId = payment.thirdPartyContactId || null;
 
   // NEW: Get pledge details with contact info for third-party payments
@@ -429,10 +454,100 @@ export default function EditPaymentDialog({
       limit: 100,
       status: undefined,
     },
-    { enabled: !!targetContactId }
+    { enabled: !!targetContactId && !showMultiContactSection }
   );
 
   const { data: contactsData, isLoading: isLoadingContacts } = useContacts(contactSearch);
+  const { data: multiContactsData, isLoading: isLoadingMultiContacts } = useContacts(multiContactSearch);
+
+  // Multi-contact pledge fetching
+  const multiContactIds = selectedMultiContacts.map(c => c.id);
+  const { data: multiContactPledgesData } = useQuery({
+    queryKey: ['multi-contact-pledges', multiContactIds],
+    queryFn: async () => {
+      if (multiContactIds.length === 0) return { pledges: [] };
+
+      const pledgePromises = multiContactIds.map(async (contactId) => {
+        const response = await fetch(`/api/pledges?contactId=${contactId}&page=1&limit=100`);
+        if (!response.ok) throw new Error('Failed to fetch pledges');
+        const data = await response.json();
+        return data.pledges || [];
+      });
+
+      const results = await Promise.all(pledgePromises);
+      const allPledges = results.flat();
+
+      return { pledges: allPledges };
+    },
+    enabled: multiContactIds.length > 0,
+  });
+
+  const allPledgesData = useMemo(() => {
+    return multiContactPledgesData?.pledges || [];
+  }, [multiContactPledgesData]);
+
+  // Multi-contact allocation functions
+  const addMultiContact = (contact: Contact) => {
+    if (!selectedMultiContacts.find(c => c.id === contact.id)) {
+      setSelectedMultiContacts([...selectedMultiContacts, contact]);
+      // Initialize allocation for this contact
+      const newAllocation: ContactAllocation = {
+        contactId: contact.id,
+        contactName: contact.fullName,
+        pledges: []
+      };
+      setMultiContactAllocations([...multiContactAllocations, newAllocation]);
+    }
+    setMultiContactSearch("");
+  };
+
+  const removeMultiContact = (contactId: number) => {
+    setSelectedMultiContacts(selectedMultiContacts.filter(c => c.id !== contactId));
+    setMultiContactAllocations(multiContactAllocations.filter(a => a.contactId !== contactId));
+  };
+
+  const updateMultiContactAllocation = (contactId: number, pledgeId: number, amount: number) => {
+    setMultiContactAllocations(prev =>
+      prev.map(allocation => {
+        if (allocation.contactId === contactId) {
+          const existingPledgeIndex = allocation.pledges.findIndex(p => p.pledgeId === pledgeId);
+          if (existingPledgeIndex >= 0) {
+            // Update existing pledge allocation
+            const updatedPledges = [...allocation.pledges];
+            updatedPledges[existingPledgeIndex] = {
+              ...updatedPledges[existingPledgeIndex],
+              allocatedAmount: amount
+            };
+            return { ...allocation, pledges: updatedPledges };
+          } else {
+            // Add new pledge allocation
+            const pledge = allPledgesData?.find(p => p.id === pledgeId);
+            if (pledge) {
+              return {
+                ...allocation,
+                pledges: [...allocation.pledges, {
+                  pledgeId,
+                  pledgeDescription: pledge.description || "No description",
+                  currency: pledge.currency,
+                  balance: parseFloat(pledge.balance),
+                  allocatedAmount: amount
+                }]
+              };
+            }
+          }
+        }
+        return allocation;
+      })
+    );
+  };
+
+  const getTotalMultiContactAllocation = () => {
+    return multiContactAllocations.reduce((total, allocation) => {
+      return total + allocation.pledges.reduce((contactTotal, pledge) => {
+        return contactTotal + pledge.allocatedAmount;
+      }, 0);
+    }, 0);
+  };
 
   const [internalOpen, setInternalOpen] = useState(false);
   const [showSolicitorSection, setShowSolicitorSection] = useState(!!payment.solicitorId);
@@ -486,6 +601,8 @@ export default function EditPaymentDialog({
       isThirdPartyPayment: isExistingThirdPartyPayment,
       thirdPartyContactId: existingThirdPartyContactId,
       payerContactId: payment.payerContactId || null,
+      // Multi-contact payment defaults
+      isMultiContactPayment: isExistingMultiContactPayment,
       autoAdjustAllocations: false,
       redistributionMethod: "proportional",
       allocations: isSplitPayment && payment.allocations
@@ -526,6 +643,7 @@ export default function EditPaymentDialog({
   const watchedBonusPercentage = form.watch("bonusPercentage");
   const watchedExchangeRate = form.watch("exchangeRate");
   const watchedIsSplitPayment = form.watch("isSplitPayment");
+  const watchedIsMultiContactPayment = form.watch("isMultiContactPayment");
   const watchedAllocations = form.watch("allocations");
   const watchedIsThirdParty = form.watch("isThirdPartyPayment");
   const watchedThirdPartyContactId = form.watch("thirdPartyContactId");
@@ -542,6 +660,26 @@ export default function EditPaymentDialog({
     0
   );
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
+
+  // Initialize existing multi-contact data if this is a multi-contact payment
+  useEffect(() => {
+    if (isExistingMultiContactPayment && payment.multiContactAllocations && !selectedMultiContacts.length) {
+      // Load existing multi-contact data
+      setShowMultiContactSection(true);
+      form.setValue("isMultiContactPayment", true);
+      form.setValue("isSplitPayment", true);
+
+      // Initialize contacts and allocations from payment data
+      const contacts = payment.multiContactAllocations.map(allocation => ({
+        id: allocation.contactId,
+        fullName: allocation.contactName,
+        firstName: "",
+        lastName: ""
+      }));
+      setSelectedMultiContacts(contacts);
+      setMultiContactAllocations(payment.multiContactAllocations);
+    }
+  }, [isExistingMultiContactPayment, payment.multiContactAllocations, selectedMultiContacts.length, form]);
 
   // NEW: Effect to load and set the third-party contact from pledge data
   useEffect(() => {
@@ -654,6 +792,9 @@ export default function EditPaymentDialog({
   }, [watchedAmount, originalAmount, watchedIsSplitPayment]);
 
   const areAllocationsValid = () => {
+    if (showMultiContactSection) {
+      return getTotalMultiContactAllocation() === (watchedAmount || 0);
+    }
     if (!watchedIsSplitPayment || !watchedAllocations || watchedAllocations.length === 0) return true;
     const paymentAmount = watchedAmount || parseFloat(payment.amount);
     return Math.abs(totalAllocatedAmount - paymentAmount) < 0.01;
@@ -682,7 +823,9 @@ export default function EditPaymentDialog({
 
     // Convert to regular payment
     form.setValue("isSplitPayment", false);
+    form.setValue("isMultiContactPayment", false);
     form.setValue("pledgeId", targetPledgeId);
+    setShowMultiContactSection(false);
 
     // Restore receipt information from the target allocation if available
     if (targetAllocation) {
@@ -696,8 +839,10 @@ export default function EditPaymentDialog({
       form.setValue("receiptIssued", false);
     }
 
-    // Clear allocations
+    // Clear allocations and multi-contact data
     replace([]);
+    setSelectedMultiContacts([]);
+    setMultiContactAllocations([]);
 
     toast.success(`Split payment converted to regular payment for Pledge #${targetPledgeId}`);
   };
@@ -733,6 +878,23 @@ export default function EditPaymentDialog({
         receiptType: null,
         receiptIssued: false,
       }]);
+    }
+  };
+
+  // Handle multi-contact payment toggle
+  const handleMultiContactToggle = (checked: boolean) => {
+    setShowMultiContactSection(checked);
+    form.setValue("isMultiContactPayment", checked);
+    if (!checked) {
+      setSelectedMultiContacts([]);
+      setMultiContactAllocations([]);
+      setMultiContactSearch("");
+      // Reset split payment if multi-contact is disabled
+      form.setValue("isSplitPayment", false);
+    } else {
+      // Enable split payment when multi-contact is enabled
+      form.setValue("isSplitPayment", true);
+      form.setValue("pledgeId", null);
     }
   };
 
@@ -780,6 +942,9 @@ export default function EditPaymentDialog({
         form.setValue("receiptIssued", firstAllocation.receiptIssued ?? false);
       }
       replace([]);
+      // Also disable multi-contact if split is disabled
+      setShowMultiContactSection(false);
+      form.setValue("isMultiContactPayment", false);
     }
   };
 
@@ -997,6 +1162,7 @@ export default function EditPaymentDialog({
       isThirdPartyPayment: isExistingThirdPartyPayment,
       thirdPartyContactId: existingThirdPartyContactId,
       payerContactId: payment.payerContactId || null,
+      isMultiContactPayment: isExistingMultiContactPayment,
       autoAdjustAllocations: false,
       redistributionMethod: "proportional",
     });
@@ -1006,6 +1172,18 @@ export default function EditPaymentDialog({
     setShowAmountChangeWarning(false);
     setSelectedThirdPartyContact(null);
     setContactSearch("");
+    setShowMultiContactSection(isExistingMultiContactPayment);
+    setSelectedMultiContacts(isExistingMultiContactPayment && payment.multiContactAllocations
+      ? payment.multiContactAllocations.map(allocation => ({
+        id: allocation.contactId,
+        fullName: allocation.contactName,
+        firstName: "",
+        lastName: ""
+      }))
+      : []);
+    setMultiContactAllocations(isExistingMultiContactPayment && payment.multiContactAllocations
+      ? payment.multiContactAllocations
+      : []);
 
     // If editing an existing third-party payment, restore the contact
     if (isExistingThirdPartyPayment && existingThirdPartyContactId) {
@@ -1036,7 +1214,7 @@ export default function EditPaymentDialog({
         }]
         : [];
     replace(initialAllocations);
-  }, [form, payment, isSplitPayment, replace, isExistingThirdPartyPayment, existingThirdPartyContactId]);
+  }, [form, payment, isSplitPayment, replace, isExistingThirdPartyPayment, existingThirdPartyContactId, isExistingMultiContactPayment]);
 
   const updatePaymentMutation = useUpdatePaymentMutation(watchedIsSplitPayment ? payment.id : watchedPledgeId || payment.pledgeId || 0);
 
@@ -1049,7 +1227,24 @@ export default function EditPaymentDialog({
 
   const onSubmit = async (data: EditPaymentFormData) => {
     try {
-      if (watchedIsSplitPayment) {
+      if (showMultiContactSection) {
+        // Handle multi-contact payment validation
+        if (getTotalMultiContactAllocation() !== (data.amount || 0)) {
+          toast.error("Multi-contact payment allocation amounts must equal the total payment amount");
+          return;
+        }
+
+        // For multi-contact payments, we need to handle the update differently
+        // This would typically involve updating multiple payment records or
+        // updating the payment structure to support multi-contact allocations
+        const multiContactPayload = {
+          ...data,
+          isMultiContactPayment: true,
+          multiContactAllocations: multiContactAllocations,
+        };
+
+        await updatePaymentMutation.mutateAsync(multiContactPayload as any);
+      } else if (watchedIsSplitPayment) {
         if (!areAllocationsValid()) {
           toast.error("Total allocated amount must equal payment amount");
           return;
@@ -1082,7 +1277,7 @@ export default function EditPaymentDialog({
         const filteredData = Object.fromEntries(
           Object.entries(allowedUpdates).filter(([key, val]) => {
             // Keep essential fields even if they're falsy
-            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment'].includes(key)) return true;
+            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment', 'isMultiContactPayment'].includes(key)) return true;
             return val !== undefined && val !== null && val !== '';
           })
         );
@@ -1101,7 +1296,7 @@ export default function EditPaymentDialog({
 
         const filteredData = Object.fromEntries(
           Object.entries(data).filter(([key, val]) => {
-            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment'].includes(key)) return true;
+            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment', 'isMultiContactPayment'].includes(key)) return true;
             return val !== undefined && val !== null && val !== '';
           })
         );
@@ -1110,13 +1305,21 @@ export default function EditPaymentDialog({
           ...filteredData,
           ...basePayload,
           ...(watchedIsSplitPayment && processedAllocations && { allocations: processedAllocations }),
+          ...(showMultiContactSection && {
+            isMultiContactPayment: true,
+            multiContactAllocations: multiContactAllocations
+          }),
         };
 
         await updatePaymentMutation.mutateAsync(updateData as any);
       }
 
       // Success handling
-      const paymentType = isThirdParty ? "Third-party payment" : "Payment";
+      const paymentType = showMultiContactSection
+        ? "Multi-contact payment"
+        : isThirdParty
+          ? "Third-party payment"
+          : "Payment";
       const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
       toast.success(`${paymentType}${target} updated successfully!`);
       setOpen(false);
@@ -1153,6 +1356,15 @@ export default function EditPaymentDialog({
     }));
   }, [contactsData?.contacts]);
 
+  const multiContactOptions = useMemo(() => {
+    if (!multiContactsData?.contacts) return [];
+    return multiContactsData.contacts.map((contact: Contact) => ({
+      label: contact.fullName,
+      value: contact.id,
+      ...contact,
+    }));
+  }, [multiContactsData?.contacts]);
+
   const effectivePledgeDescription = pledgeData?.pledge?.description || payment.pledgeDescription || "N/A";
 
   const formatCurrency = (amount: string | number, currency = "USD") => {
@@ -1166,8 +1378,12 @@ export default function EditPaymentDialog({
 
     const handleUndoWithoutSelectingPledge = () => {
       form.setValue("isSplitPayment", false);
+      form.setValue("isMultiContactPayment", false);
       form.setValue("pledgeId", null);
       replace([]);
+      setShowMultiContactSection(false);
+      setSelectedMultiContacts([]);
+      setMultiContactAllocations([]);
       toast.success("Split payment undone. You can now select a new pledge.");
     };
 
@@ -1257,6 +1473,12 @@ export default function EditPaymentDialog({
                 Third-Party
               </Badge>
             )}
+            {showMultiContactSection && (
+              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                <Users className="h-3 w-3 mr-1" />
+                Multi-Contact
+              </Badge>
+            )}
           </DialogTitle>
           <DialogDescription>
             <div>
@@ -1265,6 +1487,13 @@ export default function EditPaymentDialog({
                   Editing payment for <strong>{selectedThirdPartyContact.fullName}</strong>
                   <span className="block mt-1 text-sm text-muted-foreground">
                     This payment will appear in your account but apply to their pledge balance
+                  </span>
+                </div>
+              ) : showMultiContactSection ? (
+                <div>
+                  Edit multi-contact payment affecting {selectedMultiContacts.length} contacts
+                  <span className="block mt-1 text-sm text-muted-foreground">
+                    Total Amount: {payment.currency} {parseFloat(payment.amount).toLocaleString()}
                   </span>
                 </div>
               ) : watchedIsSplitPayment ? (
@@ -1329,11 +1558,11 @@ export default function EditPaymentDialog({
                   <div className="space-y-2">
                     <p className="font-medium">Payment amount has changed</p>
                     <p className="text-sm">
-                      The current allocations total {formatCurrency(totalAllocatedAmount, watchedCurrency || payment.currency)}
+                      The current allocations total {formatCurrency(showMultiContactSection ? getTotalMultiContactAllocation() : totalAllocatedAmount, watchedCurrency || payment.currency)}
                       but the payment amount is {formatCurrency(watchedAmount || 0, watchedCurrency || payment.currency)}.
                     </p>
                     <div className="flex items-center gap-4 mt-3">
-                      {!autoAdjustAllocations && (
+                      {!autoAdjustAllocations && !showMultiContactSection && (
                         <Button
                           type="button"
                           variant="outline"
@@ -1374,6 +1603,22 @@ export default function EditPaymentDialog({
                       Third-Party Payment (Payment for someone else&apos;s pledge)
                     </label>
                   </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Switch
+                      id="isMultiContactPayment"
+                      checked={showMultiContactSection}
+                      onCheckedChange={handleMultiContactToggle}
+                      disabled={isPaymentPlanPayment}
+                    />
+                    <label
+                      htmlFor="isMultiContactPayment"
+                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                    >
+                      Multi-Contact Payment (Split payment across multiple contacts)
+                    </label>
+                  </div>
+
                   {watchedIsThirdParty && (
                     <div className="space-y-4">
                       <div className="space-y-2">
@@ -1467,7 +1712,7 @@ export default function EditPaymentDialog({
                       id="isSplitPayment"
                       checked={watchedIsSplitPayment}
                       onCheckedChange={handleSplitPaymentToggle}
-                      disabled={isPaymentPlanPayment || (isSplitPayment && !canConvertToSplit)}
+                      disabled={isPaymentPlanPayment || (isSplitPayment && !canConvertToSplit) || showMultiContactSection}
                     />
                     <label
                       htmlFor="isSplitPayment"
@@ -1478,7 +1723,7 @@ export default function EditPaymentDialog({
                   </div>
 
                   {/* Single Pledge Selection - only show for non-split payments */}
-                  {!watchedIsSplitPayment && (
+                  {!watchedIsSplitPayment && !showMultiContactSection && (
                     <FormField
                       control={form.control}
                       name="pledgeId"
@@ -1609,7 +1854,7 @@ export default function EditPaymentDialog({
                     control={form.control}
                     name="exchangeRate"
                     render={({ field }) => (
-                      <FormItem className="hidden"  >
+                      <FormItem className="hidden">
                         <FormLabel>
                           Exchange Rate (to USD)
                           {watchedReceivedDate ? (
@@ -1758,300 +2003,248 @@ export default function EditPaymentDialog({
               </CardContent>
             </Card>
 
-            {/* Payment Allocations for Split Payments */}
-            {watchedIsSplitPayment && (
+            {/* Multi-Contact Payment Section */}
+            {showMultiContactSection && (
               <Card>
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
                     <Users className="h-5 w-5" />
-                    Payment Allocations
+                    Multi-Contact Payment
                     <Badge variant="secondary" className="ml-2">
-                      {fields.length || 0} allocation{fields.length !== 1 ? "s" : ""}
+                      {selectedMultiContacts.length} contact{selectedMultiContacts.length !== 1 ? "s" : ""}
                     </Badge>
                   </CardTitle>
                   <DialogDescription>
-                    {watchedIsThirdParty && selectedThirdPartyContact
-                      ? `Edit allocation amounts for this split payment to ${selectedThirdPartyContact.fullName}'s pledges`
-                      : "Edit allocation amounts and receipt details for this split payment. All allocations must use the same currency as the payment."}
+                    Edit multi-contact payment allocations across multiple contacts and their pledges
                   </DialogDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {fields.length > 0 ? (
-                    fields.map((field, index) => (
-                      <div key={field.id} className="border rounded-lg p-4 bg-gray-50">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium">Allocation #{index + 1}</h4>
-                          <div className="flex items-center gap-2">
-                            <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                              {formatCurrency(watchedAllocations?.[index]?.allocatedAmount || 0, watchedCurrency || payment.currency)}
-                            </Badge>
-                            {fields.length > 1 && (
+                  {/* Contact Search and Selection */}
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Search and Add Contacts</label>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                        <Input
+                          placeholder="Type to search contacts..."
+                          value={multiContactSearch}
+                          onChange={(e) => setMultiContactSearch(e.target.value)}
+                          className="pl-10"
+                        />
+                      </div>
+                    </div>
+
+                    {multiContactSearch.length >= 2 && (
+                      <div className="border rounded-md max-h-40 overflow-y-auto">
+                        {isLoadingMultiContacts ? (
+                          <div className="p-3 text-center text-gray-500">Loading contacts...</div>
+                        ) : multiContactOptions.length > 0 ? (
+                          multiContactOptions.map((contact, index) => (
+                            <button
+                              key={`multi-contact-${contact.value}-${index}`}
+                              type="button"
+                              className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0 flex items-center justify-between"
+                              onClick={() => addMultiContact(contact)}
+                            >
+                              <div className="font-medium">{contact.label}</div>
+                              <UserPlus className="h-4 w-4 text-blue-600" />
+                            </button>
+                          ))
+                        ) : (
+                          <div className="p-3 text-center text-gray-500">No contacts found</div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Selected Contacts */}
+                    {selectedMultiContacts.length > 0 && (
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium">Selected Contacts</label>
+                        <div className="flex flex-wrap gap-2">
+                          {selectedMultiContacts.map((contact) => (
+                            <Badge key={contact.id} variant="default" className="flex items-center gap-2">
+                              {contact.fullName}
                               <Button
                                 type="button"
                                 variant="ghost"
                                 size="sm"
-                                onClick={() => removeAllocation(index)}
-                                className="h-8 w-8 p-0 text-red-600 hover:text-red-800"
+                                onClick={() => removeMultiContact(contact.id)}
+                                className="h-4 w-4 p-0 hover:bg-transparent"
                               >
-                                <X className="h-4 w-4" />
+                                <X className="h-3 w-3" />
                               </Button>
-                            )}
-                          </div>
+                            </Badge>
+                          ))}
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {/* Pledge Selection */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.pledgeId`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>
-                                  Pledge *
-                                  {watchedIsThirdParty && selectedThirdPartyContact && (
-                                    <span className="text-sm text-muted-foreground ml-2">
-                                      (from {selectedThirdPartyContact.fullName}&apos;s pledges)
-                                    </span>
-                                  )}
-                                </FormLabel>
-                                <Popover>
-                                  <PopoverTrigger asChild>
-                                    <FormControl>
-                                      <Button
-                                        variant="outline"
-                                        role="combobox"
-                                        className={cn(
-                                          "w-full justify-between",
-                                          (!field.value || field.value === 0) && "text-muted-foreground"
-                                        )}
-                                        disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
-                                      >
-                                        <span className="block truncate">
-                                          {field.value
-                                            ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
-                                            : isLoadingPledges
-                                              ? "Loading pledges..."
-                                              : watchedIsThirdParty && !selectedThirdPartyContact
-                                                ? "Select a contact first"
-                                                : "Select pledge"}
-                                        </span>
-                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                      </Button>
-                                    </FormControl>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-[400px] p-0">
-                                    <Command>
-                                      <CommandInput placeholder="Search pledges..." />
-                                      <CommandList>
-                                        <CommandEmpty>No pledge found.</CommandEmpty>
-                                        <CommandGroup>
-                                          {pledgeOptions.map((pledge, pledgeIndex) => (
-                                            <CommandItem
-                                              value={pledge.label}
-                                              key={`allocation-${index}-pledge-${pledge.value}-${pledgeIndex}`}
-                                              onSelect={() => {
-                                                field.onChange(pledge.value);
-                                              }}
-                                            >
-                                              {pledge.label}
-                                              <Check
-                                                className={cn(
-                                                  "ml-auto h-4 w-4",
-                                                  pledge.value === field.value ? "opacity-100" : "opacity-0"
-                                                )}
-                                              />
-                                            </CommandItem>
-                                          ))}
-                                        </CommandGroup>
-                                      </CommandList>
-                                    </Command>
-                                  </PopoverContent>
-                                </Popover>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          {/* Allocated Amount */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.allocatedAmount`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Allocated Amount *</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    {...field}
-                                    onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
-                                    placeholder="Enter allocated amount"
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          {/* Currency Display */}
-                          <div>
-                            <label className="text-sm font-medium text-gray-700 mb-1 block">Currency</label>
-                            <Input value={watchedCurrency || payment.currency} readOnly className="opacity-70 bg-white" />
-                          </div>
-
-                          {/* Allocation Notes */}
-                          <div className="md:col-span-2">
-                            <FormField
-                              control={form.control}
-                              name={`allocations.${index}.notes`}
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Allocation Notes</FormLabel>
-                                  <FormControl>
-                                    <Textarea
-                                      {...field}
-                                      value={field.value || ""}
-                                      className="bg-white resize-none"
-                                      rows={2}
-                                      placeholder="Enter allocation notes..."
-                                    />
-                                  </FormControl>
-                                  <FormMessage />
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-
-                          {/* Receipt Number */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.receiptNumber`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Receipt Number</FormLabel>
-                                <FormControl>
-                                  <Input
-                                    type="text"
-                                    {...field}
-                                    value={field.value || ""}
-                                  />
-                                </FormControl>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          {/* Receipt Type */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.receiptType`}
-                            render={({ field }) => (
-                              <FormItem>
-                                <FormLabel>Receipt Type</FormLabel>
-                                <Select
-                                  value={field.value || ""}
-                                  onValueChange={(val) => field.onChange(val === NO_SELECTION ? null : val)}
-                                >
-                                  <FormControl>
-                                    <SelectTrigger>
-                                      <SelectValue placeholder="Select a receipt type" />
-                                    </SelectTrigger>
-                                  </FormControl>
-                                  <SelectContent>
-                                    <SelectItem value={NO_SELECTION}>None</SelectItem>
-                                    {receiptTypes.map((type) => (
-                                      <SelectItem key={type.value} value={type.value}>
-                                        {type.label}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                                <FormMessage />
-                              </FormItem>
-                            )}
-                          />
-
-                          {/* Receipt Issued */}
-                          <FormField
-                            control={form.control}
-                            name={`allocations.${index}.receiptIssued`}
-                            render={({ field }) => (
-                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm md:col-span-2">
-                                <div className="space-y-0.5">
-                                  <FormLabel className="text-base">Receipt Issued</FormLabel>
-                                  <DialogDescription>Has a receipt been issued for this allocation?</DialogDescription>
-                                </div>
-                                <FormControl>
-                                  <Switch checked={field.value || false} onCheckedChange={field.onChange} />
-                                </FormControl>
-                              </FormItem>
-                            )}
-                          />
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="text-center py-8 text-gray-500">
-                      <Split className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No allocations found for this split payment</p>
-                    </div>
-                  )}
-
-                  {/* Add Allocation Button */}
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={addAllocation}
-                    className="flex items-center gap-2"
-                  >
-                    <Plus className="h-4 w-4" />
-                    Add Allocation
-                  </Button>
-
-                  {/* Allocation Validation and Summary */}
-                  <div className="border-t pt-4 mt-4">
-                    <div className="flex justify-between items-center font-medium">
-                      <span>Total Allocated:</span>
-                      <span
-                        className={cn("text-lg", areAllocationsValid() ? "text-green-600" : "text-red-600")}
-                      >
-                        {watchedCurrency || payment.currency} {totalAllocatedAmount.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm text-gray-600 mt-1">
-                      <span>Payment Amount:</span>
-                      <span>
-                        {watchedCurrency || payment.currency} {(watchedAmount || parseFloat(payment.amount)).toLocaleString()}
-                      </span>
-                    </div>
-
-                    {!areAllocationsValid() && (
-                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
-                        <p className="text-sm text-red-600 font-medium">⚠️ Validation Error</p>
-                        <p className="text-xs text-red-600 mt-1">
-                          Total allocated amount ({totalAllocatedAmount.toFixed(2)}) must equal payment amount (
-                          {(watchedAmount || parseFloat(payment.amount)).toFixed(2)})
-                        </p>
-                      </div>
-                    )}
-
-                    {!areAllocationCurrenciesValid() && (
-                      <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
-                        <p className="text-sm text-red-600 font-medium">⚠️ Currency Mismatch</p>
-                        <p className="text-xs text-red-600 mt-1">
-                          All allocation currencies must match payment currency ({watchedCurrency || payment.currency}).
-                        </p>
-                      </div>
-                    )}
-
-                    {areAllocationsValid() && areAllocationCurrenciesValid() && (
-                      <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
-                        <p className="text-sm text-green-600 font-medium">✓ Allocations Valid</p>
-                        <p className="text-xs text-green-600 mt-1">All allocations are properly balanced and currencies match</p>
                       </div>
                     )}
                   </div>
+
+                  {/* Multi-Contact Allocation Matrix */}
+                  {selectedMultiContacts.length > 0 && (
+                    <div className="space-y-4">
+                      <div className="border-t pt-4">
+                        <h4 className="text-md font-semibold mb-3">Allocation Matrix</h4>
+                        {allPledgesData.length > 0 ? (
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse border border-gray-300">
+                              <thead>
+                                <tr className="bg-gray-50">
+                                  <th className="border border-gray-300 p-2 text-left font-medium">Contact</th>
+                                  {selectedMultiContacts.map((contact) => {
+                                    const contactPledges = allPledgesData.filter(pledge =>
+                                      pledge.contactId === contact.id || pledge.contact?.id === contact.id
+                                    );
+
+                                    return contactPledges.map((pledge) => (
+                                      <th key={`${contact.id}-${pledge.id}`} className="border border-gray-300 p-2 text-center font-medium min-w-[120px]">
+                                        {pledge.description || `Pledge #${pledge.id}`}
+                                        <br />
+                                        <span className="text-xs text-gray-600">
+                                          {pledge.currency} {parseFloat(pledge.balance).toLocaleString()}
+                                        </span>
+                                        <br />
+                                        <span className="text-xs text-blue-600">
+                                          {contact.fullName}
+                                        </span>
+                                      </th>
+                                    ));
+                                  })}
+                                  <th className="border border-gray-300 p-2 text-center font-medium min-w-[100px]">Total</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {selectedMultiContacts.map((contact) => (
+                                  <tr key={contact.id} className="hover:bg-gray-50">
+                                    <td className="border border-gray-300 p-2 font-medium">
+                                      {contact.fullName}
+                                    </td>
+                                    {selectedMultiContacts.map((headerContact) => {
+                                      const headerContactPledges = allPledgesData.filter(pledge =>
+                                        pledge.contactId === headerContact.id || pledge.contact?.id === headerContact.id
+                                      );
+
+                                      return headerContactPledges.map((pledge) => {
+                                        const isOwnPledge = pledge.contactId === contact.id || pledge.contact?.id === contact.id;
+                                        const allocation = multiContactAllocations
+                                          .find(a => a.contactId === contact.id)
+                                          ?.pledges.find(p => p.pledgeId === pledge.id);
+
+                                        return (
+                                          <td key={`${headerContact.id}-${pledge.id}`} className="border border-gray-300 p-2">
+                                            {isOwnPledge ? (
+                                              <Input
+                                                type="number"
+                                                step="0.01"
+                                                value={allocation?.allocatedAmount || 0}
+                                                onChange={(e) => {
+                                                  const amount = parseFloat(e.target.value) || 0;
+                                                  updateMultiContactAllocation(contact.id, pledge.id, amount);
+                                                }}
+                                                className="w-full text-center"
+                                                placeholder="0.00"
+                                              />
+                                            ) : (
+                                              <div className="w-full text-center text-gray-300 py-2">-</div>
+                                            )}
+                                          </td>
+                                        );
+                                      });
+                                    })}
+                                    <td className="border border-gray-300 p-2 text-center font-medium">
+                                      {(multiContactAllocations
+                                        .find(a => a.contactId === contact.id)
+                                        ?.pledges.reduce((sum, pledge) => sum + pledge.allocatedAmount, 0) || 0)
+                                        .toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </td>
+                                  </tr>
+                                ))}
+                                {/* Total Row */}
+                                <tr className="bg-gray-50 font-medium">
+                                  <td className="border border-gray-300 p-2 text-right">Total Allocated:</td>
+                                  {selectedMultiContacts.map((contact) => {
+                                    const contactPledges = allPledgesData.filter(pledge =>
+                                      pledge.contactId === contact.id || pledge.contact?.id === contact.id
+                                    );
+
+                                    return contactPledges.map((pledge) => {
+                                      const totalForPledge = multiContactAllocations.reduce((sum, allocation) => {
+                                        const pledgeAllocation = allocation.pledges.find(p => p.pledgeId === pledge.id);
+                                        return sum + (pledgeAllocation?.allocatedAmount || 0);
+                                      }, 0);
+
+                                      return (
+                                        <td key={`total-${contact.id}-${pledge.id}`} className="border border-gray-300 p-2 text-center">
+                                          {totalForPledge.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                        </td>
+                                      );
+                                    });
+                                  })}
+                                  <td className="border border-gray-300 p-2 text-center">
+                                    {getTotalMultiContactAllocation().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-center py-8 text-gray-500">
+                            <div className="mb-2">No pledges found for selected contacts</div>
+                            <div className="text-sm">Make sure the selected contacts have active pledges</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Validation Summary */}
+                      {allPledgesData.length > 0 && (
+                        <div className="border-t pt-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                            <div className="flex justify-between">
+                              <span>Payment Amount:</span>
+                              <span className="font-medium">
+                                {watchedCurrency} {(watchedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Total Allocated:</span>
+                              <span className={cn(
+                                "font-medium",
+                                getTotalMultiContactAllocation() === (watchedAmount || 0) ? "text-green-600" : "text-red-600"
+                              )}>
+                                {watchedCurrency} {getTotalMultiContactAllocation().toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Remaining:</span>
+                              <span className={cn(
+                                "font-medium",
+                                (watchedAmount || 0) - getTotalMultiContactAllocation() >= 0 ? "text-gray-600" : "text-red-600"
+                              )}>
+                                {watchedCurrency} {((watchedAmount || 0) - getTotalMultiContactAllocation()).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            </div>
+                          </div>
+
+                          {getTotalMultiContactAllocation() !== (watchedAmount || 0) && getTotalMultiContactAllocation() > 0 && (
+                            <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-md">
+                              <p className="text-sm text-red-600 font-medium">⚠️ Allocation Mismatch</p>
+                              <p className="text-xs text-red-600 mt-1">
+                                Total allocated amount ({getTotalMultiContactAllocation().toFixed(2)}) must equal payment amount (
+                                {(watchedAmount || 0).toFixed(2)})
+                              </p>
+                            </div>
+                          )}
+
+                          {getTotalMultiContactAllocation() === (watchedAmount || 0) && getTotalMultiContactAllocation() > 0 && (
+                            <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                              <p className="text-sm text-green-600 font-medium">✓ Allocations Balanced</p>
+                              <p className="text-xs text-green-600 mt-1">All allocations are properly balanced</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
@@ -2059,7 +2252,7 @@ export default function EditPaymentDialog({
             {/* Payment Method & Status */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-lg">Payment Method &amp; Status</CardTitle>
+                <CardTitle className="text-lg">Payment Method & Status</CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2091,29 +2284,15 @@ export default function EditPaymentDialog({
                           <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                             <Command>
                               <CommandInput placeholder="Search payment methods..." />
-                              <CommandList className="max-h-[200px] overflow-y-auto">
+                              <CommandList>
                                 <CommandEmpty>No payment method found.</CommandEmpty>
                                 <CommandGroup>
-                                  <CommandItem
-                                    value="None"
-                                    onSelect={() => {
-                                      form.setValue("paymentMethod", null, { shouldValidate: true, shouldDirty: true });
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        !field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    None
-                                  </CommandItem>
-                                  {paymentMethods.map((method, index) => (
+                                  {paymentMethods.map((method) => (
                                     <CommandItem
                                       value={method.label}
-                                      key={`payment-method-${method.value}-${index}`}
+                                      key={method.value}
                                       onSelect={() => {
-                                        form.setValue("paymentMethod", method.value, { shouldValidate: true, shouldDirty: true });
+                                        form.setValue("paymentMethod", method.value);
                                       }}
                                     >
                                       <Check
@@ -2163,13 +2342,13 @@ export default function EditPaymentDialog({
                           <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                             <Command>
                               <CommandInput placeholder="Search method details..." />
-                              <CommandList className="max-h-[200px] overflow-y-auto">
+                              <CommandList>
                                 <CommandEmpty>No method detail found.</CommandEmpty>
                                 <CommandGroup>
                                   <CommandItem
-                                    value="__clear_selection__" // Use unique value that won't conflict
+                                    value="None"
                                     onSelect={() => {
-                                      form.setValue("methodDetail", null, { shouldValidate: true, shouldDirty: true }); // Use null consistently
+                                      form.setValue("methodDetail", null);
                                     }}
                                   >
                                     <Check
@@ -2180,12 +2359,12 @@ export default function EditPaymentDialog({
                                     />
                                     None
                                   </CommandItem>
-                                  {methodDetails.map((detail, index) => (
+                                  {methodDetails.map((detail) => (
                                     <CommandItem
-                                      value={detail.label} // Use label for search instead of value
-                                      key={`method-detail-${detail.value}-${index}`}
+                                      value={detail.value}
+                                      key={detail.value}
                                       onSelect={() => {
-                                        form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
+                                        form.setValue("methodDetail", detail.value);
                                       }}
                                     >
                                       <Check
@@ -2207,33 +2386,7 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Payment Status */}
-                  <FormField
-                    control={form.control}
-                    name="paymentStatus"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Status</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select a payment status" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {paymentStatuses.map((status) => (
-                              <SelectItem key={status.value} value={status.value}>
-                                {status.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  {/* Account - Updated to Dropdown */}
+                  {/* Account */}
                   <FormField
                     control={form.control}
                     name="account"
@@ -2266,7 +2419,7 @@ export default function EditPaymentDialog({
                                 <CommandItem
                                   value="None"
                                   onSelect={() => {
-                                    form.setValue("account", null, { shouldValidate: true, shouldDirty: true });
+                                    form.setValue("account", null);
                                   }}
                                 >
                                   <Check
@@ -2277,12 +2430,12 @@ export default function EditPaymentDialog({
                                   />
                                   None
                                 </CommandItem>
-                                {accountOptions.map((account, index) => (
+                                {accountOptions.map((account) => (
                                   <CommandItem
                                     value={account.value}
-                                    key={`account-${account.value}-${index}`}
+                                    key={account.value}
                                     onSelect={() => {
-                                      form.setValue("account", account.value, { shouldValidate: true, shouldDirty: true });
+                                      form.setValue("account", account.value);
                                     }}
                                   >
                                     <Check
@@ -2303,13 +2456,39 @@ export default function EditPaymentDialog({
                     )}
                   />
 
-                  {/* Check Date and Check Number */}
-                  <div className="md:col-span-2 grid grid-cols-2 gap-4">
+                  {/* Payment Status */}
+                  <FormField
+                    control={form.control}
+                    name="paymentStatus"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Payment Status</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {paymentStatuses.map((status) => (
+                              <SelectItem key={status.value} value={status.value}>
+                                {status.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Check Fields */}
+                  <div className="flex gap-4 md:col-span-2">
                     <FormField
                       control={form.control}
                       name="checkDate"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem className="flex-1">
                           <FormLabel>Check Date</FormLabel>
                           <FormControl>
                             <Input {...field} type="date" value={field.value || ""} />
@@ -2322,7 +2501,7 @@ export default function EditPaymentDialog({
                       control={form.control}
                       name="checkNumber"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem className="flex-1">
                           <FormLabel>Check Number</FormLabel>
                           <FormControl>
                             <Input {...field} value={field.value || ""} />
@@ -2336,72 +2515,334 @@ export default function EditPaymentDialog({
               </CardContent>
             </Card>
 
-            {/* Receipt Information (if NOT split payment) */}
-            {!watchedIsSplitPayment && (
+            {/* Split Payment Allocations Section */}
+            {watchedIsSplitPayment && !showMultiContactSection && (
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-lg">Receipt Information</CardTitle>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <Split className="h-5 w-5" />
+                    Payment Allocations
+                    <Badge variant="secondary" className="ml-2">
+                      {fields.length} allocation{fields.length !== 1 ? "s" : ""}
+                    </Badge>
+                  </CardTitle>
+                  <DialogDescription>
+                    {watchedIsThirdParty && selectedThirdPartyContact
+                      ? `Add allocation amounts for this split payment to ${selectedThirdPartyContact.fullName}'s pledges`
+                      : "Add allocation amounts for this split payment"}
+                  </DialogDescription>
                 </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="receiptNumber"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Receipt Number</FormLabel>
-                          <FormControl>
-                            <Input {...field} value={field.value || ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="receiptType"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Receipt Type</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value || ""}>
-                            <FormControl>
-                              <SelectTrigger>
-                                <SelectValue placeholder="Select a receipt type" />
-                              </SelectTrigger>
-                            </FormControl>
-                            <SelectContent>
-                              {receiptTypes.map((type) => (
-                                <SelectItem key={type.value} value={type.value}>
-                                  {type.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
+                <CardContent className="space-y-4">
+                  {/* Auto-adjustment controls */}
+                  <div className="border-b pb-4">
+                    <div className="flex items-center space-x-4">
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="autoAdjust"
+                          checked={autoAdjustAllocations}
+                          onCheckedChange={setAutoAdjustAllocations}
+                        />
+                        <label htmlFor="autoAdjust" className="text-sm font-medium">
+                          Auto-adjust allocations when amount changes
+                        </label>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <label className="text-sm font-medium">Method:</label>
+                        <Select value={redistributionMethod} onValueChange={(value) => setRedistributionMethod(value as any)}>
+                          <SelectTrigger className="w-32">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="proportional">Proportional</SelectItem>
+                            <SelectItem value="equal">Equal</SelectItem>
+                            <SelectItem value="custom">Custom</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   </div>
-                  <FormField
-                    control={form.control}
-                    name="receiptIssued"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center justify-between rounded-lg border p-4 shadow-sm mt-4">
-                        <div className="space-y-0.5">
-                          <FormLabel className="text-base">Receipt Issued</FormLabel>
-                          <DialogDescription>Has a receipt been issued for this payment?</DialogDescription>
+
+                  {fields.length > 0 ? (
+                    fields.map((field, index) => (
+                      <div
+                        key={field.id}
+                        className="border border-gray-300 rounded-lg p-6 bg-white shadow-sm hover:shadow-md transition-shadow duration-200"
+                      >
+                        <div className="flex items-center justify-between mb-4">
+                          <h4 className="text-lg font-semibold">Allocation #{index + 1}</h4>
+                          {fields.length > 1 && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeAllocation(index)}
+                              className="h-8 w-8 p-0 text-red-600 hover:text-red-800"
+                            >
+                              <X className="h-5 w-5" />
+                            </Button>
+                          )}
                         </div>
-                        <FormControl>
-                          <Switch checked={field.value} onCheckedChange={field.onChange} />
-                        </FormControl>
-                      </FormItem>
-                    )}
-                  />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Pledge Selection */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.pledgeId`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>
+                                  Pledge *
+                                  {watchedIsThirdParty && selectedThirdPartyContact && (
+                                    <span className="text-sm text-muted-foreground ml-2">
+                                      (from {selectedThirdPartyContact.fullName}&apos;s pledges)
+                                    </span>
+                                  )}
+                                </FormLabel>
+                                <Popover>
+                                  <PopoverTrigger asChild>
+                                    <FormControl>
+                                      <Button
+                                        variant="outline"
+                                        role="combobox"
+                                        className={cn(
+                                          "w-full flex justify-between items-center min-w-0",
+                                          (!field.value || field.value === 0) && "text-muted-foreground"
+                                        )}
+                                        disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
+                                      >
+                                        <span className="block truncate max-w-[calc(100%-1.5rem)]" style={{ minWidth: 0 }}>
+                                          {field.value
+                                            ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
+                                            : isLoadingPledges
+                                              ? "Loading pledges..."
+                                              : watchedIsThirdParty && !selectedThirdPartyContact
+                                                ? "Select a contact first"
+                                                : "Select pledge"}
+                                        </span>
+                                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                      </Button>
+                                    </FormControl>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-[400px] p-0">
+                                    <Command>
+                                      <CommandInput placeholder="Search pledges..." className="h-9" />
+                                      <CommandList>
+                                        <CommandEmpty>No pledge found.</CommandEmpty>
+                                        <CommandGroup>
+                                          {pledgeOptions.map((pledge) => (
+                                            <CommandItem
+                                              value={pledge.label}
+                                              key={pledge.value}
+                                              onSelect={() => {
+                                                field.onChange(pledge.value);
+                                              }}
+                                            >
+                                              <Check
+                                                className={cn(
+                                                  "mr-2 h-4 w-4",
+                                                  pledge.value === field.value ? "opacity-100" : "opacity-0"
+                                                )}
+                                              />
+                                              <div className="flex flex-col">
+                                                <span>{pledge.description}</span>
+                                                <span className="text-sm text-muted-foreground">
+                                                  {pledge.currency} {pledge.balance.toLocaleString()}
+                                                </span>
+                                              </div>
+                                            </CommandItem>
+                                          ))}
+                                        </CommandGroup>
+                                      </CommandList>
+                                    </Command>
+                                  </PopoverContent>
+                                </Popover>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Allocated Amount */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.allocatedAmount`}
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Allocated Amount *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    {...field}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      field.onChange(value ? parseFloat(value) : 0);
+                                    }}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Notes */}
+                          <FormField
+                            control={form.control}
+                            name={`allocations.${index}.notes`}
+                            render={({ field }) => (
+                              <FormItem className="md:col-span-2">
+                                <FormLabel>Notes</FormLabel>
+                                <FormControl>
+                                  <Textarea
+                                    placeholder="Optional notes for this allocation..."
+                                    className="min-h-[80px]"
+                                    {...field}
+                                    value={field.value || ""}
+                                  />
+                                </FormControl>
+                                <FormMessage />
+                              </FormItem>
+                            )}
+                          />
+
+                          {/* Receipt Information */}
+                          <div className="md:col-span-2 border-t pt-4">
+                            <h5 className="text-md font-medium mb-3">Receipt Information</h5>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                              <FormField
+                                control={form.control}
+                                name={`allocations.${index}.receiptNumber`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Receipt Number</FormLabel>
+                                    <FormControl>
+                                      <Input
+                                        placeholder="Enter receipt number"
+                                        {...field}
+                                        value={field.value || ""}
+                                      />
+                                    </FormControl>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name={`allocations.${index}.receiptType`}
+                                render={({ field }) => (
+                                  <FormItem>
+                                    <FormLabel>Receipt Type</FormLabel>
+                                    <Select onValueChange={field.onChange} value={field.value || ""}>
+                                      <FormControl>
+                                        <SelectTrigger>
+                                          <SelectValue placeholder="Select type" />
+                                        </SelectTrigger>
+                                      </FormControl>
+                                      <SelectContent>
+                                        {receiptTypes.map((type) => (
+                                          <SelectItem key={type.value} value={type.value}>
+                                            {type.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+
+                              <FormField
+                                control={form.control}
+                                name={`allocations.${index}.receiptIssued`}
+                                render={({ field }) => (
+                                  <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                                    <div className="space-y-0.5">
+                                      <FormLabel className="text-base">Receipt Issued</FormLabel>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <Split className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                      <p>No allocations added yet.</p>
+                      <p className="text-sm">Click "Add Allocation" to get started.</p>
+                    </div>
+                  )}
+
+                  {/* Add Allocation Button */}
+                  <div className="flex justify-center pt-4">
+                    <Button type="button" onClick={addAllocation} variant="outline" className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add Allocation
+                    </Button>
+                  </div>
+
+                  {/* Allocation Summary */}
+                  {fields.length > 0 && (
+                    <div className="border-t pt-4 mt-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div className="flex justify-between">
+                          <span>Payment Amount:</span>
+                          <span className="font-medium">
+                            {watchedCurrency} {(watchedAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Total Allocated:</span>
+                          <span className={cn(
+                            "font-medium",
+                            totalAllocatedAmount === (watchedAmount || 0) ? "text-green-600" : "text-red-600"
+                          )}>
+                            {watchedCurrency} {totalAllocatedAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Remaining:</span>
+                          <span className={cn(
+                            "font-medium",
+                            remainingToAllocate >= 0 ? "text-gray-600" : "text-red-600"
+                          )}>
+                            {watchedCurrency} {remainingToAllocate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {remainingToAllocate !== 0 && (
+                        <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded-md">
+                          <p className="text-sm text-yellow-600 font-medium">⚠️ Allocation Mismatch</p>
+                          <p className="text-xs text-yellow-600 mt-1">
+                            {remainingToAllocate > 0
+                              ? `You have ${remainingToAllocate.toFixed(2)} ${watchedCurrency} remaining to allocate.`
+                              : `You have over-allocated by ${Math.abs(remainingToAllocate).toFixed(2)} ${watchedCurrency}.`}
+                          </p>
+                        </div>
+                      )}
+
+                      {remainingToAllocate === 0 && (
+                        <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-md">
+                          <p className="text-sm text-green-600 font-medium">✓ Allocations Balanced</p>
+                          <p className="text-xs text-green-600 mt-1">All allocations are properly balanced</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Solicitor Section Toggle */}
+            {/* Solicitor Section */}
             <div className="flex items-center space-x-2">
               <Switch
                 id="show-solicitor-section"
@@ -2443,7 +2884,10 @@ export default function EditPaymentDialog({
                                 <Button
                                   variant="outline"
                                   role="combobox"
-                                  className={cn("w-full justify-between", !field.value && "text-muted-foreground")}
+                                  className={cn(
+                                    "w-full justify-between",
+                                    !field.value && "text-muted-foreground"
+                                  )}
                                 >
                                   {field.value
                                     ? solicitorOptions.find((solicitor) => solicitor.value === field.value)?.label
@@ -2454,7 +2898,7 @@ export default function EditPaymentDialog({
                             </PopoverTrigger>
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                               <Command>
-                                <CommandInput placeholder="Search solicitor..." />
+                                <CommandInput placeholder="Search solicitors..." className="h-9" />
                                 <CommandList>
                                   <CommandEmpty>No solicitor found.</CommandEmpty>
                                   <CommandGroup>
@@ -2463,16 +2907,19 @@ export default function EditPaymentDialog({
                                         value={solicitor.label}
                                         key={solicitor.value}
                                         onSelect={() => {
-                                          form.setValue("solicitorId", solicitor.value);
+                                          field.onChange(solicitor.value);
+                                          if (solicitor.commissionRate != null) {
+                                            form.setValue("bonusPercentage", solicitor.commissionRate);
+                                          }
                                         }}
                                       >
+                                        {solicitor.label}
                                         <Check
                                           className={cn(
-                                            "mr-2 h-4 w-4",
+                                            "ml-auto h-4 w-4",
                                             solicitor.value === field.value ? "opacity-100" : "opacity-0"
                                           )}
                                         />
-                                        {solicitor.label}
                                       </CommandItem>
                                     ))}
                                   </CommandGroup>
@@ -2484,7 +2931,6 @@ export default function EditPaymentDialog({
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="bonusPercentage"
@@ -2493,20 +2939,20 @@ export default function EditPaymentDialog({
                           <FormLabel>Bonus Percentage (%)</FormLabel>
                           <FormControl>
                             <Input
-                              {...field}
                               type="number"
                               step="0.01"
-                              min="0"
-                              max="100"
-                              onChange={(e) => field.onChange(parseFloat(e.target.value))}
+                              {...field}
                               value={field.value ?? ""}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                field.onChange(value === "" ? null : parseFloat(value));
+                              }}
                             />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="bonusAmount"
@@ -2514,13 +2960,12 @@ export default function EditPaymentDialog({
                         <FormItem>
                           <FormLabel>Bonus Amount</FormLabel>
                           <FormControl>
-                            <Input {...field} type="number" step="0.01" readOnly className="opacity-70" value={field.value ?? ""} />
+                            <Input type="number" step="0.01" {...field} disabled value={field.value ?? ""} />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-
                     <FormField
                       control={form.control}
                       name="bonusRuleId"
@@ -2529,10 +2974,13 @@ export default function EditPaymentDialog({
                           <FormLabel>Bonus Rule ID</FormLabel>
                           <FormControl>
                             <Input
-                              {...field}
                               type="number"
-                              onChange={(e) => field.onChange(parseInt(e.target.value))}
+                              {...field}
                               value={field.value ?? ""}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                field.onChange(value === "" ? null : parseInt(value, 10));
+                              }}
                             />
                           </FormControl>
                           <FormMessage />
@@ -2544,31 +2992,113 @@ export default function EditPaymentDialog({
               </Card>
             )}
 
-            {/* General Notes */}
+            {/* Receipt Information - Only for non-split payments */}
+            {!watchedIsSplitPayment && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg">Receipt Information</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="receiptNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Receipt Number</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Enter receipt number"
+                              {...field}
+                              value={field.value || ""}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="receiptType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Receipt Type</FormLabel>
+                          <Select onValueChange={field.onChange} value={field.value || ""}>
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {receiptTypes.map((type) => (
+                                <SelectItem key={type.value} value={type.value}>
+                                  {type.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+
+                    <FormField
+                      control={form.control}
+                      name="receiptIssued"
+                      render={({ field }) => (
+                        <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
+                          <div className="space-y-0.5">
+                            <FormLabel className="text-base">Receipt Issued</FormLabel>
+                          </div>
+                          <FormControl>
+                            <Switch
+                              checked={field.value}
+                              onCheckedChange={field.onChange}
+                            />
+                          </FormControl>
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Notes Section */}
             <FormField
               control={form.control}
               name="notes"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>General Payment Notes</FormLabel>
+                  <FormLabel>Notes</FormLabel>
                   <FormControl>
-                    <Textarea {...field} value={field.value || ""} className="min-h-[80px]" placeholder="Add any additional notes about this payment..." />
+                    <Textarea
+                      placeholder="Optional payment notes..."
+                      className="min-h-[100px]"
+                      {...field}
+                      value={field.value || ""}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* Form buttons */}
-            <div className="flex gap-4 justify-end">
-              <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-2 pt-6 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => handleOpenChange(false)}
+              >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={updatePaymentMutation.isPending || (watchedIsSplitPayment && (!areAllocationsValid() || !areAllocationCurrenciesValid()))}
+                disabled={updatePaymentMutation.isPending || (watchedIsSplitPayment && !areAllocationsValid()) || (showMultiContactSection && getTotalMultiContactAllocation() !== (watchedAmount || 0))}
               >
-                {updatePaymentMutation.isPending ? "Saving..." : "Save Changes"}
+                {updatePaymentMutation.isPending ? "Updating..." : "Update Payment"}
               </Button>
             </div>
           </form>
