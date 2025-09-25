@@ -251,7 +251,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     );
   };
 
-
   // Payment Status Badge Component
   const PaymentStatusBadge = ({ status }: { status: string }) => {
     const statusClass = getStatusBadgeColor(status);
@@ -264,21 +263,98 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     );
   };
 
-  // Updated Third Party Badge - now shows "Paid By"
-  const PaidByBadge = ({ payment }: { payment: ApiPayment }) => {
+  // Updated Contextual Third Party Badge - shows "Paid By" or "Paid For" based on perspective
+  const ThirdPartyBadge = ({ payment, contactId }: { payment: ApiPayment, contactId?: number }) => {
     if (!payment.isThirdPartyPayment) {
       return <span className="text-gray-400">-</span>;
     }
 
+    // Determine if current contact is the payer or payee
+    const isCurrentContactPayer = contactId && payment.payerContactId === contactId;
+    const isCurrentContactPayee = contactId && payment.pledgeOwnerId === contactId;
+
+    // For split payments with multiple contacts, we need different logic
+    if (payment.isSplitPayment && payment.allocations) {
+      // Check if any allocation belongs to current contact
+      const currentContactAllocation = payment.allocations.find(allocation => 
+        allocation.pledge?.contactId === contactId
+      );
+      
+      if (currentContactAllocation) {
+        // Current contact is a beneficiary (payee) - show "Paid By"
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+              <Users className="h-3 w-3 mr-1" />
+              Paid By
+            </Badge>
+            {payment.payerContactName && (
+              <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.payerContactName}>
+                {payment.payerContactName}
+              </span>
+            )}
+          </div>
+        );
+      } else if (isCurrentContactPayer) {
+        // Current contact is the payer - show "Paid For"
+        const beneficiaries = [...new Set(payment.allocations.map(a => a.pledgeOwnerName).filter(Boolean))];
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+              <Users className="h-3 w-3 mr-1" />
+              Paid For
+            </Badge>
+            <span className="text-xs text-gray-600 max-w-20 truncate" title={beneficiaries.join(", ")}>
+              {beneficiaries.length > 1 ? `${beneficiaries.length} people` : beneficiaries[0]}
+            </span>
+          </div>
+        );
+      }
+    } else {
+      // Single payment logic
+      if (isCurrentContactPayer) {
+        // Current contact is the payer - show "Paid For"
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+              <Users className="h-3 w-3 mr-1" />
+              Paid For
+            </Badge>
+            {payment.pledgeOwnerName && (
+              <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.pledgeOwnerName}>
+                {payment.pledgeOwnerName}
+              </span>
+            )}
+          </div>
+        );
+      } else if (isCurrentContactPayee) {
+        // Current contact is the payee - show "Paid By"
+        return (
+          <div className="flex flex-col items-center gap-1">
+            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+              <Users className="h-3 w-3 mr-1" />
+              Paid By
+            </Badge>
+            {payment.payerContactName && (
+              <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.payerContactName}>
+                {payment.payerContactName}
+              </span>
+            )}
+          </div>
+        );
+      }
+    }
+
+    // Fallback for unknown perspective - show generic third party
     return (
       <div className="flex flex-col items-center gap-1">
         <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
           <Users className="h-3 w-3 mr-1" />
-          Paid By
+          Third Party
         </Badge>
-        {payment.payerContactName && (
-          <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.payerContactName}>
-            {payment.payerContactName}
+        {payment.payerContactName && payment.pledgeOwnerName && (
+          <span className="text-xs text-gray-600 max-w-20 truncate" title={`${payment.payerContactName} → ${payment.pledgeOwnerName}`}>
+            {payment.payerContactName.split(' ')[0]} → {payment.pledgeOwnerName.split(' ')[0]}
           </span>
         )}
       </div>
@@ -609,7 +685,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Status
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Paid By
+                    Third Party
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
                     Scheduled
@@ -676,7 +752,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                           <PaymentStatusBadge status={payment.paymentStatus} />
                         </TableCell>
                         <TableCell className="text-center">
-                          <PaidByBadge payment={payment} />
+                          <ThirdPartyBadge payment={payment} contactId={contactId} />
                         </TableCell>
                         <TableCell className="font-medium">
                           {formatDateWithFallback(payment.paymentDate)}
@@ -775,7 +851,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   Payment Details
                                 </h4>
                                 <div className="space-y-2 text-sm">
-                                  {/* Third Party Payment info - Enhanced */}
+                                  {/* Third Party Payment info - Enhanced with contextual labels */}
                                   {payment.isThirdPartyPayment && (
                                     <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
                                       <div className="flex items-center gap-2 mb-2">
@@ -787,14 +863,18 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       <div className="space-y-1 text-xs">
                                         {payment.payerContactName && (
                                           <div className="flex items-center gap-2">
-                                            <span className="text-orange-700 font-medium">Paid By:</span>
-                                            <span className="text-orange-800">{payment.payerContactName}</span>
+                                            <span className="text-orange-700 font-medium">
+                                              {contactId === payment.payerContactId ? "You Paid For:" : "Paid By:"}
+                                            </span>
+                                            <span className="text-orange-800">
+                                              {contactId === payment.payerContactId ? payment.pledgeOwnerName : payment.payerContactName}
+                                            </span>
                                           </div>
                                         )}
-                                        {payment.pledgeOwnerName && !payment.isSplitPayment && (
+                                        {payment.pledgeOwnerName && !payment.isSplitPayment && contactId === payment.pledgeOwnerId && (
                                           <div className="flex items-center gap-2">
-                                            <span className="text-orange-700 font-medium">Paid For:</span>
-                                            <span className="text-orange-800">{payment.pledgeOwnerName}</span>
+                                            <span className="text-orange-700 font-medium">Paid By:</span>
+                                            <span className="text-orange-800">{payment.payerContactName}</span>
                                           </div>
                                         )}
                                       </div>
@@ -855,6 +935,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                 </div>
                               </div>
+
+                              {/* Rest of the expanded content remains the same */}
                               {/* Column 2: Receipt/Method Information */}
                               <div className="space-y-3">
                                 <h4 className="font-semibold text-gray-900">
@@ -907,6 +989,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                 </div>
                               </div>
+
                               {/* Column 3: Campaign/Solicitor/IDs */}
                               <div className="space-y-3">
                                 <h4 className="font-semibold text-gray-900">
@@ -978,14 +1061,17 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                         </Badge>
                                       </h4>
 
-                                      {/* Summary for multi-contact payments */}
+                                      {/* Summary for multi-contact payments with contextual messaging */}
                                       {isMultiContact && payment.isThirdPartyPayment && (
                                         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
                                           <div className="flex items-center justify-between text-sm">
                                             <div className="flex items-center gap-2">
                                               <ArrowRight className="h-4 w-4 text-blue-600" />
                                               <span className="font-medium text-blue-800">
-                                                {payment.payerContactName || "Unknown"} paid for {uniqueContacts.size} people&apos;s pledges
+                                                {contactId === payment.payerContactId 
+                                                  ? `You paid for ${uniqueContacts.size} people's pledges`
+                                                  : `${payment.payerContactName || "Unknown"} paid for ${uniqueContacts.size} people's pledges`
+                                                }
                                               </span>
                                             </div>
                                             <span className="text-blue-700 font-medium">
@@ -1017,7 +1103,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                                 {allocation.pledgeOwnerName && (
                                                   <div className="flex items-center gap-1 text-xs">
                                                     <Users className="h-3 w-3 text-gray-400" />
-                                                    <span className="text-gray-500">Owner:</span>
+                                                    <span className="text-gray-500">
+                                                      {contactId === payment.payerContactId ? "Paid For:" : "Owner:"}
+                                                    </span>
                                                     <span className="font-medium text-gray-700">{allocation.pledgeOwnerName}</span>
                                                   </div>
                                                 )}
