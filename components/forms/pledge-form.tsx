@@ -612,85 +612,76 @@ export default function PledgeDialog({
                   )}
 
                   {/* Description */}
+                  {/* Description */}
                   <FormField
                     control={form.control}
                     name="description"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="flex flex-col">
                         <FormLabel>Description *</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            readOnly
-                            placeholder={
-                              selectedCategory && categoryItems.length > 0
-                                ? "Select an item from the list below"
-                                : "No description available"
-                            }
-                            className={cn(
-                              "bg-gray-50",
-                              form.formState.errors.description && "border-red-500"
-                            )}
-                          />
-                        </FormControl>
-                        <FormMessage />
-                        {selectedCategory && (categoryItems.length > 0 || loadingCategoryItems) && (
-                          <div className="mt-2">
-                            <FormLabel className="text-sm text-muted-foreground">
-                              {loadingCategoryItems
-                                ? `Loading ${selectedCategory.name} items...`
-                                : `Select from ${selectedCategory.name} items:`
-                              }
-                            </FormLabel>
-                            <Popover
-                              open={itemSelectionPopoverOpen}
-                              onOpenChange={setItemSelectionPopoverOpen}
-                            >
-                              <PopoverTrigger asChild>
-                                <Button
-                                  variant="outline"
-                                  role="combobox"
-                                  className="w-full justify-between mt-1"
-                                  aria-haspopup="listbox"
-                                  aria-expanded={itemSelectionPopoverOpen}
-                                  disabled={loadingCategoryItems || categoryItems.length === 0}
-                                >
-                                  {loadingCategoryItems
+                        <Popover
+                          open={itemSelectionPopoverOpen}
+                          onOpenChange={setItemSelectionPopoverOpen}
+                        >
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground",
+                                  form.formState.errors.description && "border-red-500"
+                                )}
+                                disabled={loadingCategoryItems || categoryItems.length === 0}
+                              >
+                                {field.value ||
+                                  (loadingCategoryItems
                                     ? "Loading items..."
                                     : categoryItems.length === 0
                                     ? "No items available"
-                                    : `Select item from ${selectedCategory.name}`
-                                  }
-                                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-full p-0">
-                                <Command>
-                                  <CommandInput
-                                    placeholder={`Search ${selectedCategory.name} items...`}
-                                    className="h-9"
-                                  />
-                                  <CommandList className="max-h-[200px]">
-                                    <CommandEmpty>No items found.</CommandEmpty>
-                                    <CommandGroup>
-                                      {categoryItems.map((item, index) => (
-                                        <CommandItem
-                                          key={index}
-                                          value={item}
-                                          onSelect={() => {
-                                            handleItemSelect(item);
-                                          }}
-                                        >
-                                          {item}
-                                        </CommandItem>
-                                      ))}
-                                    </CommandGroup>
-                                  </CommandList>
-                                </Command>
-                              </PopoverContent>
-                            </Popover>
-                          </div>
-                        )}
+                                    : `Select item from ${selectedCategory?.name}`)}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0">
+                            <Command>
+                              <CommandInput
+                                placeholder={`Search ${selectedCategory?.name} items...`}
+                                className="h-9"
+                              />
+                              <CommandList className="max-h-[200px]">
+                                <CommandEmpty>No items found.</CommandEmpty>
+                                <CommandGroup>
+                                  {categoryItems.map((item, index) => (
+                                    <CommandItem
+                                      key={index}
+                                      value={item}
+                                      onSelect={() => {
+                                        handleItemSelect(item);
+                                      }}
+                                    >
+                                      {item}
+                                      <Check
+                                        className={cn(
+                                          "ml-auto h-4 w-4",
+                                          item === field.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormDescription>
+                          Select a description for the pledge.
+                        </FormDescription>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />

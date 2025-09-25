@@ -111,3 +111,62 @@ export async function GET(
     );
   }
 }
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const contactId = parseInt(id, 10);
+
+  if (isNaN(contactId) || contactId <= 0) {
+    return NextResponse.json({ error: "Invalid contact ID" }, { status: 400 });
+  }
+
+  try {
+    // Check if contact exists
+    const existingContact = await db
+      .select({ id: contact.id })
+      .from(contact)
+      .where(eq(contact.id, contactId))
+      .limit(1);
+
+    if (existingContact.length === 0) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+
+    // Get contact details for response
+    const contactDetails = await db
+      .select({
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        displayName: contact.displayName,
+      })
+      .from(contact)
+      .where(eq(contact.id, contactId))
+      .limit(1);
+
+    const contactInfo = contactDetails[0];
+
+    // Delete the contact (CASCADE will handle related records)
+    await db.delete(contact).where(eq(contact.id, contactId));
+
+    return NextResponse.json({
+      message: "Contact deleted successfully",
+      deletedContact: {
+        id: contactId,
+        name: contactInfo.displayName || `${contactInfo.firstName} ${contactInfo.lastName}`,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to delete contact", {
+      contactId,
+      error: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return NextResponse.json(
+      { error: "Failed to delete contact" },
+      { status: 500 }
+    );
+  }
+}

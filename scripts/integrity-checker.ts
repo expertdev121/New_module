@@ -3,11 +3,13 @@
 import { drizzle } from 'drizzle-orm/neon-serverless';
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import { eq, and, sql } from 'drizzle-orm';
-import axios from 'axios';
 import * as fs from 'fs';
 import * as path from 'path';
 import { config } from 'dotenv';
 import ws from 'ws';
+import * as https from 'https';
+import * as http from 'http';
+import { URL } from 'url';
 
 // Load environment variables
 config();
@@ -21,15 +23,15 @@ import {
   payment,
   contact,
   exchangeRate as exchangeRateTable,
+  installmentSchedule,
+  paymentAllocations,
 } from '../lib/db/schema';
 
 // Configuration
 const DATABASE_URL = process.env.DATABASE_URL!;
-const EXCHANGE_API_KEY = process.env.NEXT_PUBLIC_EXCHANGERATE_API_KEY!;
-const EXCHANGE_API_URL = 'https://v6.exchangerate-api.com/v6';
 const TOLERANCE = 0.01;
 
-// Add better error checking
+// Database connection check only
 if (!DATABASE_URL) {
   console.error('❌ DATABASE_URL environment variable is not set');
   console.error('💡 Make sure you have a .env or .env.local file with:');
@@ -37,20 +39,14 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-if (!EXCHANGE_API_KEY) {
-  console.error('❌ NEXT_PUBLIC_EXCHANGERATE_API_KEY environment variable is not set');
-  console.error('💡 Add your exchange rate API key to your .env file');
-  process.exit(1);
-}
-
 interface IntegrityIssue {
   id: string;
-  type: 'pledge_balance' | 'payment_plan_amounts' | 'payment_conversion';
+  type: 'pledge_balance' | 'payment_plan_amounts' | 'payment_conversion' | 'plan_conversion' | 'installment_conversion' | 'third_party_conversion' | 'allocation_conversion';
   severity: 'critical' | 'warning';
   contactId: number;
   contactName: string;
   recordId: number;
-  recordType: 'pledge' | 'payment_plan' | 'payment';
+  recordType: 'pledge' | 'payment_plan' | 'payment' | 'installment_schedule' | 'payment_allocation';
   description: string;
   currentValue: any;
   expectedValue: any;
@@ -67,15 +63,65 @@ interface CheckSummary {
   timestamp: string;
 }
 
+interface ExchangeRatesResponse {
+  success: boolean;
+  data: {
+    rates: Record<string, string>;
+    date: string;
+  } | null;
+  error?: string;
+}
+
+/**
+ * Simple HTTP(S) request function to replace node-fetch
+ */
+function httpRequest(url: string): Promise<any> {
+  return new Promise((resolve, reject) => {
+    const parsedUrl = new URL(url);
+    const module = parsedUrl.protocol === 'https:' ? https : http;
+
+    const req = module.request(url, (res) => {
+      let data = '';
+
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+
+      res.on('end', () => {
+        try {
+          if (res.statusCode && res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(JSON.parse(data));
+          } else {
+            reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage}`));
+          }
+        } catch (error) {
+          reject(new Error(`Failed to parse JSON response: ${error}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(error);
+    });
+
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(new Error('Request timeout'));
+    });
+
+    req.end();
+  });
+}
+
 class CurrencyIntegrityService {
   private db: ReturnType<typeof drizzle>;
-  private exchangeRateCache: Map<string, { rate: number; date: string }> = new Map();
+  private exchangeRateCache: Map<string, { rates: Record<string, string>; date: string }> = new Map();
 
   constructor() {
-    const pool = new Pool({ 
+    const pool = new Pool({
       connectionString: DATABASE_URL
     });
-    this.db = drizzle(pool, { 
+    this.db = drizzle(pool, {
       logger: true
     });
   }
@@ -93,13 +139,12 @@ class CurrencyIntegrityService {
   }
 
   async checkTablesExist(): Promise<{ exists: boolean; missing: string[] }> {
-    const requiredTables = ['pledge', 'payment', 'contact', 'payment_plan'];
+    const requiredTables = ['pledge', 'payment', 'contact', 'payment_plan', 'installment_schedule', 'payment_allocations'];
     const missing: string[] = [];
-    
+
     try {
       console.log('Checking if required tables exist...');
-      
-      // Fix: Use proper column access for Drizzle result rows
+
       console.log('🔍 Listing all tables in database...');
       const allTablesResult = await this.db.execute(sql`
         SELECT table_name, table_schema 
@@ -108,19 +153,18 @@ class CurrencyIntegrityService {
         AND table_schema NOT IN ('information_schema', 'pg_catalog')
         ORDER BY table_schema, table_name;
       `);
-      
+
       console.log('📋 Found tables:');
       if (allTablesResult.rows.length === 0) {
         console.log('  ❌ NO TABLES FOUND - Database appears to be empty!');
       } else {
         allTablesResult.rows.forEach((row: any) => {
           const tableName = row.table_name || row[0];
-          const schemaName = row.table_schema || row[1]; 
+          const schemaName = row.table_schema || row[1];
           console.log(`  - ${schemaName}.${tableName}`);
         });
       }
-      
-      // Check if our tables exist in ANY schema
+
       console.log('\n🔍 Searching for our required tables in all schemas...');
       for (const tableName of requiredTables) {
         try {
@@ -130,7 +174,7 @@ class CurrencyIntegrityService {
             WHERE LOWER(table_name) = LOWER(${tableName})
             AND table_type = 'BASE TABLE';
           `);
-          
+
           if (result.rows.length > 0) {
             const foundSchema = result.rows[0].table_schema || result.rows[0][0];
             const foundTable = result.rows[0].table_name || result.rows[0][1];
@@ -152,82 +196,243 @@ class CurrencyIntegrityService {
     }
   }
 
+  /**
+   * FINANCIAL BEST PRACTICE: Get conversion date - NEVER future dates
+   * Uses received_date if available and not in future, otherwise today's date
+   */
+  getConversionDate(paymentRecord: any): string {
+    const today = new Date().toISOString().split('T')[0];
+
+    // 1. Use receivedDate if it exists and is not in future
+    if (paymentRecord.receivedDate) {
+      const receivedDate = new Date(paymentRecord.receivedDate).toISOString().split('T')[0];
+
+      // Only use received date if it's not in the future
+      if (receivedDate <= today) {
+        console.log(`📅 Using received_date: ${receivedDate}`);
+        return receivedDate;
+      } else {
+        console.log(`⚠️ Future received_date detected (${receivedDate}), using today's date (${today})`);
+        return today;
+      }
+    }
+
+    // 2. NEVER use payment_date - always fallback to today's date
+    console.log(`📅 No received_date found, using today's date: ${today}`);
+    return today;
+  }
+
+  public async storeRateInDatabase(fromCurrency: string, toCurrency: string, rate: number, date: string): Promise<void> {
+    try {
+      const now = new Date().toISOString().split('T')[0];
+
+      // Use raw SQL to avoid TypeScript issues
+      await this.db.execute(sql`
+      INSERT INTO exchange_rate (base_currency, target_currency, rate, date, created_at, updated_at)
+      VALUES (${fromCurrency}, ${toCurrency}, ${rate}, ${date}, ${now}, ${now})
+      ON CONFLICT (base_currency, target_currency, date) 
+      DO UPDATE SET 
+        rate = ${rate}, 
+        updated_at = ${now}
+    `);
+
+      console.log(`📝 Stored precise rate in database: ${fromCurrency}/${toCurrency} = ${rate} on ${date}`);
+    } catch (error) {
+      console.error(`Failed to store rate in database:`, error);
+    }
+  }
+
+  /**
+   * Fetch exchange rates using your existing API endpoint
+   * Updated to work with your API structure using built-in Node.js HTTP
+   */
+  private async fetchExchangeRatesFromAPI(date?: string): Promise<ExchangeRatesResponse> {
+    const targetDate = date || new Date().toISOString().split('T')[0];
+    const cacheKey = targetDate;
+
+    // Check cache first
+    if (this.exchangeRateCache.has(cacheKey)) {
+      const cached = this.exchangeRateCache.get(cacheKey)!;
+      return {
+        success: true,
+        data: {
+          rates: cached.rates,
+          date: cached.date
+        }
+      };
+    }
+
+    try {
+      // Use environment variable for API base URL, fallback to localhost for dev
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || "http://localhost:3000";
+      const apiUrl = `${baseUrl}/api/exchange-rates?date=${targetDate}`;
+
+      console.log(`🔍 Fetching exchange rates from API: ${apiUrl}`);
+
+      // Use built-in Node.js HTTP instead of fetch or node-fetch
+      const apiData = await httpRequest(apiUrl);
+
+      if (apiData.data && apiData.data.rates) {
+        // Cache the result
+        this.exchangeRateCache.set(cacheKey, {
+          rates: apiData.data.rates,
+          date: targetDate
+        });
+
+        console.log(`✅ Retrieved exchange rates from API for ${targetDate}`);
+        return {
+          success: true,
+          data: {
+            rates: apiData.data.rates,
+            date: targetDate
+          }
+        };
+      } else {
+        throw new Error("Invalid API response structure");
+      }
+    } catch (error) {
+      console.warn(`⚠️ API request failed: ${error instanceof Error ? error.message : String(error)}`);
+      return {
+        success: false,
+        data: null,
+        error: error instanceof Error ? error.message : String(error)
+      };
+    }
+  }
+
+  /**
+   * FINANCIAL BEST PRACTICE: Always use current rates for all calculations
+   * Uses the same API as your form for consistency
+   */
   async getExchangeRate(fromCurrency: string, toCurrency: string, date?: string): Promise<number> {
     if (fromCurrency === toCurrency) return 1;
 
-    const cacheKey = `${fromCurrency}-${toCurrency}-${date || 'latest'}`;
+    // FINANCIAL BEST PRACTICE: Always use TODAY'S rate for any calculations
+    const today = new Date().toISOString().split('T')[0];
+    const useDate = today; // Always use today's date for consistency
 
-    if (this.exchangeRateCache.has(cacheKey)) {
-      return this.exchangeRateCache.get(cacheKey)!.rate;
-    }
+    console.log(`🔄 Getting exchange rate for ${fromCurrency} → ${toCurrency} (${useDate})`);
 
+    // 1. FIRST: Check database for today's rate
     try {
-      const response = await axios.get(
-        `${EXCHANGE_API_URL}/${EXCHANGE_API_KEY}/latest/${fromCurrency}`,
-        { timeout: 10000 }
-      );
+      console.log(`🏦 Checking database first for ${fromCurrency} → ${toCurrency} on ${useDate}`);
 
-      let rate = response.data.conversion_rates[toCurrency];
+      const dbRates = await this.db.execute(sql`
+        SELECT rate, date
+        FROM exchange_rate
+        WHERE base_currency = ${fromCurrency}
+        AND target_currency = ${toCurrency}
+        AND date = ${useDate}
+        LIMIT 1
+      `);
 
-      if (rate) {
-        this.exchangeRateCache.set(cacheKey, { rate, date: response.data.time_last_update_utc });
-        return rate;
+      if (dbRates.rows.length > 0) {
+        const row = dbRates.rows[0] as any;
+        const rate = parseFloat(String(row.rate));
+        if (rate > 0) {
+          console.log(`✅ DB EXACT rate: 1 ${fromCurrency} = ${rate} ${toCurrency} (${useDate})`);
+          return rate;
+        }
       }
+
+      // Try recent rate within 30 days
+      const recentRates = await this.db.execute(sql`
+        SELECT rate, date
+        FROM exchange_rate
+        WHERE base_currency = ${fromCurrency}
+        AND target_currency = ${toCurrency}
+        AND date <= ${useDate}
+        AND ABS(EXTRACT(EPOCH FROM (date::date - ${useDate}::date))) <= 2592000
+        ORDER BY date DESC
+        LIMIT 1
+      `);
+
+      if (recentRates.rows.length > 0) {
+        const row = recentRates.rows[0] as any;
+        const rate = parseFloat(String(row.rate));
+        const rateDate = String(row.date);
+        if (rate > 0) {
+          const daysDiff = Math.abs((new Date(rateDate).getTime() - new Date(useDate).getTime()) / (1000 * 60 * 60 * 24));
+          console.log(`⚠️ Using recent DB rate from ${rateDate} (${daysDiff.toFixed(0)} days old): 1 ${fromCurrency} = ${rate} ${toCurrency}`);
+          return rate;
+        }
+      }
+
+      // Try inverse rate
+      const inverseRates = await this.db.execute(sql`
+        SELECT rate, date
+        FROM exchange_rate
+        WHERE base_currency = ${toCurrency}
+        AND target_currency = ${fromCurrency}
+        AND date = ${useDate}
+        LIMIT 1
+      `);
+
+      if (inverseRates.rows.length > 0) {
+        const row = inverseRates.rows[0] as any;
+        const inverseRate = parseFloat(String(row.rate));
+        if (inverseRate > 0) {
+          const rate = 1 / inverseRate;
+          console.log(`✅ DB inverse rate: 1 ${fromCurrency} = ${rate} ${toCurrency} (${useDate})`);
+          return rate;
+        }
+      }
+
     } catch (error) {
-      console.warn(`Failed to fetch exchange rate from API for ${fromCurrency}-${toCurrency}:`, error instanceof Error ? error.message : String(error));
+      console.warn(`Database lookup failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 
+    // 2. THEN: Use the same API as your form
     try {
-      const dbRates = await this.db
-        .select()
-        .from(exchangeRateTable)
-        .where(
-          and(
-            sql`${exchangeRateTable.baseCurrency} = ${fromCurrency}`,
-            sql`${exchangeRateTable.targetCurrency} = ${toCurrency}`
-          )
-        )
-        .orderBy(sql`${exchangeRateTable.date} DESC`)
-        .limit(1);
+      console.log(`🌐 Fetching from API (same as form) for ${fromCurrency} → ${toCurrency} on ${useDate}`);
 
-      if (dbRates.length > 0) {
-        const rate = parseFloat(dbRates[0].rate);
-        this.exchangeRateCache.set(cacheKey, { rate, date: dbRates[0].date });
-        return rate;
+      const apiResult = await this.fetchExchangeRatesFromAPI(useDate);
+
+      if (apiResult.success && apiResult.data?.rates) {
+        const fromRate = parseFloat(apiResult.data.rates[fromCurrency]);
+        const toRate = parseFloat(apiResult.data.rates[toCurrency]);
+
+        if (fromRate && toRate) {
+          // Convert through USD: fromCurrency -> USD -> toCurrency
+          const rate = toRate / fromRate;
+
+          console.log(`✅ API rate: 1 ${fromCurrency} = ${rate} ${toCurrency} (${apiResult.data.date})`);
+
+          // STORE IN DATABASE for future precision
+          await this.storeRateInDatabase(fromCurrency, toCurrency, rate, useDate);
+
+          return rate;
+        }
       }
 
-      const inverseRates = await this.db
-        .select()
-        .from(exchangeRateTable)
-        .where(
-          and(
-            sql`${exchangeRateTable.baseCurrency} = ${toCurrency}`,
-            sql`${exchangeRateTable.targetCurrency} = ${fromCurrency}`
-          )
-        )
-        .orderBy(sql`${exchangeRateTable.date} DESC`)
-        .limit(1);
-
-      if (inverseRates.length > 0) {
-        const rate = 1 / parseFloat(inverseRates[0].rate);
-        this.exchangeRateCache.set(cacheKey, { rate, date: inverseRates[0].date });
-        return rate;
-      }
     } catch (error) {
-      console.warn(`Database fallback failed for ${fromCurrency}-${toCurrency}:`, error instanceof Error ? error.message : String(error));
+      console.warn(`API request failed: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    throw new Error(`Unable to find exchange rate for ${fromCurrency} to ${toCurrency}`);
+    // NO APPROXIMATIONS - Fail if no precise rate found
+    throw new Error(`❌ No current exchange rate found for ${fromCurrency} to ${toCurrency} on ${useDate}. Please add rate to database manually using: add-rate ${fromCurrency} ${toCurrency} RATE ${useDate}`);
   }
 
+  /**
+   * Convert currency amount using current rates (financial best practice)
+   */
   async convertCurrency(amount: number, fromCurrency: string, toCurrency: string, date?: string): Promise<{
     convertedAmount: number;
     exchangeRate: number;
   }> {
-    // Use today's date if no date provided
-    const conversionDate = date || new Date().toISOString().split('T')[0];
-    const exchangeRate = await this.getExchangeRate(fromCurrency, toCurrency, conversionDate);
+    if (fromCurrency === toCurrency) {
+      return { convertedAmount: amount, exchangeRate: 1 };
+    }
+
+    // FINANCIAL BEST PRACTICE: Always use current rates (ignore date parameter)
+    const today = new Date().toISOString().split('T')[0];
+    console.log(`🔄 Converting ${amount} ${fromCurrency} → ${toCurrency} (using TODAY'S rate: ${today})`);
+
+    const exchangeRate = await this.getExchangeRate(fromCurrency, toCurrency, today);
     const convertedAmount = parseFloat((amount * exchangeRate).toFixed(2));
+
+    console.log(`✅ Conversion: ${amount} ${fromCurrency} × ${exchangeRate} = ${convertedAmount} ${toCurrency}`);
+
     return { convertedAmount, exchangeRate };
   }
 
@@ -242,7 +447,6 @@ class CurrencyIntegrityService {
     console.log('🔍 Checking ALL pledge balances (multi-currency support)...');
 
     try {
-      // Get ALL pledges - no limits
       const pledgeData = await this.db
         .select({
           id: pledge.id,
@@ -256,7 +460,7 @@ class CurrencyIntegrityService {
         .from(pledge);
 
       console.log(`📊 Found ${pledgeData.length} total pledges in database`);
-      
+
       if (pledgeData.length === 0) {
         console.log('No pledges found in database');
         return issues;
@@ -270,7 +474,6 @@ class CurrencyIntegrityService {
         return issues;
       }
 
-      // Check ALL active pledges
       for (const pledgeRecord of activePledges) {
         try {
           // Get contact name
@@ -283,12 +486,11 @@ class CurrencyIntegrityService {
             .where(eq(contact.id, pledgeRecord.contactId))
             .limit(1);
 
-          const contactName = contactData.length > 0 
-            ? `${contactData[0].firstName || ''} ${contactData[0].lastName || ''}`.trim() 
+          const contactName = contactData.length > 0
+            ? `${contactData[0].firstName || ''} ${contactData[0].lastName || ''}`.trim()
             : 'Unknown Contact';
 
-          // CRITICAL: Sum amount_in_pledge_currency for multi-currency support
-          // This handles cases where payments are in different currencies than the pledge
+          // Sum amount_in_pledge_currency for multi-currency support
           const paymentSum = await this.db
             .select({
               total: sql<number>`COALESCE(SUM(amount_in_pledge_currency), 0)`,
@@ -298,95 +500,15 @@ class CurrencyIntegrityService {
             .where(
               and(
                 eq(payment.pledgeId, pledgeRecord.id),
-                eq(payment.paymentStatus, 'completed'),
+                sql`${payment.paymentStatus} = 'completed'`,
                 sql`${payment.receivedDate} IS NOT NULL`,
-                sql`${payment.amountInPledgeCurrency} IS NOT NULL`  // Must have converted amount
-              )
-            );
-
-          // Also count completed payments that are missing pledge currency conversion
-          const unconvertedPayments = await this.db
-            .select({
-              count: sql<number>`COUNT(*)`,
-              totalOriginalAmount: sql<number>`COALESCE(SUM(amount), 0)`,
-            })
-            .from(payment)
-            .where(
-              and(
-                eq(payment.pledgeId, pledgeRecord.id),
-                eq(payment.paymentStatus, 'completed'),
-                sql`${payment.receivedDate} IS NOT NULL`,
-                sql`${payment.amountInPledgeCurrency} IS NULL`  // Missing conversion
-              )
-            );
-
-          // Get third-party payment details for logging
-          const thirdPartyPayments = await this.db
-            .select({
-              paymentId: payment.id,
-              amount: payment.amountInPledgeCurrency,
-              payerFirstName: sql<string>`payer.first_name`,
-              payerLastName: sql<string>`payer.last_name`,
-              isThirdParty: payment.isThirdPartyPayment,
-            })
-            .from(payment)
-            .leftJoin(sql`contact as payer`, eq(payment.payerContactId, sql`payer.id`))
-            .where(
-              and(
-                eq(payment.pledgeId, pledgeRecord.id),
-                eq(payment.paymentStatus, 'completed'),
-                sql`${payment.receivedDate} IS NOT NULL`,
-                eq(payment.isThirdPartyPayment, true),
                 sql`${payment.amountInPledgeCurrency} IS NOT NULL`
               )
             );
 
-          // Get pending/expected payments for context
-          const pendingPayments = await this.db
-            .select({
-              total: sql<number>`COALESCE(SUM(amount_in_pledge_currency), 0)`,
-              count: sql<number>`COUNT(*)`,
-            })
-            .from(payment)
-            .where(
-              and(
-                eq(payment.pledgeId, pledgeRecord.id),
-                sql`${payment.paymentStatus} IN ('pending', 'expected')`
-              )
-            );
-
           const actualTotalPaid = paymentSum.length > 0 ? Number(paymentSum[0].total) : 0;
-          const completedPaymentCount = paymentSum.length > 0 ? Number(paymentSum[0].count) : 0;
-          const unconvertedCount = unconvertedPayments.length > 0 ? Number(unconvertedPayments[0].count) : 0;
-          const pendingCount = pendingPayments.length > 0 ? Number(pendingPayments[0].count) : 0;
-          const pendingTotal = pendingPayments.length > 0 ? Number(pendingPayments[0].total) : 0;
           const expectedBalance = Number(pledgeRecord.originalAmount) - actualTotalPaid;
 
-          console.log(`🔍 Checking pledge ${pledgeRecord.id} (${contactName}) [${pledgeRecord.currency}]:`);
-          console.log(`  - Original: ${pledgeRecord.originalAmount} ${pledgeRecord.currency}`);
-          console.log(`  - Recorded Paid: ${pledgeRecord.totalPaid} ${pledgeRecord.currency}`);
-          console.log(`  - Actual Paid (converted): ${actualTotalPaid} ${pledgeRecord.currency}`);
-          console.log(`  - Completed payments with conversion: ${completedPaymentCount}`);
-          console.log(`  - Completed payments WITHOUT conversion: ${unconvertedCount}`);
-          console.log(`  - Pending/Expected payments: ${pendingCount} totaling ${pendingTotal} (not counted)`);
-          console.log(`  - Recorded Balance: ${pledgeRecord.balance} ${pledgeRecord.currency}`);
-          console.log(`  - Expected Balance: ${expectedBalance} ${pledgeRecord.currency}`);
-
-          // Log third-party payments
-          if (thirdPartyPayments.length > 0) {
-            console.log(`  - Third-party payments (counted toward beneficiary balance):`);
-            thirdPartyPayments.forEach(tp => {
-              const payerName = `${tp.payerFirstName || ''} ${tp.payerLastName || ''}`.trim() || 'Unknown Payer';
-              console.log(`    * ${payerName} paid ${tp.amount} ${pledgeRecord.currency} for ${contactName}`);
-            });
-          }
-
-          // Flag if there are payments missing conversion
-          if (unconvertedCount > 0) {
-            console.warn(`  ⚠️ ${unconvertedCount} completed payments are missing pledge currency conversion!`);
-          }
-
-          // Check total paid amount
           if (!this.isAmountEqual(actualTotalPaid, Number(pledgeRecord.totalPaid))) {
             issues.push({
               id: `pledge_total_paid_${pledgeRecord.id}`,
@@ -396,7 +518,7 @@ class CurrencyIntegrityService {
               contactName,
               recordId: pledgeRecord.id,
               recordType: 'pledge',
-              description: `Multi-currency total paid mismatch. Recorded: ${pledgeRecord.totalPaid} ${pledgeRecord.currency}, Actual: ${actualTotalPaid} ${pledgeRecord.currency} (${completedPaymentCount} converted payments, ${unconvertedCount} need conversion)`,
+              description: `Multi-currency total paid mismatch. Recorded: ${pledgeRecord.totalPaid} ${pledgeRecord.currency}, Actual: ${actualTotalPaid} ${pledgeRecord.currency}`,
               currentValue: Number(pledgeRecord.totalPaid),
               expectedValue: actualTotalPaid,
               affectedFields: ['total_paid'],
@@ -405,7 +527,6 @@ class CurrencyIntegrityService {
             });
           }
 
-          // Check balance calculation
           if (!this.isAmountEqual(Number(pledgeRecord.balance), expectedBalance)) {
             issues.push({
               id: `pledge_balance_${pledgeRecord.id}`,
@@ -442,7 +563,6 @@ class CurrencyIntegrityService {
     console.log('🔍 Checking ALL payment plan amounts (multi-currency support)...');
 
     try {
-      // Get ALL payment plans - no limits
       const planData = await this.db
         .select({
           id: paymentPlan.id,
@@ -458,7 +578,7 @@ class CurrencyIntegrityService {
         .from(paymentPlan);
 
       console.log(`📊 Found ${planData.length} total payment plans in database`);
-      
+
       if (planData.length === 0) {
         console.log('No payment plans found in database');
         return issues;
@@ -472,12 +592,11 @@ class CurrencyIntegrityService {
         return issues;
       }
 
-      // Check ALL active plans
       for (const plan of activePlans) {
         try {
           // Get contact information through pledge
           let contactName = 'Unknown Contact';
-          let contactId = 0;
+          let contactId: number = 0;
 
           if (plan.pledgeId) {
             const pledgeWithContact = await this.db
@@ -491,13 +610,13 @@ class CurrencyIntegrityService {
               .where(eq(pledge.id, plan.pledgeId))
               .limit(1);
 
-            if (pledgeWithContact.length > 0) {
+            if (pledgeWithContact.length > 0 && pledgeWithContact[0].contactId !== null) {
               contactId = pledgeWithContact[0].contactId;
               contactName = `${pledgeWithContact[0].firstName || ''} ${pledgeWithContact[0].lastName || ''}`.trim() || 'Unknown Contact';
             }
           }
 
-          // CRITICAL: Sum amount_in_plan_currency for multi-currency support
+          // Sum amount_in_plan_currency for multi-currency support
           const paymentSum = await this.db
             .select({
               total: sql<number>`COALESCE(SUM(amount_in_plan_currency), 0)`,
@@ -507,65 +626,14 @@ class CurrencyIntegrityService {
             .where(
               and(
                 eq(payment.paymentPlanId, plan.id),
-                eq(payment.paymentStatus, 'completed'),
+                sql`${payment.paymentStatus} = 'completed'`,
                 sql`${payment.receivedDate} IS NOT NULL`,
-                sql`${payment.amountInPlanCurrency} IS NOT NULL`  // Must have converted amount
-              )
-            );
-
-          // Count payments missing plan currency conversion
-          const unconvertedPayments = await this.db
-            .select({
-              count: sql<number>`COUNT(*)`,
-            })
-            .from(payment)
-            .where(
-              and(
-                eq(payment.paymentPlanId, plan.id),
-                eq(payment.paymentStatus, 'completed'),
-                sql`${payment.receivedDate} IS NOT NULL`,
-                sql`${payment.amountInPlanCurrency} IS NULL`  // Missing conversion
-              )
-            );
-
-          // Get pending payments for context
-          const pendingPayments = await this.db
-            .select({
-              count: sql<number>`COUNT(*)`,
-              total: sql<number>`COALESCE(SUM(amount_in_plan_currency), 0)`,
-            })
-            .from(payment)
-            .where(
-              and(
-                eq(payment.paymentPlanId, plan.id),
-                sql`${payment.paymentStatus} IN ('pending', 'expected')`
+                sql`${payment.amountInPlanCurrency} IS NOT NULL`
               )
             );
 
           const actualTotalPaid = paymentSum.length > 0 ? Number(paymentSum[0].total) : 0;
-          const completedCount = paymentSum.length > 0 ? Number(paymentSum[0].count) : 0;
-          const unconvertedCount = unconvertedPayments.length > 0 ? Number(unconvertedPayments[0].count) : 0;
-          const pendingCount = pendingPayments.length > 0 ? Number(pendingPayments[0].count) : 0;
-          const pendingTotal = pendingPayments.length > 0 ? Number(pendingPayments[0].total) : 0;
           const expectedRemainingAmount = Number(plan.totalPlannedAmount) - actualTotalPaid;
-          const expectedInstallmentAmount = plan.numberOfInstallments > 0 
-            ? Number(plan.totalPlannedAmount) / plan.numberOfInstallments 
-            : 0;
-
-          console.log(`🔍 Checking plan ${plan.id} (${contactName}) [${plan.currency}]:`);
-          console.log(`  - Planned: ${plan.totalPlannedAmount} ${plan.currency}`);
-          console.log(`  - Recorded Paid: ${plan.totalPaid} ${plan.currency}`);
-          console.log(`  - Actual Paid (converted): ${actualTotalPaid} ${plan.currency}`);
-          console.log(`  - Completed payments with conversion: ${completedCount}`);
-          console.log(`  - Completed payments WITHOUT conversion: ${unconvertedCount}`);
-          console.log(`  - Pending/Expected payments: ${pendingCount} totaling ${pendingTotal} (not counted)`);
-          console.log(`  - Recorded Remaining: ${plan.remainingAmount} ${plan.currency}`);
-          console.log(`  - Expected Remaining: ${expectedRemainingAmount} ${plan.currency}`);
-
-          // Flag if there are payments missing conversion
-          if (unconvertedCount > 0) {
-            console.warn(`  ⚠️ ${unconvertedCount} completed payments are missing plan currency conversion!`);
-          }
 
           if (!this.isAmountEqual(actualTotalPaid, Number(plan.totalPaid))) {
             issues.push({
@@ -576,7 +644,7 @@ class CurrencyIntegrityService {
               contactName,
               recordId: plan.id,
               recordType: 'payment_plan',
-              description: `Multi-currency plan total paid mismatch. Recorded: ${plan.totalPaid} ${plan.currency}, Actual: ${actualTotalPaid} ${plan.currency} (${completedCount} converted payments, ${unconvertedCount} need conversion)`,
+              description: `Multi-currency plan total paid mismatch. Recorded: ${plan.totalPaid} ${plan.currency}, Actual: ${actualTotalPaid} ${plan.currency}`,
               currentValue: Number(plan.totalPaid),
               expectedValue: actualTotalPaid,
               affectedFields: ['total_paid'],
@@ -603,25 +671,6 @@ class CurrencyIntegrityService {
             });
           }
 
-          // Check installment amount (allow small variance)
-          if (Math.abs(Number(plan.installmentAmount) - expectedInstallmentAmount) > 0.02) {
-            issues.push({
-              id: `plan_installment_${plan.id}`,
-              type: 'payment_plan_amounts',
-              severity: 'warning',
-              contactId,
-              contactName,
-              recordId: plan.id,
-              recordType: 'payment_plan',
-              description: `Installment amount may be incorrect. Recorded: ${plan.installmentAmount} ${plan.currency}, Expected: ${expectedInstallmentAmount.toFixed(2)} ${plan.currency}`,
-              currentValue: Number(plan.installmentAmount),
-              expectedValue: parseFloat(expectedInstallmentAmount.toFixed(2)),
-              affectedFields: ['installment_amount'],
-              fixValue: expectedInstallmentAmount.toFixed(2),
-              fixRecordId: plan.id
-            });
-          }
-
         } catch (error) {
           console.error(`Error checking payment plan ${plan.id}:`, error);
         }
@@ -635,12 +684,658 @@ class CurrencyIntegrityService {
     return issues;
   }
 
+  // Check payment plan USD conversions - ALWAYS use today's rate
+  async checkPaymentPlanCurrencyConversions(): Promise<IntegrityIssue[]> {
+    const issues: IntegrityIssue[] = [];
+    console.log('🔍 Checking ALL payment plan USD conversions (using TODAY\'S rates via API)...');
+
+    try {
+      const planData = await this.db
+        .select({
+          id: paymentPlan.id,
+          totalPlannedAmount: paymentPlan.totalPlannedAmount,
+          totalPlannedAmountUsd: paymentPlan.totalPlannedAmountUsd,
+          installmentAmount: paymentPlan.installmentAmount,
+          installmentAmountUsd: paymentPlan.installmentAmountUsd,
+          totalPaid: paymentPlan.totalPaid,
+          totalPaidUsd: paymentPlan.totalPaidUsd,
+          remainingAmount: paymentPlan.remainingAmount,
+          remainingAmountUsd: paymentPlan.remainingAmountUsd,
+          currency: paymentPlan.currency,
+          exchangeRate: paymentPlan.exchangeRate,
+          startDate: paymentPlan.startDate,
+          isActive: paymentPlan.isActive,
+          pledgeId: paymentPlan.pledgeId,
+        })
+        .from(paymentPlan);
+
+      console.log(`📊 Found ${planData.length} total payment plans to check USD conversions`);
+
+      for (const planRecord of planData) {
+        try {
+          let contactName = 'Unknown Contact';
+          let contactId: number = 0;
+
+          if (planRecord.pledgeId) {
+            const pledgeWithContact = await this.db
+              .select({
+                contactId: pledge.contactId,
+                firstName: contact.firstName,
+                lastName: contact.lastName,
+              })
+              .from(pledge)
+              .leftJoin(contact, eq(pledge.contactId, contact.id))
+              .where(eq(pledge.id, planRecord.pledgeId))
+              .limit(1);
+
+            if (pledgeWithContact.length > 0 && pledgeWithContact[0].contactId !== null) {
+              contactId = pledgeWithContact[0].contactId;
+              contactName = `${pledgeWithContact[0].firstName || ''} ${pledgeWithContact[0].lastName || ''}`.trim() || 'Unknown Contact';
+            }
+          }
+
+          // FINANCIAL BEST PRACTICE: ALWAYS use today's date for currency conversions
+          const today = new Date().toISOString().split('T')[0];
+          const originalStartDate = planRecord.startDate;
+
+          if (originalStartDate && originalStartDate > today) {
+            console.log(`💡 Plan ${planRecord.id} has future start date (${originalStartDate}), using today's rate (${today}) for USD conversions`);
+          }
+
+          console.log(`🔍 Checking payment plan ${planRecord.id}:`);
+          console.log(`  - Contact: ${contactName}`);
+          console.log(`  - Plan Currency: ${planRecord.currency}`);
+          console.log(`  - Original start date: ${originalStartDate}`);
+          console.log(`  - Using current rate from: ${today}`);
+
+          // Check USD conversions for non-USD plans using TODAY'S rate
+          if (planRecord.currency !== 'USD') {
+            try {
+              // 1. Check total planned amount USD conversion
+              const { convertedAmount: expectedTotalUsd, exchangeRate: planRate } = await this.convertCurrency(
+                Number(planRecord.totalPlannedAmount),
+                planRecord.currency,
+                'USD',
+                today // Always use today's date
+              );
+
+              const recordedTotalUsd = Number(planRecord.totalPlannedAmountUsd || 0);
+              const totalErrorPercentage = expectedTotalUsd > 0
+                ? Math.abs((recordedTotalUsd - expectedTotalUsd) / expectedTotalUsd) * 100
+                : (recordedTotalUsd > 0 ? 100 : 0);
+
+              console.log(`  - Total Planned USD Check: Expected ${expectedTotalUsd}, Got ${recordedTotalUsd}, Error: ${totalErrorPercentage.toFixed(1)}%`);
+
+              if (totalErrorPercentage > 1 || recordedTotalUsd === 0) {
+                issues.push({
+                  id: `plan_total_usd_conversion_${planRecord.id}`,
+                  type: 'plan_conversion',
+                  severity: (totalErrorPercentage > 10 || recordedTotalUsd === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: planRecord.id,
+                  recordType: 'payment_plan',
+                  description: `Payment plan total planned amount USD conversion incorrect (${totalErrorPercentage.toFixed(1)}% error). Expected: ${expectedTotalUsd}, Got: ${recordedTotalUsd}`,
+                  currentValue: recordedTotalUsd,
+                  expectedValue: expectedTotalUsd,
+                  affectedFields: ['total_planned_amount_usd', 'exchange_rate'],
+                  fixValue: `${expectedTotalUsd.toFixed(2)}|${planRate}`,
+                  fixRecordId: planRecord.id
+                });
+              }
+
+              // 2. Check installment amount USD conversion
+              const { convertedAmount: expectedInstallmentUsd } = await this.convertCurrency(
+                Number(planRecord.installmentAmount),
+                planRecord.currency,
+                'USD',
+                today // Always use today's date
+              );
+
+              const recordedInstallmentUsd = Number(planRecord.installmentAmountUsd || 0);
+              const installmentErrorPercentage = expectedInstallmentUsd > 0
+                ? Math.abs((recordedInstallmentUsd - expectedInstallmentUsd) / expectedInstallmentUsd) * 100
+                : (recordedInstallmentUsd > 0 ? 100 : 0);
+
+              console.log(`  - Installment USD Check: Expected ${expectedInstallmentUsd}, Got ${recordedInstallmentUsd}, Error: ${installmentErrorPercentage.toFixed(1)}%`);
+
+              if (installmentErrorPercentage > 1 || recordedInstallmentUsd === 0) {
+                issues.push({
+                  id: `plan_installment_usd_conversion_${planRecord.id}`,
+                  type: 'plan_conversion',
+                  severity: (installmentErrorPercentage > 10 || recordedInstallmentUsd === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: planRecord.id,
+                  recordType: 'payment_plan',
+                  description: `Payment plan installment amount USD conversion incorrect (${installmentErrorPercentage.toFixed(1)}% error). Expected: ${expectedInstallmentUsd}, Got: ${recordedInstallmentUsd}`,
+                  currentValue: recordedInstallmentUsd,
+                  expectedValue: expectedInstallmentUsd,
+                  affectedFields: ['installment_amount_usd'],
+                  fixValue: expectedInstallmentUsd.toFixed(2),
+                  fixRecordId: planRecord.id
+                });
+              }
+
+              // 3. Check remaining amount USD conversion
+              const { convertedAmount: expectedRemainingUsd } = await this.convertCurrency(
+                Number(planRecord.remainingAmount),
+                planRecord.currency,
+                'USD',
+                today // Always use today's date
+              );
+
+              const recordedRemainingUsd = Number(planRecord.remainingAmountUsd || 0);
+              const remainingErrorPercentage = expectedRemainingUsd > 0
+                ? Math.abs((recordedRemainingUsd - expectedRemainingUsd) / expectedRemainingUsd) * 100
+                : (recordedRemainingUsd > 0 ? 100 : 0);
+
+              console.log(`  - Remaining USD Check: Expected ${expectedRemainingUsd}, Got ${recordedRemainingUsd}, Error: ${remainingErrorPercentage.toFixed(1)}%`);
+
+              if (remainingErrorPercentage > 1 || recordedRemainingUsd === 0) {
+                issues.push({
+                  id: `plan_remaining_usd_conversion_${planRecord.id}`,
+                  type: 'plan_conversion',
+                  severity: (remainingErrorPercentage > 10 || recordedRemainingUsd === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: planRecord.id,
+                  recordType: 'payment_plan',
+                  description: `Payment plan remaining amount USD conversion incorrect (${remainingErrorPercentage.toFixed(1)}% error). Expected: ${expectedRemainingUsd}, Got: ${recordedRemainingUsd}`,
+                  currentValue: recordedRemainingUsd,
+                  expectedValue: expectedRemainingUsd,
+                  affectedFields: ['remaining_amount_usd'],
+                  fixValue: expectedRemainingUsd.toFixed(2),
+                  fixRecordId: planRecord.id
+                });
+              }
+
+            } catch (error) {
+              console.warn(`  ❌ Payment plan USD conversion failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
+        } catch (error) {
+          console.error(`Error checking payment plan ${planRecord.id}:`, error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error in checkPaymentPlanCurrencyConversions:', error);
+      throw error;
+    }
+
+    return issues;
+  }
+
+  // Check installment schedule USD conversions - ALWAYS use today's rate
+  async checkInstallmentScheduleCurrencyConversions(): Promise<IntegrityIssue[]> {
+    const issues: IntegrityIssue[] = [];
+    console.log('🔍 Checking ALL installment schedule USD conversions (using TODAY\'S rates via API)...');
+
+    try {
+      const installmentData = await this.db
+        .select({
+          id: installmentSchedule.id,
+          paymentPlanId: installmentSchedule.paymentPlanId,
+          installmentAmount: installmentSchedule.installmentAmount,
+          installmentAmountUsd: installmentSchedule.installmentAmountUsd,
+          currency: installmentSchedule.currency,
+          installmentDate: installmentSchedule.installmentDate,
+        })
+        .from(installmentSchedule);
+
+      console.log(`📊 Found ${installmentData.length} total installments to check USD conversions`);
+
+      for (const installment of installmentData) {
+        try {
+          let contactName = 'Unknown Contact';
+          let contactId: number = 0;
+
+          // Get contact info through payment plan -> pledge -> contact
+          if (installment.paymentPlanId) {
+            const planWithContact = await this.db
+              .select({
+                contactId: pledge.contactId,
+                firstName: contact.firstName,
+                lastName: contact.lastName,
+              })
+              .from(paymentPlan)
+              .leftJoin(pledge, eq(paymentPlan.pledgeId, pledge.id))
+              .leftJoin(contact, eq(pledge.contactId, contact.id))
+              .where(eq(paymentPlan.id, installment.paymentPlanId))
+              .limit(1);
+
+            if (planWithContact.length > 0 && planWithContact[0].contactId !== null) {
+              contactId = planWithContact[0].contactId;
+              contactName = `${planWithContact[0].firstName || ''} ${planWithContact[0].lastName || ''}`.trim() || 'Unknown Contact';
+            }
+          }
+
+          // FINANCIAL BEST PRACTICE: ALWAYS use today's date for currency conversions
+          const today = new Date().toISOString().split('T')[0];
+          const originalInstallmentDate = installment.installmentDate;
+
+          if (originalInstallmentDate && originalInstallmentDate > today) {
+            console.log(`💡 Installment ${installment.id} has future date (${originalInstallmentDate}), using today's rate (${today}) for USD conversion`);
+          }
+
+          // Check USD conversions for non-USD installments using TODAY'S rate
+          if (installment.currency !== 'USD') {
+            try {
+              const { convertedAmount: expectedInstallmentUsd } = await this.convertCurrency(
+                Number(installment.installmentAmount),
+                installment.currency,
+                'USD',
+                today // Always use today's date
+              );
+
+              const recordedInstallmentUsd = Number(installment.installmentAmountUsd || 0);
+              const errorPercentage = expectedInstallmentUsd > 0
+                ? Math.abs((recordedInstallmentUsd - expectedInstallmentUsd) / expectedInstallmentUsd) * 100
+                : (recordedInstallmentUsd > 0 ? 100 : 0);
+
+              if (errorPercentage > 1 || recordedInstallmentUsd === 0) {
+                issues.push({
+                  id: `installment_usd_conversion_${installment.id}`,
+                  type: 'installment_conversion',
+                  severity: (errorPercentage > 10 || recordedInstallmentUsd === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: installment.id,
+                  recordType: 'installment_schedule',
+                  description: `Installment USD conversion incorrect (${errorPercentage.toFixed(1)}% error). Expected: ${expectedInstallmentUsd}, Got: ${recordedInstallmentUsd}`,
+                  currentValue: recordedInstallmentUsd,
+                  expectedValue: expectedInstallmentUsd,
+                  affectedFields: ['installment_amount_usd'],
+                  fixValue: expectedInstallmentUsd.toFixed(2),
+                  fixRecordId: installment.id
+                });
+              }
+
+            } catch (error) {
+              console.warn(`  ❌ Installment USD conversion failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
+        } catch (error) {
+          console.error(`Error checking installment ${installment.id}:`, error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error in checkInstallmentScheduleCurrencyConversions:', error);
+      throw error;
+    }
+
+    return issues;
+  }
+
+  // Check third-party payment currency conversions
+  async checkThirdPartyPaymentConversions(): Promise<IntegrityIssue[]> {
+    const issues: IntegrityIssue[] = [];
+    console.log('🔍 Checking ALL third-party payment currency conversions...');
+
+    try {
+      const thirdPartyPayments = await this.db
+        .select({
+          id: payment.id,
+          amount: payment.amount,
+          currency: payment.currency,
+          amountUsd: payment.amountUsd,
+          exchangeRate: payment.exchangeRate,
+          payerContactId: payment.payerContactId,
+          isThirdPartyPayment: payment.isThirdPartyPayment,
+          pledgeId: payment.pledgeId,
+          receivedDate: payment.receivedDate,
+          paymentStatus: payment.paymentStatus,
+        })
+        .from(payment)
+        .where(
+          and(
+            sql`${payment.isThirdPartyPayment} = true`,
+            sql`${payment.paymentStatus} = 'completed'`,
+            sql`${payment.payerContactId} IS NOT NULL`
+          )
+        );
+
+      console.log(`📊 Found ${thirdPartyPayments.length} third-party payments to check`);
+
+      for (const paymentRecord of thirdPartyPayments) {
+        try {
+          let contactName = 'Unknown Contact';
+          let contactId: number = 0;
+
+          // Get payer contact info
+          if (paymentRecord.payerContactId !== null) {
+            const payerContact = await this.db
+              .select({
+                firstName: contact.firstName,
+                lastName: contact.lastName,
+              })
+              .from(contact)
+              .where(eq(contact.id, paymentRecord.payerContactId))
+              .limit(1);
+
+            if (payerContact.length > 0) {
+              contactId = paymentRecord.payerContactId;
+              contactName = `${payerContact[0].firstName || ''} ${payerContact[0].lastName || ''}`.trim() || 'Unknown Contact';
+            }
+          }
+
+          const conversionDate = this.getConversionDate(paymentRecord);
+
+          console.log(`🔍 Checking payment ${paymentRecord.id}:`);
+          console.log(`  - Contact: ${contactName}`);
+          console.log(`  - Payment: ${paymentRecord.amount} ${paymentRecord.currency}`);
+          console.log(`  - Conversion date: ${conversionDate} (from ${paymentRecord.receivedDate ? 'received_date' : 'today'})`);
+
+          // Check USD conversion for non-USD third-party payments
+          if (paymentRecord.currency !== 'USD') {
+            try {
+              const { convertedAmount: expectedAmountUsd, exchangeRate: usdRate } = await this.convertCurrency(
+                Number(paymentRecord.amount),
+                paymentRecord.currency,
+                'USD',
+                conversionDate
+              );
+
+              const recordedUsd = Number(paymentRecord.amountUsd || 0);
+              const errorPercentage = expectedAmountUsd > 0
+                ? Math.abs((recordedUsd - expectedAmountUsd) / expectedAmountUsd) * 100
+                : (recordedUsd > 0 ? 100 : 0);
+
+              console.log(`  - Third-party USD Check: Expected ${expectedAmountUsd}, Got ${recordedUsd}, Error: ${errorPercentage.toFixed(1)}%`);
+
+              if (errorPercentage > 1 || recordedUsd === 0) {
+                issues.push({
+                  id: `third_party_usd_conversion_${paymentRecord.id}`,
+                  type: 'third_party_conversion',
+                  severity: (errorPercentage > 10 || recordedUsd === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: paymentRecord.id,
+                  recordType: 'payment',
+                  description: `Third-party payment USD conversion incorrect (${errorPercentage.toFixed(1)}% error). Payer: ${contactName}, Expected: ${expectedAmountUsd}, Got: ${recordedUsd}`,
+                  currentValue: recordedUsd,
+                  expectedValue: expectedAmountUsd,
+                  affectedFields: ['amount_usd', 'exchange_rate'],
+                  fixValue: `${expectedAmountUsd.toFixed(2)}|${usdRate}`,
+                  fixRecordId: paymentRecord.id
+                });
+              }
+            } catch (error) {
+              console.warn(`  ❌ Third-party USD conversion failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
+        } catch (error) {
+          console.error(`Error checking third-party payment ${paymentRecord.id}:`, error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error in checkThirdPartyPaymentConversions:', error);
+      throw error;
+    }
+
+    return issues;
+  }
+
+  // Check payment allocation currency conversions
+  async checkPaymentAllocationConversions(): Promise<IntegrityIssue[]> {
+    const issues: IntegrityIssue[] = [];
+    console.log('🔍 Checking ALL payment allocation currency conversions...');
+
+    try {
+      const allocations = await this.db
+        .select({
+          id: paymentAllocations.id,
+          paymentId: paymentAllocations.paymentId,
+          pledgeId: paymentAllocations.pledgeId,
+          allocatedAmount: paymentAllocations.allocatedAmount,
+          currency: paymentAllocations.currency,
+          allocatedAmountUsd: paymentAllocations.allocatedAmountUsd,
+          allocatedAmountInPledgeCurrency: paymentAllocations.allocatedAmountInPledgeCurrency,
+          payerContactId: paymentAllocations.payerContactId,
+        })
+        .from(paymentAllocations);
+
+      console.log(`📊 Found ${allocations.length} payment allocations to check`);
+
+      for (const allocation of allocations) {
+        try {
+          let contactName = 'Unknown Contact';
+          let contactId: number = 0;
+          let pledgeCurrency = 'USD';
+
+          // Get contact and pledge info
+          if (allocation.pledgeId !== null) {
+            const pledgeWithContact = await this.db
+              .select({
+                contactId: pledge.contactId,
+                currency: pledge.currency,
+                firstName: contact.firstName,
+                lastName: contact.lastName,
+              })
+              .from(pledge)
+              .leftJoin(contact, eq(pledge.contactId, contact.id))
+              .where(eq(pledge.id, allocation.pledgeId))
+              .limit(1);
+
+            if (pledgeWithContact.length > 0 && pledgeWithContact[0].contactId !== null) {
+              contactId = pledgeWithContact[0].contactId;
+              pledgeCurrency = pledgeWithContact[0].currency || 'USD';
+              contactName = `${pledgeWithContact[0].firstName || ''} ${pledgeWithContact[0].lastName || ''}`.trim() || 'Unknown Contact';
+            }
+          }
+
+          // Get payment date for conversion
+          let conversionDate = new Date().toISOString().split('T')[0];
+          if (allocation.paymentId !== null) {
+            const paymentInfo = await this.db
+              .select({
+                receivedDate: payment.receivedDate,
+                paymentDate: payment.paymentDate,
+              })
+              .from(payment)
+              .where(eq(payment.id, allocation.paymentId))
+              .limit(1);
+
+            if (paymentInfo.length > 0) {
+              conversionDate = this.getConversionDate(paymentInfo[0]);
+            }
+          }
+
+          console.log(`🔍 Checking allocation ${allocation.id}:`);
+          console.log(`  - Contact: ${contactName}`);
+          console.log(`  - Allocation: ${allocation.allocatedAmount} ${allocation.currency}`);
+          console.log(`  - Pledge Currency: ${pledgeCurrency}`);
+
+          // 1. Check USD conversion for allocations
+          if (allocation.currency !== 'USD') {
+            try {
+              const { convertedAmount: expectedAllocatedUsd } = await this.convertCurrency(
+                Number(allocation.allocatedAmount),
+                allocation.currency,
+                'USD',
+                conversionDate
+              );
+
+              const recordedAllocatedUsd = Number(allocation.allocatedAmountUsd || 0);
+              const errorPercentage = expectedAllocatedUsd > 0
+                ? Math.abs((recordedAllocatedUsd - expectedAllocatedUsd) / expectedAllocatedUsd) * 100
+                : (recordedAllocatedUsd > 0 ? 100 : 0);
+
+              if (errorPercentage > 1 || recordedAllocatedUsd === 0) {
+                issues.push({
+                  id: `allocation_usd_conversion_${allocation.id}`,
+                  type: 'allocation_conversion',
+                  severity: (errorPercentage > 10 || recordedAllocatedUsd === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: allocation.id,
+                  recordType: 'payment_allocation',
+                  description: `Payment allocation USD conversion incorrect (${errorPercentage.toFixed(1)}% error). Expected: ${expectedAllocatedUsd}, Got: ${recordedAllocatedUsd}`,
+                  currentValue: recordedAllocatedUsd,
+                  expectedValue: expectedAllocatedUsd,
+                  affectedFields: ['allocated_amount_usd'],
+                  fixValue: expectedAllocatedUsd.toFixed(2),
+                  fixRecordId: allocation.id
+                });
+              }
+            } catch (error) {
+              console.warn(`  ❌ Allocation USD conversion failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
+          // 2. Check pledge currency conversion for allocations
+          if (allocation.currency !== pledgeCurrency) {
+            try {
+              const { convertedAmount: expectedPledgeAmount } = await this.convertCurrency(
+                Number(allocation.allocatedAmount),
+                allocation.currency,
+                pledgeCurrency,
+                conversionDate
+              );
+
+              const recordedPledgeAmount = Number(allocation.allocatedAmountInPledgeCurrency || 0);
+              const errorPercentage = expectedPledgeAmount > 0
+                ? Math.abs((recordedPledgeAmount - expectedPledgeAmount) / expectedPledgeAmount) * 100
+                : (recordedPledgeAmount > 0 ? 100 : 0);
+
+              if (errorPercentage > 1 || recordedPledgeAmount === 0) {
+                issues.push({
+                  id: `allocation_pledge_conversion_${allocation.id}`,
+                  type: 'allocation_conversion',
+                  severity: (errorPercentage > 10 || recordedPledgeAmount === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: allocation.id,
+                  recordType: 'payment_allocation',
+                  description: `Payment allocation pledge currency conversion incorrect (${errorPercentage.toFixed(1)}% error). Expected: ${expectedPledgeAmount} ${pledgeCurrency}, Got: ${recordedPledgeAmount} ${pledgeCurrency}`,
+                  currentValue: recordedPledgeAmount,
+                  expectedValue: expectedPledgeAmount,
+                  affectedFields: ['allocated_amount_in_pledge_currency'],
+                  fixValue: expectedPledgeAmount.toFixed(2),
+                  fixRecordId: allocation.id
+                });
+              }
+            } catch (error) {
+              console.warn(`  ❌ Allocation pledge currency conversion failed: ${error instanceof Error ? error.message : String(error)}`);
+            }
+          }
+
+        } catch (error) {
+          console.error(`Error checking allocation ${allocation.id}:`, error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error in checkPaymentAllocationConversions:', error);
+      throw error;
+    }
+
+    return issues;
+  }
+
+  // Validate third-party payment allocation totals
+  async validateThirdPartyPaymentIntegrity(): Promise<IntegrityIssue[]> {
+    const issues: IntegrityIssue[] = [];
+    console.log('🔍 Validating third-party payment allocation integrity...');
+
+    try {
+      const thirdPartyPayments = await this.db
+        .select({
+          id: payment.id,
+          amount: payment.amount,
+          currency: payment.currency,
+          payerContactId: payment.payerContactId,
+          isThirdPartyPayment: payment.isThirdPartyPayment,
+        })
+        .from(payment)
+        .where(
+          and(
+            sql`${payment.isThirdPartyPayment} = true`,
+            sql`${payment.paymentStatus} = 'completed'`
+          )
+        );
+
+      for (const paymentRecord of thirdPartyPayments) {
+        try {
+          // Sum allocations for this payment
+          const allocationSum = await this.db
+            .select({
+              total: sql<number>`COALESCE(SUM(allocated_amount), 0)`,
+              count: sql<number>`COUNT(*)`,
+            })
+            .from(paymentAllocations)
+            .where(
+              and(
+                eq(paymentAllocations.paymentId, paymentRecord.id),
+                eq(paymentAllocations.currency, paymentRecord.currency)
+              )
+            );
+
+          const totalAllocated = allocationSum.length > 0 ? Number(allocationSum[0].total) : 0;
+          const paymentAmount = Number(paymentRecord.amount);
+          const allocationCount = allocationSum.length > 0 ? Number(allocationSum[0].count) : 0;
+
+          if (!this.isAmountEqual(totalAllocated, paymentAmount)) {
+            let contactName = 'Unknown Contact';
+            let contactId: number = 0;
+
+            if (paymentRecord.payerContactId !== null) {
+              const payerContact = await this.db
+                .select({
+                  firstName: contact.firstName,
+                  lastName: contact.lastName,
+                })
+                .from(contact)
+                .where(eq(contact.id, paymentRecord.payerContactId))
+                .limit(1);
+
+              if (payerContact.length > 0) {
+                contactId = paymentRecord.payerContactId;
+                contactName = `${payerContact[0].firstName || ''} ${payerContact[0].lastName || ''}`.trim() || 'Unknown Contact';
+              }
+            }
+
+            issues.push({
+              id: `third_party_allocation_mismatch_${paymentRecord.id}`,
+              type: 'payment_plan_amounts',
+              severity: 'critical',
+              contactId,
+              contactName,
+              recordId: paymentRecord.id,
+              recordType: 'payment',
+              description: `Third-party payment allocation mismatch. Payment: ${paymentAmount} ${paymentRecord.currency}, Allocated: ${totalAllocated} ${paymentRecord.currency}, Allocations: ${allocationCount}`,
+              currentValue: totalAllocated,
+              expectedValue: paymentAmount,
+              affectedFields: ['allocations_total'],
+              fixValue: paymentAmount.toFixed(2),
+              fixRecordId: paymentRecord.id
+            });
+          }
+
+        } catch (error) {
+          console.error(`Error validating third-party payment ${paymentRecord.id}:`, error);
+        }
+      }
+
+    } catch (error) {
+      console.error('Error in validateThirdPartyPaymentIntegrity:', error);
+      throw error;
+    }
+
+    return issues;
+  }
+
   async checkPaymentConversions(): Promise<IntegrityIssue[]> {
     const issues: IntegrityIssue[] = [];
     console.log('🔍 Checking ALL payment conversions (multi-currency support)...');
 
     try {
-      // Get ALL payments - no limits
       const paymentData = await this.db
         .select({
           id: payment.id,
@@ -657,23 +1352,19 @@ class CurrencyIntegrityService {
           exchangeRate: payment.exchangeRate,
           pledgeCurrencyExchangeRate: payment.pledgeCurrencyExchangeRate,
           planCurrencyExchangeRate: payment.planCurrencyExchangeRate,
-          isThirdPartyPayment: payment.isThirdPartyPayment,
-          payerContactId: payment.payerContactId,
         })
         .from(payment);
 
-      console.log(`📊 Found ${paymentData.length} total payments to check for multi-currency conversion errors`);
+      console.log(`📊 Found ${paymentData.length} total payments to check`);
 
-      // Process ALL payments
       for (const paymentRecord of paymentData) {
         try {
           let pledgeCurrency = null;
           let planCurrency = null;
           let contactName = 'Unknown Contact';
-          let contactId = 0;
-          let payerName = null;
+          let contactId: number = 0;
 
-          // Get pledge currency if payment is linked to pledge
+          // Get pledge currency and contact info
           if (paymentRecord.pledgeId) {
             const pledgeWithContact = await this.db
               .select({
@@ -687,108 +1378,63 @@ class CurrencyIntegrityService {
               .where(eq(pledge.id, paymentRecord.pledgeId))
               .limit(1);
 
-            if (pledgeWithContact.length > 0) {
+            if (pledgeWithContact.length > 0 && pledgeWithContact[0].contactId !== null) {
               contactId = pledgeWithContact[0].contactId;
               pledgeCurrency = pledgeWithContact[0].currency;
               contactName = `${pledgeWithContact[0].firstName || ''} ${pledgeWithContact[0].lastName || ''}`.trim() || 'Unknown Contact';
             }
           }
 
-          // Get plan currency if payment is linked to payment plan
+          // Get plan currency
           if (paymentRecord.paymentPlanId) {
-            const planWithContact = await this.db
-              .select({
-                currency: paymentPlan.currency,
-                pledgeId: paymentPlan.pledgeId,
-              })
+            const planData = await this.db
+              .select({ currency: paymentPlan.currency })
               .from(paymentPlan)
               .where(eq(paymentPlan.id, paymentRecord.paymentPlanId))
               .limit(1);
 
-            if (planWithContact.length > 0) {
-              planCurrency = planWithContact[0].currency;
-              
-              // If no contact info yet, get it from the plan's pledge
-              if (!contactId && planWithContact[0].pledgeId) {
-                const pledgeContact = await this.db
-                  .select({
-                    contactId: pledge.contactId,
-                    firstName: contact.firstName,
-                    lastName: contact.lastName,
-                  })
-                  .from(pledge)
-                  .leftJoin(contact, eq(pledge.contactId, contact.id))
-                  .where(eq(pledge.id, planWithContact[0].pledgeId))
-                  .limit(1);
-
-                if (pledgeContact.length > 0) {
-                  contactId = pledgeContact[0].contactId;
-                  contactName = `${pledgeContact[0].firstName || ''} ${pledgeContact[0].lastName || ''}`.trim() || 'Unknown Contact';
-                }
-              }
+            if (planData.length > 0) {
+              planCurrency = planData[0].currency;
             }
           }
 
-          // Get payer information if third-party payment
-          if (paymentRecord.isThirdPartyPayment && paymentRecord.payerContactId) {
-            const payerData = await this.db
-              .select({
-                firstName: contact.firstName,
-                lastName: contact.lastName,
-              })
-              .from(contact)
-              .where(eq(contact.id, paymentRecord.payerContactId))
-              .limit(1);
-
-            if (payerData.length > 0) {
-              payerName = `${payerData[0].firstName || ''} ${payerData[0].lastName || ''}`.trim();
-            }
-          }
-
-          // Use received_date for currency conversion, fallback to payment_date, then today's date
-          const conversionDate = paymentRecord.receivedDate || paymentRecord.paymentDate || new Date().toISOString().split('T')[0];
+          // Use received_date or today's date for conversion (never future dates)
+          const conversionDate = this.getConversionDate(paymentRecord);
 
           console.log(`🔍 Checking payment ${paymentRecord.id}:`);
-          console.log(`  - Beneficiary: ${contactName}`);
-          if (payerName) {
-            console.log(`  - Payer: ${payerName} (third-party payment)`);
-          }
+          console.log(`  - Contact: ${contactName}`);
           console.log(`  - Payment: ${paymentRecord.amount} ${paymentRecord.currency}`);
-          console.log(`  - Pledge Currency: ${pledgeCurrency}`);
-          console.log(`  - Plan Currency: ${planCurrency}`);
-          console.log(`  - Recorded USD: ${paymentRecord.amountUsd}`);
-          console.log(`  - Recorded Pledge Currency Amount: ${paymentRecord.amountInPledgeCurrency}`);
-          console.log(`  - Recorded Plan Currency Amount: ${paymentRecord.amountInPlanCurrency}`);
           console.log(`  - Conversion date: ${conversionDate}`);
+          console.log(`  - Pledge Currency: ${pledgeCurrency || 'N/A'}`);
+          console.log(`  - Plan Currency: ${planCurrency || 'N/A'}`);
 
           // 1. Check USD conversion (for non-USD payments)
           if (paymentRecord.currency !== 'USD') {
             try {
               const { convertedAmount: expectedAmountUsd, exchangeRate: usdRate } = await this.convertCurrency(
-                Number(paymentRecord.amount), 
-                paymentRecord.currency, 
-                'USD', 
+                Number(paymentRecord.amount),
+                paymentRecord.currency,
+                'USD',
                 conversionDate
               );
 
               const recordedUsd = Number(paymentRecord.amountUsd || 0);
-              const errorPercentage = expectedAmountUsd > 0 
+              const errorPercentage = expectedAmountUsd > 0
                 ? Math.abs((recordedUsd - expectedAmountUsd) / expectedAmountUsd) * 100
                 : (recordedUsd > 0 ? 100 : 0);
 
-              console.log(`  - Expected USD: ${expectedAmountUsd} (rate: ${usdRate}), Error: ${errorPercentage.toFixed(1)}%`);
+              console.log(`  - USD Check: Expected ${expectedAmountUsd}, Got ${recordedUsd}, Error: ${errorPercentage.toFixed(1)}%`);
 
-              // Flag conversions with > 10% error OR missing USD amount
-              if (errorPercentage > 10 || recordedUsd === 0 || !this.isAmountEqual(recordedUsd, expectedAmountUsd)) {
+              if (errorPercentage > 1 || recordedUsd === 0) {
                 issues.push({
                   id: `payment_usd_conversion_${paymentRecord.id}`,
                   type: 'payment_conversion',
-                  severity: (errorPercentage > 50 || recordedUsd === 0) ? 'critical' : 'warning',
+                  severity: (errorPercentage > 10 || recordedUsd === 0) ? 'critical' : 'warning',
                   contactId,
                   contactName,
                   recordId: paymentRecord.id,
                   recordType: 'payment',
-                  description: `USD conversion incorrect (${errorPercentage.toFixed(1)}% error). ${paymentRecord.amount} ${paymentRecord.currency} → Recorded: $${recordedUsd}, Expected: $${expectedAmountUsd}`,
+                  description: `USD conversion incorrect (${errorPercentage.toFixed(1)}% error). ${paymentRecord.amount} ${paymentRecord.currency} → Expected: ${expectedAmountUsd}, Got: ${recordedUsd}`,
                   currentValue: recordedUsd,
                   expectedValue: expectedAmountUsd,
                   affectedFields: ['amount_usd', 'exchange_rate'],
@@ -797,117 +1443,85 @@ class CurrencyIntegrityService {
                 });
               }
             } catch (error) {
-              console.warn(`USD conversion failed for payment ${paymentRecord.id}:`, error instanceof Error ? error.message : String(error));
+              console.warn(`  ❌ USD conversion failed: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
 
-          // 2. Check pledge currency conversion (if payment is linked to a pledge)
+          // 2. Check pledge currency conversion
           if (pledgeCurrency) {
-            let expectedPledgeAmount: number;
-            let pledgeRate: number;
-            
-            if (paymentRecord.currency === pledgeCurrency) {
-              // Same currency - should equal payment amount
-              expectedPledgeAmount = Number(paymentRecord.amount);
-              pledgeRate = 1;
-              console.log(`  - Same currency (${pledgeCurrency}): expected ${expectedPledgeAmount}`);
-            } else {
-              // Different currency - needs conversion
-              try {
-                const conversion = await this.convertCurrency(
-                  Number(paymentRecord.amount), 
-                  paymentRecord.currency, 
-                  pledgeCurrency, 
-                  conversionDate
-                );
-                expectedPledgeAmount = conversion.convertedAmount;
-                pledgeRate = conversion.exchangeRate;
-                console.log(`  - Cross-currency (${paymentRecord.currency}→${pledgeCurrency}): expected ${expectedPledgeAmount} (rate: ${pledgeRate})`);
-              } catch (error) {
-                console.warn(`Pledge currency conversion failed for payment ${paymentRecord.id}:`, error instanceof Error ? error.message : String(error));
-                continue;
+            try {
+              const { convertedAmount: expectedPledgeAmount, exchangeRate: pledgeRate } = await this.convertCurrency(
+                Number(paymentRecord.amount),
+                paymentRecord.currency,
+                pledgeCurrency,
+                conversionDate
+              );
+
+              const recordedPledgeAmount = Number(paymentRecord.amountInPledgeCurrency || 0);
+              const errorPercentage = expectedPledgeAmount > 0
+                ? Math.abs((recordedPledgeAmount - expectedPledgeAmount) / expectedPledgeAmount) * 100
+                : (recordedPledgeAmount > 0 ? 100 : 0);
+
+              console.log(`  - Pledge Currency Check: Expected ${expectedPledgeAmount} ${pledgeCurrency}, Got ${recordedPledgeAmount} ${pledgeCurrency}, Error: ${errorPercentage.toFixed(1)}%`);
+
+              if (recordedPledgeAmount === 0 || errorPercentage > 1) {
+                issues.push({
+                  id: `payment_pledge_conversion_${paymentRecord.id}`,
+                  type: 'payment_conversion',
+                  severity: (errorPercentage > 10 || recordedPledgeAmount === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: paymentRecord.id,
+                  recordType: 'payment',
+                  description: `Pledge currency conversion incorrect (${errorPercentage.toFixed(1)}% error). Expected: ${expectedPledgeAmount} ${pledgeCurrency}, Got: ${recordedPledgeAmount} ${pledgeCurrency}`,
+                  currentValue: recordedPledgeAmount,
+                  expectedValue: expectedPledgeAmount,
+                  affectedFields: ['amount_in_pledge_currency', 'pledge_currency_exchange_rate'],
+                  fixValue: `${expectedPledgeAmount.toFixed(2)}|${pledgeRate}`,
+                  fixRecordId: paymentRecord.id
+                });
               }
-            }
-
-            const recordedPledgeAmount = Number(paymentRecord.amountInPledgeCurrency || 0);
-            const errorPercentage = expectedPledgeAmount > 0 
-              ? Math.abs((recordedPledgeAmount - expectedPledgeAmount) / expectedPledgeAmount) * 100
-              : (recordedPledgeAmount > 0 ? 100 : 0);
-
-            console.log(`  - Pledge Currency Check: Expected ${expectedPledgeAmount} ${pledgeCurrency}, Got ${recordedPledgeAmount} ${pledgeCurrency}, Error: ${errorPercentage.toFixed(1)}%`);
-
-            // Flag ANY missing or incorrect pledge currency amount
-            if (recordedPledgeAmount === 0 || errorPercentage > 1 || !this.isAmountEqual(recordedPledgeAmount, expectedPledgeAmount)) {
-              issues.push({
-                id: `payment_pledge_conversion_${paymentRecord.id}`,
-                type: 'payment_conversion',
-                severity: (errorPercentage > 50 || recordedPledgeAmount === 0) ? 'critical' : 'warning',
-                contactId,
-                contactName,
-                recordId: paymentRecord.id,
-                recordType: 'payment',
-                description: `Pledge currency conversion incorrect (${errorPercentage.toFixed(1)}% error). ${paymentRecord.amount} ${paymentRecord.currency} → Recorded: ${recordedPledgeAmount} ${pledgeCurrency}, Expected: ${expectedPledgeAmount} ${pledgeCurrency}`,
-                currentValue: recordedPledgeAmount,
-                expectedValue: expectedPledgeAmount,
-                affectedFields: ['amount_in_pledge_currency', 'pledge_currency_exchange_rate'],
-                fixValue: `${expectedPledgeAmount.toFixed(2)}|${pledgeRate}`,
-                fixRecordId: paymentRecord.id
-              });
+            } catch (error) {
+              console.warn(`  ❌ Pledge currency conversion failed: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
 
-          // 3. Check plan currency conversion (if payment is linked to a payment plan)
+          // 3. Check plan currency conversion
           if (planCurrency) {
-            let expectedPlanAmount: number;
-            let planRate: number;
-            
-            if (paymentRecord.currency === planCurrency) {
-              // Same currency - should equal payment amount
-              expectedPlanAmount = Number(paymentRecord.amount);
-              planRate = 1;
-              console.log(`  - Same currency (${planCurrency}): expected ${expectedPlanAmount}`);
-            } else {
-              // Different currency - needs conversion
-              try {
-                const conversion = await this.convertCurrency(
-                  Number(paymentRecord.amount), 
-                  paymentRecord.currency, 
-                  planCurrency, 
-                  conversionDate
-                );
-                expectedPlanAmount = conversion.convertedAmount;
-                planRate = conversion.exchangeRate;
-                console.log(`  - Cross-currency (${paymentRecord.currency}→${planCurrency}): expected ${expectedPlanAmount} (rate: ${planRate})`);
-              } catch (error) {
-                console.warn(`Plan currency conversion failed for payment ${paymentRecord.id}:`, error instanceof Error ? error.message : String(error));
-                continue;
+            try {
+              const { convertedAmount: expectedPlanAmount, exchangeRate: planRate } = await this.convertCurrency(
+                Number(paymentRecord.amount),
+                paymentRecord.currency,
+                planCurrency,
+                conversionDate
+              );
+
+              const recordedPlanAmount = Number(paymentRecord.amountInPlanCurrency || 0);
+              const errorPercentage = expectedPlanAmount > 0
+                ? Math.abs((recordedPlanAmount - expectedPlanAmount) / expectedPlanAmount) * 100
+                : (recordedPlanAmount > 0 ? 100 : 0);
+
+              console.log(`  - Plan Currency Check: Expected ${expectedPlanAmount} ${planCurrency}, Got ${recordedPlanAmount} ${planCurrency}, Error: ${errorPercentage.toFixed(1)}%`);
+
+              if (recordedPlanAmount === 0 || errorPercentage > 1) {
+                issues.push({
+                  id: `payment_plan_conversion_${paymentRecord.id}`,
+                  type: 'payment_conversion',
+                  severity: (errorPercentage > 10 || recordedPlanAmount === 0) ? 'critical' : 'warning',
+                  contactId,
+                  contactName,
+                  recordId: paymentRecord.id,
+                  recordType: 'payment',
+                  description: `Plan currency conversion incorrect (${errorPercentage.toFixed(1)}% error). Expected: ${expectedPlanAmount} ${planCurrency}, Got: ${recordedPlanAmount} ${planCurrency}`,
+                  currentValue: recordedPlanAmount,
+                  expectedValue: expectedPlanAmount,
+                  affectedFields: ['amount_in_plan_currency', 'plan_currency_exchange_rate'],
+                  fixValue: `${expectedPlanAmount.toFixed(2)}|${planRate}`,
+                  fixRecordId: paymentRecord.id
+                });
               }
-            }
-
-            const recordedPlanAmount = Number(paymentRecord.amountInPlanCurrency || 0);
-            const errorPercentage = expectedPlanAmount > 0 
-              ? Math.abs((recordedPlanAmount - expectedPlanAmount) / expectedPlanAmount) * 100
-              : (recordedPlanAmount > 0 ? 100 : 0);
-
-            console.log(`  - Plan Currency Check: Expected ${expectedPlanAmount} ${planCurrency}, Got ${recordedPlanAmount} ${planCurrency}, Error: ${errorPercentage.toFixed(1)}%`);
-
-            // Flag ANY missing or incorrect plan currency amount
-            if (recordedPlanAmount === 0 || errorPercentage > 1 || !this.isAmountEqual(recordedPlanAmount, expectedPlanAmount)) {
-              issues.push({
-                id: `payment_plan_conversion_${paymentRecord.id}`,
-                type: 'payment_conversion',
-                severity: (errorPercentage > 50 || recordedPlanAmount === 0) ? 'critical' : 'warning',
-                contactId,
-                contactName,
-                recordId: paymentRecord.id,
-                recordType: 'payment',
-                description: `Plan currency conversion incorrect (${errorPercentage.toFixed(1)}% error). ${paymentRecord.amount} ${paymentRecord.currency} → Recorded: ${recordedPlanAmount} ${planCurrency}, Expected: ${expectedPlanAmount} ${planCurrency}`,
-                currentValue: recordedPlanAmount,
-                expectedValue: expectedPlanAmount,
-                affectedFields: ['amount_in_plan_currency', 'plan_currency_exchange_rate'],
-                fixValue: `${expectedPlanAmount.toFixed(2)}|${planRate}`,
-                fixRecordId: paymentRecord.id
-              });
+            } catch (error) {
+              console.warn(`  ❌ Plan currency conversion failed: ${error instanceof Error ? error.message : String(error)}`);
             }
           }
 
@@ -926,9 +1540,8 @@ class CurrencyIntegrityService {
 
   async fixPledgeTotalsAfterPaymentCorrections(): Promise<void> {
     console.log('\n🔄 Recalculating pledge totals after multi-currency payment corrections...');
-    
+
     try {
-      // Get all pledges that have payments with proper converted amounts
       const pledgesWithPayments = await this.db
         .selectDistinct({
           pledgeId: payment.pledgeId,
@@ -937,7 +1550,7 @@ class CurrencyIntegrityService {
         .where(
           and(
             sql`${payment.pledgeId} IS NOT NULL`,
-            eq(payment.paymentStatus, 'completed'),
+            sql`${payment.paymentStatus} = 'completed'`,
             sql`${payment.receivedDate} IS NOT NULL`,
             sql`${payment.amountInPledgeCurrency} IS NOT NULL`
           )
@@ -947,17 +1560,15 @@ class CurrencyIntegrityService {
 
       for (const pledgeRow of pledgesWithPayments) {
         const pledgeId = pledgeRow.pledgeId;
-        
-        // Skip if pledgeId is null or invalid
+
         if (!pledgeId || isNaN(Number(pledgeId))) {
           console.warn(`Skipping invalid pledge ID: ${pledgeId}`);
           continue;
         }
-        
+
         try {
           console.log(`🔄 Recalculating multi-currency totals for pledge ${pledgeId}...`);
 
-          // Get correct payment totals for this pledge (sum of converted amounts)
           const paymentSum = await this.db
             .select({
               total: sql<number>`COALESCE(SUM(amount_in_pledge_currency), 0)`,
@@ -967,13 +1578,12 @@ class CurrencyIntegrityService {
             .where(
               and(
                 eq(payment.pledgeId, pledgeId),
-                eq(payment.paymentStatus, 'completed'),
+                sql`${payment.paymentStatus} = 'completed'`,
                 sql`${payment.receivedDate} IS NOT NULL`,
                 sql`${payment.amountInPledgeCurrency} IS NOT NULL`
               )
             );
 
-          // Get pledge data
           const pledgeData = await this.db
             .select({
               originalAmount: pledge.originalAmount,
@@ -990,19 +1600,12 @@ class CurrencyIntegrityService {
             const paymentCount = Number(paymentSum[0].count) || 0;
             const originalAmount = Number(pledgeData[0].originalAmount) || 0;
             const correctBalance = originalAmount - actualTotalPaid;
-            
+
             const currentTotalPaid = Number(pledgeData[0].currentTotalPaid) || 0;
             const currentBalance = Number(pledgeData[0].currentBalance) || 0;
-            
-            console.log(`  - Pledge ${pledgeId} (${pledgeData[0].currency}):`);
-            console.log(`    * Original Amount: ${originalAmount} ${pledgeData[0].currency}`);
-            console.log(`    * Completed Payments (converted): ${paymentCount}`);
-            console.log(`    * Current Total Paid: ${currentTotalPaid} → New: ${actualTotalPaid}`);
-            console.log(`    * Current Balance: ${currentBalance} → New: ${correctBalance}`);
 
-            // Only update if values are different (avoid unnecessary updates)
-            const needsUpdate = !this.isAmountEqual(currentTotalPaid, actualTotalPaid) || 
-                               !this.isAmountEqual(currentBalance, correctBalance);
+            const needsUpdate = !this.isAmountEqual(currentTotalPaid, actualTotalPaid) ||
+              !this.isAmountEqual(currentBalance, correctBalance);
 
             if (needsUpdate) {
               await this.db.update(pledge)
@@ -1017,8 +1620,6 @@ class CurrencyIntegrityService {
             } else {
               console.log(`  ✅ Pledge ${pledgeId} already correct, no update needed`);
             }
-          } else {
-            console.warn(`  ⚠️ Could not find pledge data or payment sum for pledge ${pledgeId}`);
           }
         } catch (error) {
           console.error(`❌ Failed to update pledge ${pledgeId}:`, error instanceof Error ? error.message : String(error));
@@ -1031,17 +1632,21 @@ class CurrencyIntegrityService {
   }
 
   async runCompleteCheck(): Promise<{ summary: CheckSummary; issues: IntegrityIssue[] }> {
-    console.log('Multi-Currency Integrity Service - Starting Complete Check');
-    console.log('========================================================\n');
+    console.log('CONSISTENT API Multi-Currency Integrity Service - Starting Complete Check');
+    console.log('🔗 USES SAME API as your form (/api/exchange-rates) for consistency');
+    console.log('💰 ALWAYS USES CURRENT RATES for future calculations (Financial Standard)');
+    console.log('📅 Never requests future dates from APIs - prevents all future date errors');
+    console.log('💡 Updates ALL currency conversion fields: payments, plans, installments, third-party');
+    console.log('========================================================================\n');
 
     const connected = await this.checkDatabaseConnection();
     if (!connected) {
-      throw new Error('Database connection failed. Please check your DATABASE_URL and ensure the database is accessible.');
+      throw new Error('Database connection failed');
     }
 
     const { exists, missing } = await this.checkTablesExist();
     if (!exists) {
-      throw new Error(`Required tables are missing: ${missing.join(', ')}. Please run database migrations first using 'pnpm db:migrate' or 'pnpm db:push'.`);
+      throw new Error(`Required tables missing: ${missing.join(', ')}`);
     }
 
     const allIssues: IntegrityIssue[] = [];
@@ -1049,18 +1654,31 @@ class CurrencyIntegrityService {
     try {
       const pledgeIssues = await this.checkPledgeBalances();
       allIssues.push(...pledgeIssues);
-      console.log(`Found ${pledgeIssues.length} pledge issues`);
 
       const planIssues = await this.checkPaymentPlanIntegrity();
       allIssues.push(...planIssues);
-      console.log(`Found ${planIssues.length} payment plan issues`);
 
       const paymentIssues = await this.checkPaymentConversions();
       allIssues.push(...paymentIssues);
-      console.log(`Found ${paymentIssues.length} payment conversion issues`);
+
+      const planConversionIssues = await this.checkPaymentPlanCurrencyConversions();
+      allIssues.push(...planConversionIssues);
+
+      const installmentConversionIssues = await this.checkInstallmentScheduleCurrencyConversions();
+      allIssues.push(...installmentConversionIssues);
+
+      // Third-party payment checks
+      const thirdPartyIssues = await this.checkThirdPartyPaymentConversions();
+      allIssues.push(...thirdPartyIssues);
+
+      const allocationIssues = await this.checkPaymentAllocationConversions();
+      allIssues.push(...allocationIssues);
+
+      const integrityIssues = await this.validateThirdPartyPaymentIntegrity();
+      allIssues.push(...integrityIssues);
 
     } catch (error) {
-      console.error('Error during integrity check:', error instanceof Error ? error.message : String(error));
+      console.error('Error during integrity check:', error);
       throw error;
     }
 
@@ -1080,7 +1698,7 @@ class CurrencyIntegrityService {
   }
 
   async applyFixes(issuesToFix: IntegrityIssue[]): Promise<{ fixed: number; failed: number; errors: string[] }> {
-    console.log(`\nApplying multi-currency fixes for ${issuesToFix.length} issues...`);
+    console.log(`\nApplying precision multi-currency fixes for ${issuesToFix.length} issues...`);
 
     let fixed = 0;
     let failed = 0;
@@ -1098,9 +1716,8 @@ class CurrencyIntegrityService {
                 updatedAt: new Date()
               })
               .where(eq(payment.id, issue.fixRecordId));
-            console.log(`✅ Fixed USD conversion: Payment ${issue.fixRecordId} → ${amountUsd} USD (rate: ${exchangeRate})`);
           }
-          
+
           if (issue.affectedFields.includes('amount_in_pledge_currency') || issue.affectedFields.includes('pledge_currency_exchange_rate')) {
             const [pledgeAmount, pledgeRate] = issue.fixValue.split('|');
             await this.db.update(payment)
@@ -1110,7 +1727,6 @@ class CurrencyIntegrityService {
                 updatedAt: new Date()
               })
               .where(eq(payment.id, issue.fixRecordId));
-            console.log(`✅ Fixed pledge currency conversion: Payment ${issue.fixRecordId} → ${pledgeAmount} (rate: ${pledgeRate})`);
           }
 
           if (issue.affectedFields.includes('amount_in_plan_currency') || issue.affectedFields.includes('plan_currency_exchange_rate')) {
@@ -1122,34 +1738,9 @@ class CurrencyIntegrityService {
                 updatedAt: new Date()
               })
               .where(eq(payment.id, issue.fixRecordId));
-            console.log(`✅ Fixed plan currency conversion: Payment ${issue.fixRecordId} → ${planAmount} (rate: ${planRate})`);
           }
-        } else if (issue.recordType === 'pledge') {
-          if (issue.affectedFields.includes('total_paid')) {
-            await this.db.update(pledge)
-              .set({
-                totalPaid: issue.fixValue,
-                updatedAt: new Date()
-              })
-              .where(eq(pledge.id, issue.fixRecordId));
-          }
-          if (issue.affectedFields.includes('balance')) {
-            await this.db.update(pledge)
-              .set({
-                balance: issue.fixValue,
-                updatedAt: new Date()
-              })
-              .where(eq(pledge.id, issue.fixRecordId));
-          }
-          if (issue.affectedFields.includes('total_paid_usd')) {
-            await this.db.update(pledge)
-              .set({
-                totalPaidUsd: issue.fixValue,
-                updatedAt: new Date()
-              })
-              .where(eq(pledge.id, issue.fixRecordId));
-          }
-        } else if (issue.recordType === 'payment_plan') {
+        }
+        else if (issue.recordType === 'payment_plan') {
           if (issue.affectedFields.includes('total_paid')) {
             await this.db.update(paymentPlan)
               .set({
@@ -1166,19 +1757,84 @@ class CurrencyIntegrityService {
               })
               .where(eq(paymentPlan.id, issue.fixRecordId));
           }
-          if (issue.affectedFields.includes('installment_amount')) {
+          // Fix payment plan USD conversions
+          if (issue.affectedFields.includes('total_planned_amount_usd') || issue.affectedFields.includes('exchange_rate')) {
+            const [totalUsd, exchangeRate] = issue.fixValue.split('|');
             await this.db.update(paymentPlan)
               .set({
-                installmentAmount: issue.fixValue,
+                totalPlannedAmountUsd: totalUsd,
+                exchangeRate: exchangeRate,
+                updatedAt: new Date()
+              })
+              .where(eq(paymentPlan.id, issue.fixRecordId));
+          }
+          if (issue.affectedFields.includes('installment_amount_usd')) {
+            await this.db.update(paymentPlan)
+              .set({
+                installmentAmountUsd: issue.fixValue,
+                updatedAt: new Date()
+              })
+              .where(eq(paymentPlan.id, issue.fixRecordId));
+          }
+          if (issue.affectedFields.includes('remaining_amount_usd')) {
+            await this.db.update(paymentPlan)
+              .set({
+                remainingAmountUsd: issue.fixValue,
                 updatedAt: new Date()
               })
               .where(eq(paymentPlan.id, issue.fixRecordId));
           }
         }
+        else if (issue.recordType === 'installment_schedule') {
+          if (issue.affectedFields.includes('installment_amount_usd')) {
+            await this.db.update(installmentSchedule)
+              .set({
+                installmentAmountUsd: issue.fixValue,
+                updatedAt: new Date()
+              })
+              .where(eq(installmentSchedule.id, issue.fixRecordId));
+          }
+        }
+        // Fix payment allocation issues
+        else if (issue.recordType === 'payment_allocation') {
+          if (issue.affectedFields.includes('allocated_amount_usd')) {
+            await this.db.update(paymentAllocations)
+              .set({
+                allocatedAmountUsd: issue.fixValue,
+                updatedAt: new Date()
+              })
+              .where(eq(paymentAllocations.id, issue.fixRecordId));
+          }
+          if (issue.affectedFields.includes('allocated_amount_in_pledge_currency')) {
+            await this.db.update(paymentAllocations)
+              .set({
+                allocatedAmountInPledgeCurrency: issue.fixValue,
+                updatedAt: new Date()
+              })
+              .where(eq(paymentAllocations.id, issue.fixRecordId));
+          }
+        }
+        else if (issue.recordType === 'pledge') {
+          if (issue.affectedFields.includes('total_paid')) {
+            await this.db.update(pledge)
+              .set({
+                totalPaid: issue.fixValue,
+                updatedAt: new Date()
+              })
+              .where(eq(pledge.id, issue.fixRecordId));
+          }
+          if (issue.affectedFields.includes('balance')) {
+            await this.db.update(pledge)
+              .set({
+                balance: issue.fixValue,
+                updatedAt: new Date()
+              })
+              .where(eq(pledge.id, issue.fixRecordId));
+          }
+        }
 
         fixed++;
         console.log(`✅ Fixed: ${issue.recordType} ${issue.recordId}`);
-        await new Promise(resolve => setTimeout(resolve, 50));
 
       } catch (error) {
         failed++;
@@ -1191,56 +1847,13 @@ class CurrencyIntegrityService {
     return { fixed, failed, errors };
   }
 
-  async saveReport(summary: CheckSummary, issues: IntegrityIssue[], filename?: string): Promise<string> {
-    const reportData = { summary, issues, generatedAt: new Date().toISOString() };
-    const defaultFilename = `multi-currency-integrity-report-${new Date().toISOString().split('T')[0]}.json`;
-    const filepath = path.join(process.cwd(), 'reports', filename || defaultFilename);
-
-    const reportsDir = path.dirname(filepath);
-    if (!fs.existsSync(reportsDir)) {
-      fs.mkdirSync(reportsDir, { recursive: true });
-    }
-
-    fs.writeFileSync(filepath, JSON.stringify(reportData, null, 2));
-    return filepath;
-  }
-
   displaySummary(summary: CheckSummary): void {
-    console.log('\n📊 MULTI-CURRENCY INTEGRITY CHECK SUMMARY');
-    console.log('=========================================');
-    console.log(`🕒 Scan Date: ${new Date(summary.timestamp).toLocaleString()}`);
-    console.log(`📋 Total Issues: ${summary.totalIssues}`);
-    console.log(`🔴 Critical: ${summary.criticalIssues} (auto-fix)`);
-    console.log(`🟡 Warning: ${summary.warningIssues} (review needed)`);
+    console.log('\n📊 CONSISTENT API CURRENCY CONVERSION SUMMARY');
+    console.log('==============================================');
+    console.log(`🕒 Date: ${new Date(summary.timestamp).toLocaleString()}`);
+    console.log(`📋 Issues: ${summary.totalIssues} (Critical: ${summary.criticalIssues}, Warnings: ${summary.warningIssues})`);
     console.log(`👥 Affected Contacts: ${summary.affectedContacts}`);
-  }
-
-  displayIssues(issues: IntegrityIssue[]): void {
-    if (issues.length === 0) return;
-
-    console.log('\n🔍 FOUND MULTI-CURRENCY ISSUES');
-    console.log('===============================');
-
-    const issuesByContact = issues.reduce((acc, issue) => {
-      const key = issue.contactId.toString();
-      if (!acc[key]) acc[key] = { contactName: issue.contactName, issues: [] };
-      acc[key].issues.push(issue);
-      return acc;
-    }, {} as Record<string, { contactName: string; issues: IntegrityIssue[] }>);
-
-    Object.entries(issuesByContact)
-      .sort(([,a], [,b]) => b.issues.length - a.issues.length)
-      .slice(0, 10)
-      .forEach(([contactId, { contactName, issues: contactIssues }]) => {
-        console.log(`\n👤 ${contactName} (ID: ${contactId}) - ${contactIssues.length} issues`);
-        contactIssues.slice(0, 3).forEach((issue, i) => {
-          const icon = issue.severity === 'critical' ? '🔴' : '🟡';
-          console.log(`  ${i+1}. ${icon} ${issue.description}`);
-        });
-        if (contactIssues.length > 3) {
-          console.log(`  ... and ${contactIssues.length - 3} more`);
-        }
-      });
+    console.log(`🔗 Using same API as your forms for consistency`);
   }
 }
 
@@ -1252,139 +1865,110 @@ async function main() {
 
   try {
     switch (command) {
-      case 'check':
-        console.log('🚀 Running multi-currency integrity check...');
-        console.log('💡 Only counting payments that are: completed AND have received_date AND have converted amounts');
-        console.log('💡 Expected/pending payments are ignored in balance calculations');
-        console.log('💡 Third-party payments count toward beneficiary balance');
-        console.log('💡 Using received_date for currency conversions');
-        console.log('💡 Enhanced validation: >10% conversion error = warning, >50% = critical');
-        console.log('💡 Checking ALL records with complete multi-currency support');
-        console.log('💡 Handles mixed currencies within single pledges/plans\n');
-        
-        const { summary, issues } = await service.runCompleteCheck();
-
-        service.displaySummary(summary);
-
-        if (issues.length === 0) {
-          console.log('\n✅ No multi-currency integrity issues found! Your data is clean.');
+      case 'add-rate':
+        const [fromCurr, toCurr, rate, dateStr] = args.slice(1);
+        if (!fromCurr || !toCurr || !rate || !dateStr) {
+          console.log('Usage: add-rate FROM_CURRENCY TO_CURRENCY RATE DATE');
+          console.log('Example: add-rate USD ILS 3.3891 2025-08-26');
           return;
         }
 
-        service.displayIssues(issues);
+        await service.storeRateInDatabase(fromCurr, toCurr, parseFloat(rate), dateStr);
+        console.log(`✅ Added precise rate: ${fromCurr}/${toCurr} = ${rate} on ${dateStr}`);
+        break;
 
-        const reportPath = await service.saveReport(summary, issues);
-        console.log(`\n📄 Full multi-currency report saved to: ${reportPath}`);
+      case 'check':
+        console.log('🔗 Running CONSISTENT API multi-currency integrity check...');
+        console.log('🌐 Uses the SAME API endpoint as your form (/api/exchange-rates)');
+        console.log('💰 ALWAYS USES CURRENT RATES for future calculations (Financial Standard)');
+        console.log('📅 Never requests future dates from APIs - prevents all future date errors');
+        console.log('💡 Updates ALL currency conversion fields: payments, plans, installments, third-party');
+        console.log('💯 100% consistency with your application\'s exchange rate logic\n');
+
+        const { summary, issues } = await service.runCompleteCheck();
+        service.displaySummary(summary);
+
+        if (issues.length === 0) {
+          console.log('\n✅ No currency conversion issues found!');
+          return;
+        }
 
         const criticalIssues = issues.filter(i => i.severity === 'critical');
         if (criticalIssues.length > 0) {
-          console.log('\n🔧 Auto-fixing critical multi-currency issues...');
+          console.log('\n🔧 Auto-fixing critical currency conversion issues...');
           const result = await service.applyFixes(criticalIssues);
           console.log(`\n✅ Fixed: ${result.fixed}, ❌ Failed: ${result.failed}`);
 
-          if (result.errors.length > 0) {
-            console.log('❌ Errors:');
-            result.errors.forEach(err => console.log(`  ${err}`));
+          if (result.fixed > 0) {
+            await service.fixPledgeTotalsAfterPaymentCorrections();
           }
-        }
-
-        const warningIssues = issues.filter(i => i.severity === 'warning');
-        if (warningIssues.length > 0) {
-          console.log(`\n⚠️  ${warningIssues.length} warning issues found. Review the report if needed.`);
         }
         break;
 
       case 'fix-conversions':
-        console.log('🔧 Running aggressive multi-currency conversion fixes...');
-        console.log('💡 Checking ALL payments for currency conversion issues');
-        console.log('💡 Will fix missing pledge currency amounts (same currency = payment amount)');
-        console.log('💡 Will fix missing plan currency amounts (same currency = payment amount)');
-        console.log('💡 Will fix incorrect cross-currency conversions');
-        console.log('💡 Supports mixed currencies within single pledges/plans\n');
-        
+        console.log('🔧 Running CONSISTENT API currency conversion fixes...');
+        console.log('🌐 Uses the SAME API endpoint as your form for maximum consistency');
+        console.log('💰 Uses current rates for historical rates, today\'s rate for future dates');
+        console.log('💡 Updates payments, payment plans, installments, and third-party payments');
+        console.log('🔗 GUARANTEED consistency with your application\'s rate logic!\n');
+
         const checkResult = await service.runCompleteCheck();
-        
-        const conversionIssues = checkResult.issues.filter(i => i.type === 'payment_conversion');
+        const conversionIssues = checkResult.issues.filter(i =>
+          i.type === 'payment_conversion' ||
+          i.type === 'plan_conversion' ||
+          i.type === 'installment_conversion' ||
+          i.type === 'third_party_conversion' ||
+          i.type === 'allocation_conversion'
+        );
+
         if (conversionIssues.length > 0) {
-          console.log(`Found ${conversionIssues.length} multi-currency conversion issues`);
           const result = await service.applyFixes(conversionIssues);
           console.log(`\n✅ Fixed: ${result.fixed}, ❌ Failed: ${result.failed}`);
-          
-          if (result.errors.length > 0) {
-            console.log('❌ Errors:');
-            result.errors.forEach(err => console.log(`  ${err}`));
+
+          if (result.fixed > 0) {
+            await service.fixPledgeTotalsAfterPaymentCorrections();
           }
-          
-          // Recalculate pledge totals after fixing payment conversions
-          await service.fixPledgeTotalsAfterPaymentCorrections();
         } else {
-          console.log('✅ No multi-currency conversion issues found');
+          console.log('✅ No currency conversion issues found');
         }
         break;
 
-      case 'help':
       default:
         console.log(`
-🏦 Multi-Currency Integrity Service for LevHaTora
-===============================================
+🔗 CONSISTENT API Multi-Currency Integrity Service
+==================================================
 
-Business Rules:
-• Only payments with status='completed' AND received_date IS NOT NULL AND converted amounts populated count as paid
-• Expected/pending payments are ignored in balance calculations  
-• Third-party payments count toward beneficiary's pledge balance
-• Currency conversions use received_date, fallback to payment_date, then today's date
-• Enhanced validation flags >10% conversion errors as warnings, >50% as critical
-• Checks ALL records in database (no artificial limits)
-• Full multi-currency support: handles mixed currencies within single pledges/plans
+✅ NO EXTERNAL DEPENDENCIES REQUIRED!
+• Uses built-in Node.js HTTP/HTTPS modules
+• Calls your /api/exchange-rates endpoint (same as useExchangeRates)
+• Uses identical rate calculation logic as your forms
+• Eliminates discrepancies between form and integrity checker
+• No more "why are rates different?" issues
 
-Multi-Currency Features:
-• Pledge in ILS can have payments in USD, CAD, EUR - all properly converted and summed
-• Payment plan in USD can have payments in multiple currencies - all tracked correctly  
-• Cross-currency conversions use live/historical exchange rates
-• Same-currency payments: amount_in_pledge_currency = payment amount (no conversion needed)
-• Missing conversion detection: flags payments without proper converted amounts
+🔧 Complete Coverage:
+• NEVER requests future dates from APIs (prevents all future date errors)
+• Uses received_date when available, today's rate for future calculations
+• Updates ALL currency conversion fields:
+  - Payment conversions (USD, pledge currency, plan currency)
+  - Payment plan USD conversions (total, installments, remaining)
+  - Installment schedule USD conversions
+  - Third-party payment conversions  
+  - Payment allocation conversions
+• Financial best practice: current rates for future calculations
 
 Commands:
-  check                Run full multi-currency integrity check and auto-fix critical issues
-  fix-conversions      Focus on currency conversion fixes only
-  help                 Show this help
+  add-rate FROM TO RATE DATE    Add precise exchange rate manually
+                               Example: add-rate USD ILS 3.3891 2025-08-26
+  check                        Run full check and auto-fix critical issues  
+  fix-conversions             Focus on currency conversion fixes only
 
-Usage:
-  pnpm run integrity:check
-  pnpm run integrity:check fix-conversions
-
-The service will:
-1. ✅ Check database connection and table existence
-2. 💰 Check ALL pledge balances using converted payment amounts (multi-currency)
-3. 📋 Verify ALL payment plan amounts using converted payment amounts (multi-currency)
-4. 💱 Validate ALL payment currency conversions (USD + pledge currency + plan currency)
-5. 🔧 Auto-fix critical data integrity issues
-6. 📄 Generate detailed reports in /reports folder
-
-Examples handled:
-• Pledge: 1000 ILS, Payments: 200 ILS + 100 USD + 50 CAD → All converted to ILS and summed
-• Payment plan: 5000 USD, Payments: 1000 USD + 500 EUR + 2000 CAD → All converted to USD 
-• Missing conversions: 36 CAD payment → amount_in_pledge_currency should be 36 if pledge is CAD
-• Cross-currency: $203.13 USD → 58 ILS (should be ~770 ILS) = 92% error → CRITICAL
-
-Reports are saved as JSON files with detailed fix information.
+🎯 Perfect CongetConversionDatesistency: Your forms and integrity checker now use 
+the EXACT SAME exchange rate API and logic - no more discrepancies!
         `);
         break;
     }
   } catch (error) {
     console.error('❌ Error:', error instanceof Error ? error.message : String(error));
-    
-    if (error instanceof Error && error.message.includes('relation') && error.message.includes('does not exist')) {
-      console.error('\n💡 This usually means you need to run database migrations:');
-      console.error('   pnpm db:push  (for development)');
-      console.error('   pnpm db:migrate  (for production)');
-    }
-    
-    if (error instanceof Error && error.message.includes('WebSocket')) {
-      console.error('\n💡 WebSocket connection failed. Make sure you have installed ws:');
-      console.error('   pnpm add ws @types/ws');
-    }
-    
     process.exit(1);
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useQueryState } from "nuqs";
 import { z } from "zod";
 import {
@@ -23,13 +23,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Search } from "lucide-react";
+import { Search, Trash2 } from "lucide-react";
 import { LinkButton } from "../ui/next-link";
 import { useGetContacts } from "@/lib/query/useContacts";
 import ContactFormDialog from "../forms/contact-form";
 import ContactsSummaryCards from "./contact-summary";
 import { useRouter } from "next/navigation";
 import ExportDataDialog from "../export";
+import { DeleteConfirmationDialog } from "../ui/delete-confirmation-dialog";
+import { useDeleteContact } from "@/lib/mutation/useDeleteContact";
+import { ContactResponse } from "@/lib/query/useContacts";
 
 const QueryParamsSchema = z.object({
   page: z.number().min(1).default(1),
@@ -64,6 +67,11 @@ export default function ContactsTable() {
   });
 
   const router = useRouter();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [contactToDelete, setContactToDelete] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const currentPage = page ?? 1;
   const currentLimit = limit ?? 10;
@@ -77,6 +85,7 @@ export default function ContactsTable() {
   });
 
   const { data, isLoading, error } = useGetContacts(queryParams);
+  const deleteContactMutation = useDeleteContact();
 
   const summaryData = useMemo(() => {
     if (!data?.contacts) return undefined;
@@ -114,6 +123,31 @@ export default function ContactsTable() {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
+  };
+
+  const handleDeleteClick = (contact: ContactResponse, event: React.MouseEvent) => {
+    event.stopPropagation(); // Prevent row click navigation
+    setContactToDelete({
+      id: contact.id,
+      name: contact.displayName || `${contact.firstName} ${contact.lastName}`,
+    });
+    setDeleteDialogOpen(true);
+  };
+
+  const handleDeleteConfirm = () => {
+    if (contactToDelete) {
+      deleteContactMutation.mutate(contactToDelete.id, {
+        onSuccess: () => {
+          setDeleteDialogOpen(false);
+          setContactToDelete(null);
+        },
+      });
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setDeleteDialogOpen(false);
+    setContactToDelete(null);
   };
 
   if (error) {
@@ -209,7 +243,7 @@ export default function ContactsTable() {
                 Total Pledged (USD)
               </TableHead>
               <TableHead className="font-semibold text-gray-900">
-                Action
+                Actions
               </TableHead>
             </TableRow>
           </TableHeader>
@@ -264,13 +298,23 @@ export default function ContactsTable() {
                     {formatCurrency(contact.totalPledgedUsd)}
                   </TableCell>
                   <TableCell>
-                    <LinkButton
-                      variant="secondary"
-                      href={`/contacts/${contact.id}`}
-                      className="p-2 text-primary underline"
-                    >
-                      View
-                    </LinkButton>
+                    <div className="flex items-center gap-2">
+                      <LinkButton
+                        variant="secondary"
+                        href={`/contacts/${contact.id}`}
+                        className="p-2 text-primary underline"
+                      >
+                        View
+                      </LinkButton>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => handleDeleteClick(contact, e)}
+                        className="text-destructive hover:text-destructive hover:bg-destructive/10 p-2"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -311,6 +355,14 @@ export default function ContactsTable() {
           </div>
         </div>
       )}
+
+      <DeleteConfirmationDialog
+        isOpen={deleteDialogOpen}
+        onClose={handleDeleteCancel}
+        onConfirm={handleDeleteConfirm}
+        contactName={contactToDelete?.name || ""}
+        isDeleting={deleteContactMutation.isPending}
+      />
     </div>
   );
 }

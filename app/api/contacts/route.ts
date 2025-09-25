@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { eq, sql, desc, asc, like, or, ilike } from "drizzle-orm";
+import { eq, sql, desc, asc, or, ilike } from "drizzle-orm";
 import type {
   Column,
   ColumnBaseConfig,
@@ -45,7 +45,13 @@ const querySchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(10),
   search: z.string().optional(),
   sortBy: z
-    .enum(["updatedAt", "firstName", "lastName", "displayName", "totalPledgedUsd"])
+    .enum([
+      "updatedAt",
+      "firstName",
+      "lastName",
+      "displayName",
+      "totalPledgedUsd",
+    ])
     .default("updatedAt"),
   sortOrder: z.enum(["asc", "desc"]).default("desc"),
 });
@@ -75,9 +81,15 @@ export async function GET(request: NextRequest) {
     const pledgeSummary = db
       .select({
         contactId: pledge.contactId,
-        totalPledgedUsd: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`.as("totalPledgedUsd"),
-        totalPaidUsd: sql<number>`COALESCE(SUM(${pledge.totalPaidUsd}), 0)`.as("totalPaidUsd"),
-        currentBalanceUsd: sql<number>`COALESCE(SUM(${pledge.balanceUsd}), 0)`.as("currentBalanceUsd"),
+        totalPledgedUsd: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`.as(
+          "totalPledgedUsd"
+        ),
+        totalPaidUsd: sql<number>`COALESCE(SUM(${pledge.totalPaidUsd}), 0)`.as(
+          "totalPaidUsd"
+        ),
+        currentBalanceUsd: sql<number>`COALESCE(SUM(${pledge.balanceUsd}), 0)`.as(
+          "currentBalanceUsd"
+        ),
       })
       .from(pledge)
       .groupBy(pledge.contactId)
@@ -87,22 +99,37 @@ export async function GET(request: NextRequest) {
     const lastPaymentSummary = db
       .select({
         contactId: pledge.contactId,
-        lastPaymentDate: sql<Date>`MAX(${payment.paymentDate})`.as("lastPaymentDate"),
+        lastPaymentDate: sql<Date>`MAX(${payment.paymentDate})`.as(
+          "lastPaymentDate"
+        ),
       })
       .from(pledge)
       .leftJoin(payment, eq(pledge.id, payment.pledgeId))
       .groupBy(pledge.contactId)
       .as("lastPaymentSummary");
 
-    const whereClause = search
-      ? or(
-        ilike(contact.firstName, `%${search}%`),
-        ilike(contact.lastName, `%${search}%`),
-        ilike(contact.displayName, `%${search}%`),
-        ilike(contact.email, `%${search}%`),
-        like(contact.phone, `%${search}%`)
-      )
-      : undefined;
+    // ✅ Looser search: split search into words, remove punctuation, match any term (OR logic)
+    const terms = search
+      ? search
+          .replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, " ") // remove punctuation
+          .trim()
+          .split(/\s+/)
+      : [];
+
+    const whereClause =
+      terms.length > 0
+        ? terms
+            .map((term) =>
+              or(
+                ilike(contact.firstName, `%${term}%`),
+                ilike(contact.lastName, `%${term}%`),
+                ilike(contact.displayName, `%${term}%`),
+                ilike(contact.email, `%${term}%`),
+                ilike(contact.phone, `%${term}%`)
+              )
+            )
+            .reduce((acc, clause) => (acc ? or(acc, clause) : clause), undefined)
+        : undefined;
 
     const selectedFields = {
       id: contact.id,
@@ -154,7 +181,9 @@ export async function GET(request: NextRequest) {
         lastPaymentSummary.lastPaymentDate
       );
 
-    let orderByField: SQL<unknown> | Column<ColumnBaseConfig<ColumnDataType, string>, object, object>;
+    let orderByField:
+      | SQL<unknown>
+      | Column<ColumnBaseConfig<ColumnDataType, string>, object, object>;
     switch (sortBy) {
       case "updatedAt":
         orderByField = selectedFields.updatedAt;
@@ -169,7 +198,6 @@ export async function GET(request: NextRequest) {
         orderByField = selectedFields.lastName;
         break;
       case "totalPledgedUsd":
-        // ✅ Wrap in sql to make Drizzle happy with Aliased<number>
         orderByField = sql`${pledgeSummary.totalPledgedUsd}`;
         break;
       default:
