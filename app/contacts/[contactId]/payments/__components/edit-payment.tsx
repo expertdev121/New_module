@@ -3104,24 +3104,64 @@ export default function EditPaymentDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Payment Method</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(value === NO_SELECTION ? null : value)}
-                          value={field.value || NO_SELECTION}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select method..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value={NO_SELECTION}>None</SelectItem>
-                            {paymentMethods.map((method) => (
-                              <SelectItem key={method.value} value={method.value}>
-                                {method.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value
+                                  ? paymentMethods.find((method) => method.value === field.value)?.label
+                                  : "Select method..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search payment methods..." />
+                              <CommandList>
+                                <CommandEmpty>No payment method found.</CommandEmpty>
+                                <CommandGroup>
+                                  <CommandItem
+                                    value="none"
+                                    onSelect={() => field.onChange(null)}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        !field.value ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    None
+                                  </CommandItem>
+                                  {paymentMethods.map((method) => (
+                                    <CommandItem
+                                      key={method.value}
+                                      value={method.value}
+                                      onSelect={() => {
+                                        field.onChange(method.value);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          field.value === method.value ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {method.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -3133,24 +3173,64 @@ export default function EditPaymentDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Method Detail</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(value === NO_SELECTION ? null : value)}
-                          value={field.value || NO_SELECTION}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select detail..." />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value={NO_SELECTION}>None</SelectItem>
-                            {methodDetails.map((detail) => (
-                              <SelectItem key={detail.value} value={detail.value}>
-                                {detail.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {field.value
+                                  ? methodDetails.find((detail) => detail.value === field.value)?.label
+                                  : "Select detail..."}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search method details..." />
+                              <CommandList>
+                                <CommandEmpty>No method detail found.</CommandEmpty>
+                                <CommandGroup>
+                                  <CommandItem
+                                    value="none"
+                                    onSelect={() => field.onChange(null)}
+                                  >
+                                    <Check
+                                      className={cn(
+                                        "mr-2 h-4 w-4",
+                                        !field.value ? "opacity-100" : "opacity-0"
+                                      )}
+                                    />
+                                    None
+                                  </CommandItem>
+                                  {methodDetails.map((detail) => (
+                                    <CommandItem
+                                      key={detail.value}
+                                      value={detail.value}
+                                      onSelect={() => {
+                                        field.onChange(detail.value);
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          field.value === detail.value ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                      {detail.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
                         <FormMessage />
                       </FormItem>
                     )}

@@ -8,33 +8,33 @@ export interface PaymentQueryParams {
   limit?: number;
   search?: string;
   paymentMethod?:
-    | "ach"
-    | "bill_pay"
-    | "cash"
-    | "check"
-    | "credit"
-    | "credit_card"
-    | "expected"
-    | "goods_and_services"
-    | "matching_funds"
-    | "money_order"
-    | "p2p"
-    | "pending"
-    | "refund"
-    | "scholarship"
-    | "stock"
-    | "student_portion"
-    | "unknown"
-    | "wire"
-    | "xfer";
+  | "ach"
+  | "bill_pay"
+  | "cash"
+  | "check"
+  | "credit"
+  | "credit_card"
+  | "expected"
+  | "goods_and_services"
+  | "matching_funds"
+  | "money_order"
+  | "p2p"
+  | "pending"
+  | "refund"
+  | "scholarship"
+  | "stock"
+  | "student_portion"
+  | "unknown"
+  | "wire"
+  | "xfer";
   paymentStatus?:
-    | "pending"
-    | "expected"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "refunded"
-    | "processing";
+  | "pending"
+  | "expected"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "refunded"
+  | "processing";
   startDate?: string;
   endDate?: string;
   hasSolicitor?: boolean;
@@ -42,7 +42,7 @@ export interface PaymentQueryParams {
 
 export interface Payment {
   id: number;
-  contactId?:number;
+  contactId?: number;
   pledgeId: number;
   paymentPlanId: number | null;
   installmentScheduleId: number | null;
@@ -75,12 +75,14 @@ export interface Payment {
   solicitorName?: string | null;
   isSplitPayment: boolean;
   allocations: PaymentAllocation[];
-  allocationCount:number;
-  account?:string;
+  allocationCount: number;
+  account?: string;
   isThirdPartyPayment?: boolean;
   payerContactId?: number | null;
+  pledgeOwnerId?: number | null;
   payerContactName?: string | null;
-    pledgeOwnerName?: string | null;
+  pledgeOwnerName?: string | null;
+  
 }
 
 export interface PaymentAllocation {
@@ -93,7 +95,7 @@ export interface PaymentAllocation {
   allocatedAmountUsd: string | undefined;
   allocatedAmountInPledgeCurrency?: string | number | null;
   notes: string | null;
-   receiptNumber: string | null;
+  receiptNumber: string | null;
   receiptType: string | null;
   receiptIssued: boolean;
   amountInPledgeCurrency?: string | null;
@@ -107,7 +109,7 @@ export interface PaymentAllocation {
     currency: string;
   };
   pledgeDescription?: string;
-    pledgeOwnerName?: string | null;
+  pledgeOwnerName?: string | null;
 }
 
 export interface PaymentsResponse {
@@ -142,32 +144,32 @@ export interface CreatePaymentData {
   paymentDate: string;
   receivedDate?: string;
   paymentMethod:
-    | "ach"
-    | "bill_pay"
-    | "cash"
-    | "check"
-    | "credit"
-    | "credit_card"
-    | "expected"
-    | "goods_and_services"
-    | "matching_funds"
-    | "money_order"
-    | "p2p"
-    | "pending"
-    | "refund"
-    | "scholarship"
-    | "stock"
-    | "student_portion"
-    | "unknown"
-    | "wire"
-    | "xfer";
+  | "ach"
+  | "bill_pay"
+  | "cash"
+  | "check"
+  | "credit"
+  | "credit_card"
+  | "expected"
+  | "goods_and_services"
+  | "matching_funds"
+  | "money_order"
+  | "p2p"
+  | "pending"
+  | "refund"
+  | "scholarship"
+  | "stock"
+  | "student_portion"
+  | "unknown"
+  | "wire"
+  | "xfer";
   paymentStatus?:
-    | "pending"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "refunded"
-    | "processing";
+  | "pending"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "refunded"
+  | "processing";
   referenceNumber?: string;
   checkNumber?: string;
   receiptNumber?: string;
@@ -185,7 +187,7 @@ export interface CreatePaymentData {
 
   isThirdPartyPayment?: boolean;
   payerContactId?: number | null;
-    pledgeOwnerName?: string | null;
+  pledgeOwnerName?: string | null;
 }
 
 export interface CreatePaymentResponse {
@@ -202,32 +204,32 @@ export interface UpdatePaymentData {
   paymentDate?: string;
   receivedDate?: string;
   paymentMethod?:
-    | "ach"
-    | "bill_pay"
-    | "cash"
-    | "check"
-    | "credit"
-    | "credit_card"
-    | "expected"
-    | "goods_and_services"
-    | "matching_funds"
-    | "money_order"
-    | "p2p"
-    | "pending"
-    | "refund"
-    | "scholarship"
-    | "stock"
-    | "student_portion"
-    | "unknown"
-    | "wire"
-    | "xfer";
+  | "ach"
+  | "bill_pay"
+  | "cash"
+  | "check"
+  | "credit"
+  | "credit_card"
+  | "expected"
+  | "goods_and_services"
+  | "matching_funds"
+  | "money_order"
+  | "p2p"
+  | "pending"
+  | "refund"
+  | "scholarship"
+  | "stock"
+  | "student_portion"
+  | "unknown"
+  | "wire"
+  | "xfer";
   paymentStatus?:
-    | "pending"
-    | "completed"
-    | "failed"
-    | "cancelled"
-    | "refunded"
-    | "processing";
+  | "pending"
+  | "completed"
+  | "failed"
+  | "cancelled"
+  | "refunded"
+  | "processing";
   referenceNumber?: string;
   checkNumber?: string;
   receiptNumber?: string;
@@ -245,7 +247,7 @@ export interface UpdatePaymentData {
 
   isThirdPartyPayment?: boolean;
   payerContactId?: number | null;
-    pledgeOwnerName?: string | null;
+  pledgeOwnerName?: string | null;
 }
 
 export interface UpdatePaymentResponse {

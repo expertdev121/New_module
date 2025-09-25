@@ -30,14 +30,16 @@ export async function GET(request: NextRequest) {
         id: contact.id,
         firstName: contact.firstName,
         lastName: contact.lastName,
+        displayName: contact.displayName,
         email: contact.email,
-        fullName: sql<string>`concat(${contact.firstName}, ' ', ${contact.lastName})`.as('fullName'),
+        fullName: sql<string>`coalesce(${contact.displayName}, concat(${contact.firstName}, ' ', ${contact.lastName}))`.as('fullName'),
       })
       .from(contact)
       .where(
         or(
           ilike(contact.firstName, `%${searchTerm}%`),
           ilike(contact.lastName, `%${searchTerm}%`),
+          ilike(contact.displayName, `%${searchTerm}%`),
           ilike(contact.email, `%${searchTerm}%`),
           ilike(sql`concat(${contact.firstName}, ' ', ${contact.lastName})`, `%${searchTerm}%`)
         )
