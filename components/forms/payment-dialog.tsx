@@ -867,7 +867,7 @@ export default function PaymentFormDialog({
       // For single payments, determine the payer
       // If third-party is enabled, use the selected contact or current user
       const actualPayerId = isThirdParty 
-        ? (selectedThirdPartyContact?.id || contactId)
+        ? (contactId)
         : undefined;
 
       const paymentPayload = {

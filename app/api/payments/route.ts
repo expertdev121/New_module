@@ -589,7 +589,7 @@ export async function POST(request: NextRequest) {
       if (payerContactId) {
         actualPayerContactId = payerContactId;
       } else if (thirdPartyContactId) {
-        actualPayerContactId = thirdPartyContactId;
+        actualPayerContactId = payerContactId;
       }
     }
 

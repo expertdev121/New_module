@@ -496,9 +496,9 @@ export default function EditPaymentDialog({
 
   const existingThirdPartyContactId = payment.thirdPartyContactId || null;
 
-  // NEW: Get pledge details with contact info for third-party payments
   const { data: pledgeWithContactData, isLoading: isLoadingPledgeWithContact } = usePledgeWithContact(
-    isExistingThirdPartyPayment && payment.pledgeId ? payment.pledgeId : null
+    // Trigger for any existing third-party payment with a pledge, not just multi-contact
+    (isExistingThirdPartyPayment || isExistingMultiContactPayment) && payment.pledgeId ? payment.pledgeId : null
   );
 
   // Fetch third-party contact details if not available from pledge data
@@ -891,6 +891,49 @@ export default function EditPaymentDialog({
       staleTime: 5 * 60 * 1000, // 5 minutes
     });
   };
+  useEffect(() => {
+    if (open) {
+      console.log("Dialog opened, initializing states");
+      console.log("isExistingThirdPartyPayment:", isExistingThirdPartyPayment);
+      console.log("isExistingMultiContactPayment:", isExistingMultiContactPayment);
+      console.log("payment.pledgeId:", payment.pledgeId);
+      console.log("payment.thirdPartyContactId:", payment.thirdPartyContactId);
+
+      // Set initial toggle states
+      if (isExistingMultiContactPayment) {
+        setShowMultiContactSection(true);
+        form.setValue("isMultiContactPayment", true);
+        form.setValue("isSplitPayment", true);
+      }
+
+      if (isExistingThirdPartyPayment) {
+        form.setValue("isThirdPartyPayment", true);
+        // For regular third-party payments (not multi-contact), ensure pledge is set
+        if (payment.pledgeId && !isExistingMultiContactPayment) {
+          form.setValue("pledgeId", payment.pledgeId);
+          console.log("Set pledgeId for third-party payment:", payment.pledgeId);
+        }
+      }
+    }
+  }, [
+    open,
+    isExistingMultiContactPayment,
+    isExistingThirdPartyPayment,
+    payment.pledgeId,
+    payment.thirdPartyContactId,
+    form
+  ]);
+
+  useEffect(() => {
+    if (isExistingThirdPartyPayment && selectedThirdPartyContact && payment.pledgeId) {
+      const currentPledgeId = form.watch('pledgeId');
+      if (!currentPledgeId || currentPledgeId !== payment.pledgeId) {
+        console.log('Setting pledge for third-party payment:', payment.pledgeId);
+        console.log('Selected third-party contact:', selectedThirdPartyContact.fullName || `${selectedThirdPartyContact.firstName} ${selectedThirdPartyContact.lastName}`);
+        form.setValue('pledgeId', payment.pledgeId);
+      }
+    }
+  }, [isExistingThirdPartyPayment, selectedThirdPartyContact, payment.pledgeId, form]);
 
   // Fixed dialog open effect to ensure proper initialization
   useEffect(() => {
@@ -913,28 +956,89 @@ export default function EditPaymentDialog({
     }
   }, [open, internalOpen, isExistingMultiContactPayment, isExistingThirdPartyPayment, form]);
 
-  // Fixed third-party contact initialization
   useEffect(() => {
-    if (isExistingThirdPartyPayment && payment.thirdPartyContactId && !selectedThirdPartyContact) {
-      // First try to get from existing contacts data if available
-      if (existingContactsData?.contacts) {
-        const thirdPartyContact = existingContactsData.contacts.find(c => c.id === payment.thirdPartyContactId);
-        if (thirdPartyContact) {
-          setSelectedThirdPartyContact(thirdPartyContact);
-          form.setValue("thirdPartyContactId", thirdPartyContact.id);
-          return;
+    // Initialize third-party contact for existing third-party payments
+    // Check for either explicit thirdPartyContactId OR pledge data (for legacy third-party payments)
+    if (isExistingThirdPartyPayment && !selectedThirdPartyContact) {
+      const initializeThirdPartyContact = async () => {
+        try {
+          let contactToSet: Contact | null = null;
+          let contactId: number | null = null;
+
+          console.log('Initializing third-party contact...');
+          console.log('payment.thirdPartyContactId:', payment.thirdPartyContactId);
+          console.log('payment.pledgeId:', payment.pledgeId);
+          console.log('pledgeWithContactData:', pledgeWithContactData);
+
+          // Primary: Try from pledge contact data if payment has a pledge
+          if (payment.pledgeId && pledgeWithContactData?.contact) {
+            console.log('Using contact from pledge data:', pledgeWithContactData.contact);
+            contactToSet = pledgeWithContactData.contact;
+            contactId = pledgeWithContactData.contact.id;
+          }
+
+          // Secondary: Use explicit thirdPartyContactId if available
+          if (!contactToSet && payment.thirdPartyContactId) {
+            contactId = payment.thirdPartyContactId;
+            // Try from existing contacts data first
+            if (existingContactsData?.contacts) {
+              contactToSet = existingContactsData.contacts.find(c => c.id === payment.thirdPartyContactId) || null;
+              if (contactToSet) {
+                console.log('Using contact from existing contacts data:', contactToSet);
+              }
+            }
+          }
+
+          // Tertiary: Fetch from API if we have a contact ID but no contact object
+          if (!contactToSet && contactId) {
+            console.log('Fetching third-party contact from API:', contactId);
+            const response = await fetch(`/api/contacts/${contactId}`);
+            if (response.ok) {
+              const data = await response.json();
+              contactToSet = data.contact;
+              console.log('Fetched contact from API:', contactToSet);
+            }
+          }
+
+          // Set the contact if found
+          if (contactToSet) {
+            setSelectedThirdPartyContact(contactToSet);
+            form.setValue('thirdPartyContactId', contactToSet.id);
+            console.log('Successfully set third-party contact:', contactToSet.fullName || `${contactToSet.firstName} ${contactToSet.lastName}`);
+
+            // For legacy third-party payments, also set the payerContactId to the current contact
+            if (!payment.thirdPartyContactId && !payment.payerContactId) {
+              form.setValue('payerContactId', contactId || null);
+              console.log('Set payer contact ID for legacy third-party payment');
+            }
+          } else {
+            console.warn('Failed to find third-party contact. ContactId:', contactId);
+          }
+
+        } catch (error) {
+          console.error('Failed to initialize third-party contact:', error);
         }
-      }
+      };
 
-      // Fallback to pledge contact data
-      if (pledgeWithContactData?.contact) {
-        const thirdPartyContact = pledgeWithContactData.contact;
-        setSelectedThirdPartyContact(thirdPartyContact);
-        form.setValue("thirdPartyContactId", thirdPartyContact.id);
-      }
+      initializeThirdPartyContact();
     }
-  }, [isExistingThirdPartyPayment, payment.thirdPartyContactId, selectedThirdPartyContact, existingContactsData?.contacts, pledgeWithContactData, form]);
+  }, [
+    isExistingThirdPartyPayment,
+    payment.thirdPartyContactId,
+    payment.payerContactId,
+    selectedThirdPartyContact,
+    payment.pledgeId,
+    pledgeWithContactData?.contact,
+    existingContactsData?.contacts,
+    form
+  ]);
 
+  useEffect(() => {
+    if (isExistingThirdPartyPayment && selectedThirdPartyContact && payment.pledgeId && !form.watch('pledgeId')) {
+      console.log('Setting pledge for third-party payment:', payment.pledgeId);
+      form.setValue('pledgeId', payment.pledgeId);
+    }
+  }, [isExistingThirdPartyPayment, selectedThirdPartyContact, payment.pledgeId, form]);
   // Effect to clear pledge selection when third-party contact changes
   useEffect(() => {
     if (watchedIsThirdParty && !isExistingThirdPartyPayment && !isExistingMultiContactPayment) {
@@ -1517,186 +1621,186 @@ export default function EditPaymentDialog({
     return pledge?.currency || null;
   }, [watchedPledgeId, pledgesData?.pledges]);
 
- const onSubmit = async (data: EditPaymentFormData) => {
-  console.log('=== onSubmit called ===');
-  console.log('showMultiContactSection:', showMultiContactSection);
-  console.log('data:', data);
-  console.log('multiContactAllocations:', multiContactAllocations);
-  console.log('data.allocations:', data.allocations);
+  const onSubmit = async (data: EditPaymentFormData) => {
+    console.log('=== onSubmit called ===');
+    console.log('showMultiContactSection:', showMultiContactSection);
+    console.log('data:', data);
+    console.log('multiContactAllocations:', multiContactAllocations);
+    console.log('data.allocations:', data.allocations);
 
-  try {
-    if (showMultiContactSection) {
-      // Handle multi-contact payment validation
-      if (!areAllocationsValid) {
-        toast.error('Multi-contact payment allocation amounts must equal the total payment amount');
-        return;
-      }
-
-      // Transform multiContactAllocations to match backend schema
-      const transformedAllocations = multiContactAllocations.reduce((acc, allocation) => {
-        // Find existing contact group or create new one
-        let contactGroup = acc.find(group => group.contactId === allocation.contactId);
-        
-        if (!contactGroup) {
-          // Get contact name from various sources
-          let contactName = 'Unknown Contact';
-          
-          // First try multiContactOptions
-          const contactOption = multiContactOptions.find(c => c.id === allocation.contactId);
-          if (contactOption) {
-            contactName = contactOption.label || contactOption.fullName;
-          } else {
-            // Try existingContactsData
-            const existingContact = existingContactsData?.contacts?.find((c: Contact) => c.id === allocation.contactId);
-            if (existingContact) {
-              contactName = existingContact.displayName || `${existingContact.firstName} ${existingContact.lastName}`;
-            } else {
-              // Try allPledgesData for contact info
-              const pledgeWithContact = allPledgesData.find(p => p.contactId === allocation.contactId || p.contact?.id === allocation.contactId);
-              if (pledgeWithContact?.contact) {
-                contactName = pledgeWithContact.contact.fullName || `${pledgeWithContact.contact.firstName || ''} ${pledgeWithContact.contact.lastName || ''}`.trim();
-              }
-            }
-          }
-          
-          contactGroup = {
-            contactId: allocation.contactId,
-            contactName: contactName,
-            pledges: []
-          };
-          acc.push(contactGroup);
+    try {
+      if (showMultiContactSection) {
+        // Handle multi-contact payment validation
+        if (!areAllocationsValid) {
+          toast.error('Multi-contact payment allocation amounts must equal the total payment amount');
+          return;
         }
 
-        // Get pledge details
-        const pledge = allPledgesData?.find(p => p.id === allocation.pledgeId);
-        
-        // Add pledge to the contact group
-        contactGroup.pledges.push({
-          pledgeId: allocation.pledgeId,
-          pledgeDescription: pledge?.description || `Pledge ${allocation.pledgeId}`,
-          currency: pledge?.currency || payment.currency,
-          balance: pledge ? parseFloat(pledge.balance.toString()) : 0,
-          allocatedAmount: allocation.allocatedAmount
-        });
+        // Transform multiContactAllocations to match backend schema
+        const transformedAllocations = multiContactAllocations.reduce((acc, allocation) => {
+          // Find existing contact group or create new one
+          let contactGroup = acc.find(group => group.contactId === allocation.contactId);
 
-        return acc;
-      }, [] as Array<{
-        contactId: number;
-        contactName: string;
-        pledges: Array<{
-          pledgeId: number;
-          pledgeDescription: string;
-          currency: string;
-          balance: number;
-          allocatedAmount: number;
-        }>;
-      }>);
+          if (!contactGroup) {
+            // Get contact name from various sources
+            let contactName = 'Unknown Contact';
 
-      const multiContactPayload = {
-        ...data,
-        isMultiContactPayment: true,
-        multiContactAllocations: transformedAllocations,
-        // Clear regular allocations for multi-contact payments
-        allocations: [],
-      };
+            // First try multiContactOptions
+            const contactOption = multiContactOptions.find(c => c.id === allocation.contactId);
+            if (contactOption) {
+              contactName = contactOption.label || contactOption.fullName;
+            } else {
+              // Try existingContactsData
+              const existingContact = existingContactsData?.contacts?.find((c: Contact) => c.id === allocation.contactId);
+              if (existingContact) {
+                contactName = existingContact.displayName || `${existingContact.firstName} ${existingContact.lastName}`;
+              } else {
+                // Try allPledgesData for contact info
+                const pledgeWithContact = allPledgesData.find(p => p.contactId === allocation.contactId || p.contact?.id === allocation.contactId);
+                if (pledgeWithContact?.contact) {
+                  contactName = pledgeWithContact.contact.fullName || `${pledgeWithContact.contact.firstName || ''} ${pledgeWithContact.contact.lastName || ''}`.trim();
+                }
+              }
+            }
 
-      console.log('Submitting multi-contact payload:', multiContactPayload);
-      console.log('Transformed allocations:', transformedAllocations);
-      await updatePaymentMutation.mutateAsync(multiContactPayload as any);
+            contactGroup = {
+              contactId: allocation.contactId,
+              contactName: contactName,
+              pledges: []
+            };
+            acc.push(contactGroup);
+          }
 
-    } else if (watchedIsSplitPayment) {
-      // Handle split payment validation
-      if (!areAllocationCurrenciesValid()) {
-        toast.error("All allocation currencies must match the payment currency");
-        return;
-      }
+          // Get pledge details
+          const pledge = allPledgesData?.find(p => p.id === allocation.pledgeId);
 
-      // For split payments, process allocations
-      const processedAllocations = watchedAllocations && watchedAllocations.length > 0
-        ? watchedAllocations.map((alloc) => ({
-          ...alloc,
-          allocatedAmount: alloc.allocatedAmount || 0,
-          currency: watchedCurrency || payment.currency,
-          receiptNumber: alloc.receiptNumber || null,
-          receiptType: alloc.receiptType || null,
-          receiptIssued: alloc.receiptIssued || false,
-        }))
-        : [];
+          // Add pledge to the contact group
+          contactGroup.pledges.push({
+            pledgeId: allocation.pledgeId,
+            pledgeDescription: pledge?.description || `Pledge ${allocation.pledgeId}`,
+            currency: pledge?.currency || payment.currency,
+            balance: pledge ? parseFloat(pledge.balance.toString()) : 0,
+            allocatedAmount: allocation.allocatedAmount
+          });
 
-      const updateData = {
-        ...data,
-        allocations: processedAllocations,
-        isThirdPartyPayment: watchedIsThirdParty,
-        thirdPartyContactId: watchedIsThirdParty ? (selectedThirdPartyContact?.id || null) : null,
-        payerContactId: watchedIsThirdParty ? (contactId || null) : null,
-      };
+          return acc;
+        }, [] as Array<{
+          contactId: number;
+          contactName: string;
+          pledges: Array<{
+            pledgeId: number;
+            pledgeDescription: string;
+            currency: string;
+            balance: number;
+            allocatedAmount: number;
+          }>;
+        }>);
 
-      console.log('Submitting split payment:', updateData);
-      await updatePaymentMutation.mutateAsync(updateData as any);
+        const multiContactPayload = {
+          ...data,
+          isMultiContactPayment: true,
+          multiContactAllocations: transformedAllocations,
+          // Clear regular allocations for multi-contact payments
+          allocations: [],
+        };
 
-    } else {
-      // For non-split payments, ensure a pledge is selected
-      if (!data.pledgeId) {
-        toast.error("Please select a pledge for the payment");
-        return;
-      }
+        console.log('Submitting multi-contact payload:', multiContactPayload);
+        console.log('Transformed allocations:', transformedAllocations);
+        await updatePaymentMutation.mutateAsync(multiContactPayload as any);
 
-      const isThirdParty = !!(data.isThirdPartyPayment && selectedThirdPartyContact);
+      } else if (watchedIsSplitPayment) {
+        // Handle split payment validation
+        if (!areAllocationCurrenciesValid()) {
+          toast.error("All allocation currencies must match the payment currency");
+          return;
+        }
 
-      // Build base payload with third-party fields
-      const basePayload = {
-        ...data,
-        isThirdPartyPayment: isThirdParty,
-        thirdPartyContactId: isThirdParty ? (selectedThirdPartyContact?.id || null) : null,
-        payerContactId: isThirdParty ? (contactId || null) : null,
-      };
+        // For split payments, process allocations
+        const processedAllocations = watchedAllocations && watchedAllocations.length > 0
+          ? watchedAllocations.map((alloc) => ({
+            ...alloc,
+            allocatedAmount: alloc.allocatedAmount || 0,
+            currency: watchedCurrency || payment.currency,
+            receiptNumber: alloc.receiptNumber || null,
+            receiptType: alloc.receiptType || null,
+            receiptIssued: alloc.receiptIssued || false,
+          }))
+          : [];
 
-      if (isPaymentPlanPayment) {
-        // For payment plan payments, allow amount changes but warn about installment impact
-        const allowedUpdates = { ...basePayload };
-        // Remove undefined or empty fields
-        const filteredData = Object.fromEntries(
-          Object.entries(allowedUpdates).filter(([key, val]) => {
-            // Keep essential fields even if they're falsy
-            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment', 'isMultiContactPayment'].includes(key)) return true;
-            return val !== undefined && val !== null && val !== '';
-          })
-        );
+        const updateData = {
+          ...data,
+          allocations: processedAllocations,
+          isThirdPartyPayment: watchedIsThirdParty,
+          thirdPartyContactId: watchedIsThirdParty ? (selectedThirdPartyContact?.id || null) : null,
+          payerContactId: watchedIsThirdParty ? (contactId || null) : null,
+        };
 
-        console.log('Submitting payment plan payment:', filteredData);
-        await updatePaymentMutation.mutateAsync(filteredData as any);
+        console.log('Submitting split payment:', updateData);
+        await updatePaymentMutation.mutateAsync(updateData as any);
 
       } else {
-        // Remove undefined or empty fields for regular payments
-        const filteredData = Object.fromEntries(
-          Object.entries(basePayload).filter(([key, val]) => {
-            if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment', 'isMultiContactPayment'].includes(key)) return true;
-            return val !== undefined && val !== null && val !== '';
-          })
-        );
+        // For non-split payments, ensure a pledge is selected
+        if (!data.pledgeId) {
+          toast.error("Please select a pledge for the payment");
+          return;
+        }
 
-        console.log('Submitting regular payment:', filteredData);
-        await updatePaymentMutation.mutateAsync(filteredData as any);
+        const isThirdParty = !!(data.isThirdPartyPayment && selectedThirdPartyContact);
+
+        // Build base payload with third-party fields
+        const basePayload = {
+          ...data,
+          isThirdPartyPayment: isThirdParty,
+          thirdPartyContactId: isThirdParty ? (selectedThirdPartyContact?.id || null) : null,
+          payerContactId: isThirdParty ? (contactId || null) : null,
+        };
+
+        if (isPaymentPlanPayment) {
+          // For payment plan payments, allow amount changes but warn about installment impact
+          const allowedUpdates = { ...basePayload };
+          // Remove undefined or empty fields
+          const filteredData = Object.fromEntries(
+            Object.entries(allowedUpdates).filter(([key, val]) => {
+              // Keep essential fields even if they're falsy
+              if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment', 'isMultiContactPayment'].includes(key)) return true;
+              return val !== undefined && val !== null && val !== '';
+            })
+          );
+
+          console.log('Submitting payment plan payment:', filteredData);
+          await updatePaymentMutation.mutateAsync(filteredData as any);
+
+        } else {
+          // Remove undefined or empty fields for regular payments
+          const filteredData = Object.fromEntries(
+            Object.entries(basePayload).filter(([key, val]) => {
+              if (['receiptIssued', 'autoAdjustAllocations', 'isSplitPayment', 'isThirdPartyPayment', 'isMultiContactPayment'].includes(key)) return true;
+              return val !== undefined && val !== null && val !== '';
+            })
+          );
+
+          console.log('Submitting regular payment:', filteredData);
+          await updatePaymentMutation.mutateAsync(filteredData as any);
+        }
       }
+
+      // Success handling
+      const paymentType = showMultiContactSection
+        ? "Multi-contact payment"
+        : watchedIsThirdParty
+          ? "Third-party payment"
+          : "Payment";
+      const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
+
+      console.log('Payment update successful');
+      toast.success(`${paymentType}${target} updated successfully!`);
+      setOpen(false);
+
+    } catch (error) {
+      console.error('Payment update error:', error);
+      toast.error(error instanceof Error ? error.message : "Failed to update payment");
     }
-
-    // Success handling
-    const paymentType = showMultiContactSection
-      ? "Multi-contact payment"
-      : watchedIsThirdParty
-        ? "Third-party payment"
-        : "Payment";
-    const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
-
-    console.log('Payment update successful');
-    toast.success(`${paymentType}${target} updated successfully!`);
-    setOpen(false);
-
-  } catch (error) {
-    console.error('Payment update error:', error);
-    toast.error(error instanceof Error ? error.message : "Failed to update payment");
-  }
-};
+  };
 
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -1923,6 +2027,11 @@ export default function EditPaymentDialog({
               {watchedIsThirdParty && selectedThirdPartyContact ? (
                 <div>
                   Editing payment for <strong>{selectedThirdPartyContact.displayName || `${selectedThirdPartyContact.firstName} ${selectedThirdPartyContact.lastName}`}</strong>
+                  {payment.pledgeId && (
+                    <span className="block mt-1 text-sm text-blue-600">
+                      Pledge: #{payment.pledgeId} - {payment.pledgeDescription || "No description"}
+                    </span>
+                  )}
                   <span className="block mt-1 text-sm text-muted-foreground">
                     This payment will appear in your account but apply to their pledge balance
                   </span>
@@ -2204,13 +2313,22 @@ export default function EditPaymentDialog({
                       <p>
                         You&apos;re making this payment, but it will be allocated to another contact&apos;s pledges.
                       </p>
+                      {selectedThirdPartyContact && (
+                        <div className="mt-2 p-2 bg-blue-100 rounded border border-blue-300">
+                          <p className="font-medium">Selected Contact:</p>
+                          <p>{selectedThirdPartyContact.displayName || `${selectedThirdPartyContact.firstName} ${selectedThirdPartyContact.lastName}`}</p>
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-1 gap-4">
-                      {/* Contact Search */}
+                      {/* Contact Search - with current selection display */}
                       <div className="relative">
                         <label className="text-sm font-medium mb-2 block">
                           Select Contact (who benefits from this payment)
+                          {isExistingThirdPartyPayment && selectedThirdPartyContact && (
+                            <span className="text-xs text-blue-600 ml-1">(Currently selected from existing payment)</span>
+                          )}
                         </label>
                         <Popover>
                           <PopoverTrigger asChild>
@@ -2223,8 +2341,10 @@ export default function EditPaymentDialog({
                               )}
                             >
                               {selectedThirdPartyContact
-                                ? (selectedThirdPartyContact.displayName || `${selectedThirdPartyContact.firstName} ${selectedThirdPartyContact.lastName}`)
-                                : "Search and select contact..."}
+                                ? (selectedThirdPartyContact.displayName ||
+                                  `${selectedThirdPartyContact.firstName} ${selectedThirdPartyContact.lastName}`)
+                                : "Search and select contact..."
+                              }
                               <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                           </PopoverTrigger>
@@ -2241,34 +2361,36 @@ export default function EditPaymentDialog({
                                     ? "Type at least 2 characters to search..."
                                     : isLoadingContacts
                                       ? "Loading..."
-                                      : "No contacts found."}
+                                      : "No contacts found."
+                                  }
                                 </CommandEmpty>
-                                <CommandGroup>
-                                  {contactOptions.map((contact) => (
-                                    <CommandItem
-                                      key={contact.value}
-                                      onSelect={() => handleContactSelect(contact)}
-                                      className="flex items-center justify-between"
-                                    >
-                                      <div className="flex items-center">
-                                        <Check
-                                          className={cn(
-                                            "mr-2 h-4 w-4",
-                                            selectedThirdPartyContact?.id === contact.value
-                                              ? "opacity-100"
-                                              : "opacity-0"
-                                          )}
-                                        />
-                                        <div>
-                                          <div className="font-medium">{contact.label}</div>
-                                          <div className="text-sm text-gray-500">
-                                            ID: {contact.id}
+                                {contactOptions && contactOptions.length > 0 && (
+                                  <CommandGroup>
+                                    {contactOptions.map((contact) => (
+                                      <CommandItem
+                                        key={`contact-${contact.value}`}
+                                        value={contact.label}
+                                        onSelect={() => handleContactSelect(contact)}
+                                        className="flex items-center justify-between"
+                                      >
+                                        <div className="flex items-center">
+                                          <Check
+                                            className={cn(
+                                              "mr-2 h-4 w-4",
+                                              selectedThirdPartyContact?.id === contact.value
+                                                ? "opacity-100"
+                                                : "opacity-0"
+                                            )}
+                                          />
+                                          <div>
+                                            <div className="font-medium">{contact.label}</div>
+                                            <div className="text-sm text-gray-500">ID: {contact.id}</div>
                                           </div>
                                         </div>
-                                      </div>
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
+                                      </CommandItem>
+                                    ))}
+                                  </CommandGroup>
+                                )}
                               </CommandList>
                             </Command>
                           </PopoverContent>

@@ -208,12 +208,12 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
       // Check if it's multi-contact
       const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
       const isMultiContact = uniqueContacts.size > 1;
-      
+
       return (
         <div className="flex flex-col gap-1">
-          <div className={`flex items-center gap-1 ${isMultiContact ? 'text-green-600' : 'text-purple-600'}`}>
+          <div className="flex items-center gap-1 text-green-600">
             {isMultiContact ? <Users className="h-4 w-4" /> : <Split className="h-4 w-4" />}
-            <span className="text-xs font-medium">{isMultiContact ? 'Multi' : 'Split'}</span>
+            <span className="text-xs font-medium">{isMultiContact ? "Multi" : "Split"}</span>
           </div>
           <SplitPaymentBadge payment={payment} />
         </div>
@@ -232,6 +232,17 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
       );
     }
 
+    // Check for third party payments
+    if (payment.isThirdPartyPayment) {
+      return (
+        <div className="flex items-center gap-1 text-orange-600">
+          <Users className="h-4 w-4" />
+          <span className="text-xs font-medium">Third Party</span>
+        </div>
+      );
+    }
+
+    // Default to direct
     return (
       <div className="flex items-center gap-1 text-green-600">
         <CreditCard className="h-4 w-4" />
@@ -239,6 +250,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
       </div>
     );
   };
+
 
   // Payment Status Badge Component
   const PaymentStatusBadge = ({ status }: { status: string }) => {
@@ -438,13 +450,13 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
       const currencyGroups = payment.allocations.reduce((acc, allocation) => {
         const pledgeCurrency = allocation.pledge?.currency || allocation.pledgeCurrency || 'USD';
         const amount = parseFloat(allocation.allocatedAmountInPledgeCurrency?.toString() || '0');
-        
+
         if (acc[pledgeCurrency]) {
           acc[pledgeCurrency] += amount;
         } else {
           acc[pledgeCurrency] = amount;
         }
-        
+
         return acc;
       }, {} as Record<string, number>);
 
@@ -464,7 +476,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
           const formatted = formatCurrency(currencyGroups[currency].toString(), currency);
           return `${formatted.symbol}${formatted.amount}`;
         }).join(' + ');
-        
+
         return {
           amount: formattedAmounts,
           currency: 'MULTI',
@@ -788,7 +800,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       </div>
                                     </div>
                                   )}
-                                  
+
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Status:
@@ -886,8 +898,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Receipt Issued:
                                     </span>
                                     <span className={`font-medium ${payment.receiptIssued
-                                        ? "text-green-600"
-                                        : "text-red-600"
+                                      ? "text-green-600"
+                                      : "text-red-600"
                                       }`}
                                     >
                                       {payment.receiptIssued ? "Yes" : "No"}
@@ -946,7 +958,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   // Check if it's multi-contact by unique pledge owners
                                   const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
                                   const isMultiContact = uniqueContacts.size > 1;
-                                  
+
                                   return (
                                     <>
                                       <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
@@ -965,7 +977,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                           {payment.allocations.length} allocations
                                         </Badge>
                                       </h4>
-                                      
+
                                       {/* Summary for multi-contact payments */}
                                       {isMultiContact && payment.isThirdPartyPayment && (
                                         <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
@@ -973,7 +985,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                             <div className="flex items-center gap-2">
                                               <ArrowRight className="h-4 w-4 text-blue-600" />
                                               <span className="font-medium text-blue-800">
-                                                {payment.payerContactName || "Unknown"} paid for {uniqueContacts.size} people&apos;'s pledges
+                                                {payment.payerContactName || "Unknown"} paid for {uniqueContacts.size} people&apos;s pledges
                                               </span>
                                             </div>
                                             <span className="text-blue-700 font-medium">
@@ -983,7 +995,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                           </div>
                                         </div>
                                       )}
-                                      
+
                                       <div className="space-y-3">
                                         {payment.allocations.map((allocation, index) => (
                                           <div
@@ -1015,7 +1027,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                                   </p>
                                                 )}
                                               </div>
-                                              
+
                                               {/* Amount Information */}
                                               <div>
                                                 <h6 className="font-medium text-gray-800 mb-2 text-sm">Amounts</h6>
@@ -1050,7 +1062,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                                   )}
                                                 </div>
                                               </div>
-                                              
+
                                               {/* Receipt Information */}
                                               <div>
                                                 <h6 className="font-medium text-gray-800 mb-2 text-sm">Receipt</h6>
@@ -1075,7 +1087,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                                   </div>
                                                 </div>
                                               </div>
-                                              
+
                                               {/* Notes */}
                                               <div>
                                                 {allocation.notes && (
@@ -1114,7 +1126,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                             <span className="text-gray-600">Pledge Currencies:</span>
                                             <div className="font-medium text-purple-600">
                                               {(() => {
-                                                const currencies = [...new Set(payment.allocations.map(a => 
+                                                const currencies = [...new Set(payment.allocations.map(a =>
                                                   a.pledge?.currency || a.pledgeCurrency || 'USD'
                                                 ))];
                                                 return currencies.length > 1 ? `${currencies.length} currencies` : currencies[0];
@@ -1210,9 +1222,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       <br />
                                       Type: {payment.isSplitPayment
                                         ? (() => {
-                                            const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
-                                            return uniqueContacts.size > 1 ? "Multi-Contact Payment" : "Split Payment";
-                                          })()
+                                          const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
+                                          return uniqueContacts.size > 1 ? "Multi-Contact Payment" : "Split Payment";
+                                        })()
                                         : payment.paymentPlanId
                                           ? "Planned Payment"
                                           : "Direct Payment"}
