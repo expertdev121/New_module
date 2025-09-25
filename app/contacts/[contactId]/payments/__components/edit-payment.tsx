@@ -462,7 +462,6 @@ export default function EditPaymentDialog({
 
   // Multi-contact payment state
   const [multiContactAllocations, setMultiContactAllocations] = useState<MultiContactAllocation[]>([]);
-  const [showMultiContactSection, setShowMultiContactSection] = useState(false);
 
   // Check if this payment is already a third-party or multi-contact payment
   const isExistingThirdPartyPayment = payment.isThirdPartyPayment || false;
@@ -495,6 +494,7 @@ export default function EditPaymentDialog({
   const { data: pledgeData } = usePledgeDetailsQuery(payment.pledgeId || 0, {
     enabled: !!payment.pledgeId && !isSplitPayment && !payment.pledgeDescription,
   });
+  const [showMultiContactSection, setShowMultiContactSection] = useState(isExistingMultiContactPayment);
 
   const { data: allContactsForAllocations } = useQuery({
     queryKey: ['all-contacts-for-multi-contact'],
@@ -537,35 +537,40 @@ export default function EditPaymentDialog({
       paymentPlanId: payment.paymentPlanId || null,
       isSplitPayment: isSplitPayment,
       // Third-party payment defaults
-      isThirdPartyPayment: isExistingThirdPartyPayment,
-      thirdPartyContactId: existingThirdPartyContactId,
-      payerContactId: payment.payerContactId || null,
+      isThirdPartyPayment: isExistingThirdPartyPayment || isExistingMultiContactPayment,
+      thirdPartyContactId: payment.thirdPartyContactId ?? null,
+      payerContactId: payment.payerContactId ?? null,
       // Multi-contact payment defaults
       isMultiContactPayment: isExistingMultiContactPayment,
       multiContactAllocations: [],
+
       autoAdjustAllocations: false,
       redistributionMethod: "proportional",
-      allocations: isSplitPayment && payment.allocations
-        ? payment.allocations.map(alloc => ({
-          id: alloc.id,
-          pledgeId: alloc.pledgeId,
-          allocatedAmount: parseFloat(alloc.allocatedAmount),
-          notes: alloc.notes,
-          currency: alloc.currency || payment.currency,
-          receiptNumber: alloc.receiptNumber || null,
-          receiptType: alloc.receiptType || null,
-          receiptIssued: alloc.receiptIssued ?? false,
-        }))
+      allocations: isSplitPayment
+        ? payment.allocations
+          ? payment.allocations.map((alloc) => ({
+            id: alloc.id,
+            pledgeId: alloc.pledgeId,
+            allocatedAmount: parseFloat(alloc.allocatedAmount),
+            notes: alloc.notes,
+            currency: alloc.currency ?? payment.currency,
+            receiptNumber: alloc.receiptNumber ?? null,
+            receiptType: alloc.receiptType ?? null,
+            receiptIssued: alloc.receiptIssued ?? false,
+          }))
+          : []
         : payment.pledgeId
-          ? [{
-            pledgeId: payment.pledgeId,
-            allocatedAmount: parseFloat(payment.amount),
-            notes: null,
-            currency: payment.currency,
-            receiptNumber: payment.receiptNumber || null,
-            receiptType: payment.receiptType || null,
-            receiptIssued: payment.receiptIssued ?? false,
-          }]
+          ? [
+            {
+              pledgeId: payment.pledgeId,
+              allocatedAmount: parseFloat(payment.amount),
+              notes: null,
+              currency: payment.currency,
+              receiptNumber: payment.receiptNumber ?? null,
+              receiptType: payment.receiptType ?? null,
+              receiptIssued: payment.receiptIssued ?? false,
+            },
+          ]
           : [],
     },
   });
@@ -612,24 +617,36 @@ export default function EditPaymentDialog({
     return [...new Set(multiContactAllocations.map(a => a.contactId).filter(id => id > 0))];
   }, [multiContactAllocations]);
 
-  const { data: multiContactPledgesData } = useQuery({
+  const { data: multiContactPledgesData, isLoading: isLoadingMultiContactPledges } = useQuery({
     queryKey: ['multi-contact-pledges', multiContactIds],
     queryFn: async () => {
       if (multiContactIds.length === 0) return { pledges: [] };
 
+      console.log('Fetching pledges for contacts:', multiContactIds);
+
       const pledgePromises = multiContactIds.map(async (contactId) => {
-        const response = await fetch(`/api/pledges?contactId=${contactId}&page=1&limit=100`);
-        if (!response.ok) throw new Error('Failed to fetch pledges');
-        const data = await response.json();
-        return data.pledges || [];
+        try {
+          const response = await fetch(`/api/pledges?contactId=${contactId}&page=1&limit=100`);
+          if (!response.ok) {
+            console.warn(`Failed to fetch pledges for contact ${contactId}`);
+            return [];
+          }
+          const data = await response.json();
+          return (data.pledges || []).map((pledge: any) => ({ ...pledge, contactId }));
+        } catch (error) {
+          console.error(`Error fetching pledges for contact ${contactId}:`, error);
+          return [];
+        }
       });
 
       const results = await Promise.all(pledgePromises);
       const allPledges = results.flat();
 
+      console.log('Fetched multi-contact pledges:', allPledges.length);
       return { pledges: allPledges };
     },
     enabled: multiContactIds.length > 0,
+    staleTime: 2 * 60 * 1000, // 2 minutes
   });
 
   const allPledgesData = useMemo(() => {
@@ -642,22 +659,26 @@ export default function EditPaymentDialog({
     return [...new Set(payment.multiContactAllocations.map(alloc => alloc.contactId))];
   }, [payment.multiContactAllocations]);
 
-  const { data: existingContactsData } = useQuery({
+  const { data: existingContactsData, isLoading: isLoadingExistingContacts } = useQuery({
     queryKey: ['existing-multi-contacts', existingContactIds],
     queryFn: async () => {
       if (existingContactIds.length === 0) return { contacts: [] };
 
+      console.log('Fetching existing contacts:', existingContactIds);
+
       const contactPromises = existingContactIds.map(async (contactId) => {
         const response = await fetch(`/api/contacts/${contactId}`);
-        if (!response.ok) throw new Error('Failed to fetch contact');
+        if (!response.ok) throw new Error(`Failed to fetch contact ${contactId}`);
         const data = await response.json();
         return data.contact;
       });
 
       const results = await Promise.all(contactPromises);
+      console.log('Fetched existing contacts:', results);
       return { contacts: results };
     },
-    enabled: existingContactIds.length > 0 && isExistingMultiContactPayment,
+    enabled: existingContactIds.length > 0 && (isExistingMultiContactPayment || showMultiContactSection),
+    staleTime: 5 * 60 * 1000, // 5 minutes
   });
 
   // Multi-contact allocation functions
@@ -703,54 +724,85 @@ export default function EditPaymentDialog({
   );
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
 
-  // FIXED: Initialize existing multi-contact data properly
   useEffect(() => {
     if (isExistingMultiContactPayment && payment.multiContactAllocations && multiContactAllocations.length === 0) {
-      console.log('Initializing existing multi-contact payment data:', payment.multiContactAllocations);
+      console.log("Initializing existing multi-contact payment data", payment.multiContactAllocations);
 
-      // Convert ContactAllocation[] to MultiContactAllocation[]
+      // Convert ContactAllocation to MultiContactAllocation with proper data structure
       const convertedAllocations: MultiContactAllocation[] = [];
-      payment.multiContactAllocations.forEach(contactAlloc => {
-        contactAlloc.pledges.forEach(pledge => {
+      payment.multiContactAllocations.forEach((contactAlloc) => {
+        contactAlloc.pledges.forEach((pledge) => {
           convertedAllocations.push({
             contactId: contactAlloc.contactId,
             pledgeId: pledge.pledgeId,
             allocatedAmount: pledge.allocatedAmount,
-            notes: null,
-            receiptNumber: null,
+            notes: null, // Add notes from allocation if available
+            receiptNumber: null, // These should come from the actual allocation data
             receiptType: null,
             receiptIssued: false,
           });
         });
       });
 
-      console.log('Converted allocations:', convertedAllocations);
+      console.log("Converted allocations", convertedAllocations);
 
       // Set state properly
       setShowMultiContactSection(true);
       setMultiContactAllocations(convertedAllocations);
 
-      // Update form values
+      // Update form values - Fix the toggle states
       form.setValue("isMultiContactPayment", true);
       form.setValue("isSplitPayment", true);
-      form.setValue("isThirdPartyPayment", true); // Multi-contact payments are also third-party
+      form.setValue("isThirdPartyPayment", payment.isThirdPartyPayment || false); // Use actual payment value
 
       // Set the payer contact ID (the person making the payment)
-      if (contactId) {
-        form.setValue("payerContactId", contactId);
+      if (payment.payerContactId) {
+        form.setValue("payerContactId", payment.payerContactId);
+      }
+
+      // Set the third-party contact ID if it exists
+      if (payment.thirdPartyContactId) {
+        form.setValue("thirdPartyContactId", payment.thirdPartyContactId);
       }
     }
-  }, [isExistingMultiContactPayment, payment.multiContactAllocations, multiContactAllocations.length, form, contactId]);
+  }, [isExistingMultiContactPayment, payment.multiContactAllocations, multiContactAllocations.length, form, payment.isThirdPartyPayment, payment.payerContactId, payment.thirdPartyContactId]);
 
-  // NEW: Effect to load and set the third-party contact from pledge data
   useEffect(() => {
-    if (isExistingThirdPartyPayment && pledgeWithContactData?.contact && !selectedThirdPartyContact) {
-      const thirdPartyContact = pledgeWithContactData.contact;
-      setSelectedThirdPartyContact(thirdPartyContact);
-      // Also update the form with the correct thirdPartyContactId
-      form.setValue("thirdPartyContactId", thirdPartyContact.id);
+    if (open && !internalOpen) {
+      // Reset and set proper initial states when dialog opens
+      setShowMultiContactSection(isExistingMultiContactPayment);
+
+      if (isExistingThirdPartyPayment) {
+        form.setValue("isThirdPartyPayment", true);
+      }
+
+      if (isExistingMultiContactPayment) {
+        form.setValue("isMultiContactPayment", true);
+        form.setValue("isSplitPayment", true);
+      }
     }
-  }, [isExistingThirdPartyPayment, pledgeWithContactData, selectedThirdPartyContact, form]);
+  }, [open, internalOpen, isExistingMultiContactPayment, isExistingThirdPartyPayment, form]);
+
+  useEffect(() => {
+    if (isExistingThirdPartyPayment && payment.thirdPartyContactId && !selectedThirdPartyContact) {
+      // First try to get from existing contacts data if available
+      if (existingContactsData?.contacts) {
+        const thirdPartyContact = existingContactsData.contacts.find(c => c.id === payment.thirdPartyContactId);
+        if (thirdPartyContact) {
+          setSelectedThirdPartyContact(thirdPartyContact);
+          form.setValue("thirdPartyContactId", thirdPartyContact.id);
+          return;
+        }
+      }
+
+      // Fallback to pledge contact data
+      if (pledgeWithContactData?.contact) {
+        const thirdPartyContact = pledgeWithContactData.contact;
+        setSelectedThirdPartyContact(thirdPartyContact);
+        form.setValue("thirdPartyContactId", thirdPartyContact.id);
+      }
+    }
+  }, [isExistingThirdPartyPayment, payment.thirdPartyContactId, selectedThirdPartyContact, existingContactsData?.contacts, pledgeWithContactData, form]);
 
   // Effect to clear pledge selection when third-party contact changes
   useEffect(() => {
@@ -1409,7 +1461,6 @@ export default function EditPaymentDialog({
   }, [contactsData?.contacts]);
 
   const multiContactOptions = useMemo((): ContactOption[] => {
-    // Combine all available contacts
     const existingContacts = existingContactsData?.contacts || [];
     const allContacts = allContactsForAllocations || [];
 
@@ -1417,18 +1468,25 @@ export default function EditPaymentDialog({
       existingContacts: existingContacts.length,
       allContacts: allContacts.length,
       showMultiContactSection,
+      isLoadingExistingContacts,
     });
 
-    // Create a combined list
-    const combinedContacts = [...existingContacts, ...allContacts];
+    // Create a combined list with priority to existing contacts
+    const contactsMap = new Map<number, Contact>();
 
-    // Remove duplicates with proper typing
-    const uniqueContacts = combinedContacts.reduce((acc: Contact[], contact: Contact) => {
-      if (!acc.find((c: Contact) => c.id === contact.id)) {
-        acc.push(contact);
+    // Add existing contacts first (higher priority)
+    existingContacts.forEach((contact: Contact) => {
+      contactsMap.set(contact.id, contact);
+    });
+
+    // Add all contacts (won't overwrite existing due to Map behavior)
+    allContacts.forEach((contact: Contact) => {
+      if (!contactsMap.has(contact.id)) {
+        contactsMap.set(contact.id, contact);
       }
-      return acc;
-    }, [] as Contact[]);
+    });
+
+    const uniqueContacts = Array.from(contactsMap.values());
 
     return uniqueContacts.map((contact: Contact): ContactOption => ({
       label: contact.displayName || `${contact.firstName} ${contact.lastName}`,
@@ -1439,7 +1497,7 @@ export default function EditPaymentDialog({
       displayName: contact.displayName,
       fullName: contact.displayName || `${contact.firstName} ${contact.lastName}`,
     }));
-  }, [existingContactsData?.contacts, allContactsForAllocations]);
+  }, [existingContactsData?.contacts, allContactsForAllocations, isLoadingExistingContacts]);
 
   const effectivePledgeDescription = pledgeData?.pledge?.description || payment.pledgeDescription || "N/A";
 
@@ -1978,6 +2036,12 @@ export default function EditPaymentDialog({
                     <div className="text-sm text-green-700">
                       <p className="font-medium mb-1">Multi-Contact Payment Allocation</p>
                       <p>Allocate this payment across multiple contacts and their pledges.</p>
+                      {isLoadingExistingContacts && (
+                        <p className="text-xs text-blue-600 mt-1">Loading existing contact data...</p>
+                      )}
+                      {isLoadingMultiContactPledges && (
+                        <p className="text-xs text-blue-600 mt-1">Loading pledge data...</p>
+                      )}
                     </div>
 
                     <div className="space-y-4">
@@ -1998,7 +2062,7 @@ export default function EditPaymentDialog({
                           </div>
 
                           <div className="grid grid-cols-2 gap-4 mb-4">
-                            {/* Contact Selection */}
+                            {/* Contact Selection with Loading State */}
                             <div>
                               <label className="text-sm font-medium mb-2 block">Contact</label>
                               <Select
@@ -2009,9 +2073,10 @@ export default function EditPaymentDialog({
                                   // Reset pledge when contact changes
                                   updateMultiContactAllocation(index, 'pledgeId', 0);
                                 }}
+                                disabled={isLoadingExistingContacts}
                               >
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select contact..." />
+                                  <SelectValue placeholder={isLoadingExistingContacts ? "Loading contacts..." : "Select contact..."} />
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="0">Select contact...</SelectItem>
@@ -2024,7 +2089,7 @@ export default function EditPaymentDialog({
                               </Select>
                             </div>
 
-                            {/* Pledge Selection */}
+                            {/* Pledge Selection with Loading State */}
                             <div>
                               <label className="text-sm font-medium mb-2 block">Pledge</label>
                               <Select
@@ -2033,10 +2098,16 @@ export default function EditPaymentDialog({
                                   const pledgeId = parseInt(value);
                                   updateMultiContactAllocation(index, 'pledgeId', pledgeId);
                                 }}
-                                disabled={!allocation.contactId || allocation.contactId === 0}
+                                disabled={!allocation.contactId || allocation.contactId === 0 || isLoadingMultiContactPledges}
                               >
                                 <SelectTrigger>
-                                  <SelectValue placeholder="Select pledge..." />
+                                  <SelectValue placeholder={
+                                    isLoadingMultiContactPledges
+                                      ? "Loading pledges..."
+                                      : !allocation.contactId || allocation.contactId === 0
+                                        ? "Select contact first"
+                                        : "Select pledge..."
+                                  } />
                                 </SelectTrigger>
                                 <SelectContent>
                                   <SelectItem value="0">Select pledge...</SelectItem>
@@ -2192,6 +2263,7 @@ export default function EditPaymentDialog({
                         variant="outline"
                         onClick={() => addMultiContactAllocation()}
                         className="w-full flex items-center gap-2 border-green-300 text-green-700 hover:bg-green-100"
+                        disabled={isLoadingExistingContacts || isLoadingMultiContactPledges}
                       >
                         <Plus className="h-4 w-4" />
                         Add Another Allocation
@@ -2224,6 +2296,11 @@ export default function EditPaymentDialog({
                         {!areAllocationsValid() && (
                           <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                             ⚠️ Total allocations must equal payment amount
+                          </div>
+                        )}
+                        {(isLoadingExistingContacts || isLoadingMultiContactPledges) && (
+                          <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-sm text-blue-700">
+                            ℹ️ Loading allocation data...
                           </div>
                         )}
                       </div>

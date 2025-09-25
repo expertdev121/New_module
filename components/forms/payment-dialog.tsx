@@ -721,182 +721,181 @@ export default function PaymentFormDialog({
     setShowMultiContactSection(false);
   }, [form, initialPledgeId]);
 
-  const onSubmit = async (data: PaymentFormData) => {
-    try {
-      // Validate required fields first
-      if (!data.amount || data.amount <= 0) {
-        throw new Error("Payment amount is required and must be greater than 0");
+ const onSubmit = async (data: PaymentFormData) => {
+  try {
+    // Validate required fields first
+    if (!data.amount || data.amount <= 0) {
+      throw new Error("Payment amount is required and must be greater than 0");
+    }
+
+    if (!data.currency) {
+      throw new Error("Currency is required");
+    }
+
+    if (!data.paymentStatus) {
+      throw new Error("Payment status is required");
+    }
+
+    if (!data.paymentDate) {
+      throw new Error("Payment date is required");
+    }
+
+    const exchangeRateNum = Number(data.exchangeRate) || 1;
+    const amountNum = Number(data.amount);
+    const amountUsdNum = Number(data.amountUsd) || (amountNum * exchangeRateNum);
+
+    const isSplit = data.isSplitPayment;
+    const isMultiContact = watchedIsMultiContactPayment && multiContactAllocations.length > 0;
+    // Multi-contact payments are always third-party payments
+    const isThirdParty = data.isThirdPartyPayment || isMultiContact;
+
+    // Build base payload with correct type assertions
+    const basePayload = {
+      amount: amountNum,
+      currency: data.currency as any,
+      amountUsd: amountUsdNum,
+      exchangeRate: exchangeRateNum,
+      paymentDate: data.paymentDate,
+      receivedDate: data.receivedDate || undefined,
+      paymentMethod: data.paymentMethod as any,
+      methodDetail: data.methodDetail || undefined,
+      account: data.account || undefined,
+      checkDate: data.checkDate || undefined,
+      checkNumber: data.checkNumber || undefined,
+      paymentStatus: data.paymentStatus as any,
+      solicitorId: data.solicitorId ? Number(data.solicitorId) : undefined,
+      bonusPercentage: data.bonusPercentage || undefined,
+      bonusAmount: data.bonusAmount || undefined,
+      bonusRuleId: data.bonusRuleId || undefined,
+      notes: data.notes || undefined,
+      isThirdPartyPayment: isThirdParty,
+      isMultiContactPayment: isMultiContact,
+      payerContactId: isThirdParty ? (contactId || undefined) : undefined,
+      thirdPartyContactId: selectedThirdPartyContact?.id || undefined,
+    };
+
+    if (isMultiContact) {
+      // Handle multi-contact payment
+      if (getTotalMultiContactAllocation() !== (data.amount || 0)) {
+        throw new Error("Multi-contact payment allocation amounts must equal the total payment amount");
       }
 
-      if (!data.currency) {
-        throw new Error("Currency is required");
+      // Validate all allocations have valid data
+      const validAllocations = multiContactAllocations.filter(
+        allocation => allocation.contactId > 0 && allocation.pledgeId > 0 && allocation.allocatedAmount > 0
+      );
+
+      if (validAllocations.length === 0) {
+        throw new Error("At least one valid allocation is required for multi-contact payment");
       }
 
-      if (!data.paymentMethod) {
-        throw new Error("Payment method is required");
+      // For multi-contact payments, we need to determine who is the actual payer
+      // This could be:
+      // 1. The current user (contactId) - paying for multiple other people's pledges
+      // 2. A selected third-party contact - if explicitly selected in the UI
+      const actualPayerId = selectedThirdPartyContact?.id || contactId;
+      
+      if (!actualPayerId) {
+        throw new Error("Unable to determine payer for multi-contact payment");
       }
 
-      if (!data.paymentStatus) {
-        throw new Error("Payment status is required");
-      }
-
-      if (!data.paymentDate) {
-        throw new Error("Payment date is required");
-      }
-
-      const exchangeRateNum = Number(data.exchangeRate) || 1;
-      const amountNum = Number(data.amount);
-      const amountUsdNum = Number(data.amountUsd) || (amountNum * exchangeRateNum);
-
-      const isSplit = data.isSplitPayment;
-      const isThirdParty = !!(data.isThirdPartyPayment && selectedThirdPartyContact);
-      const isMultiContact = watchedIsMultiContactPayment && multiContactAllocations.length > 0;
-
-      // Build base payload with correct type assertions
-      const basePayload = {
-        amount: amountNum,
-        currency: data.currency as any,
-        amountUsd: amountUsdNum,
-        exchangeRate: exchangeRateNum,
-        paymentDate: data.paymentDate,
-        receivedDate: data.receivedDate || undefined,
-        paymentMethod: data.paymentMethod as any,
-        methodDetail: data.methodDetail || undefined,
-        account: data.account || undefined,
-        checkDate: data.checkDate || undefined,
-        checkNumber: data.checkNumber || undefined,
-        paymentStatus: data.paymentStatus as any,
-        solicitorId: data.solicitorId ? Number(data.solicitorId) : undefined,
-        bonusPercentage: data.bonusPercentage || undefined,
-        bonusAmount: data.bonusAmount || undefined,
-        bonusRuleId: data.bonusRuleId || undefined,
-        notes: data.notes || undefined,
-        isThirdPartyPayment: isThirdParty,
-        payerContactId: isThirdParty ? (contactId || undefined) : undefined,
+      // Create a single payment with all allocations
+      const multiContactPayload = {
+        ...basePayload,
+        pledgeId: 0, // Indicates this is a split payment
+        payerContactId: actualPayerId, // The person making the payment
+        // Convert multi-contact allocations to the format expected by the API
+        allocations: validAllocations.map((allocation) => ({
+          contactId: Number(allocation.contactId), // The beneficiary contact for each allocation
+          pledgeId: Number(allocation.pledgeId),
+          installmentScheduleId: null,
+          allocatedAmount: Number(allocation.allocatedAmount),
+          currency: data.currency,
+          notes: allocation.notes,
+          receiptNumber: allocation.receiptNumber,
+          receiptType: allocation.receiptType,
+          receiptIssued: allocation.receiptIssued || false,
+        })) as any,
       };
 
-      if (isMultiContact) {
-        // Handle multi-contact payment
-        if (getTotalMultiContactAllocation() !== (data.amount || 0)) {
-          throw new Error("Multi-contact payment allocation amounts must equal the total payment amount");
-        }
+      // Send as a single payment request
+      await createPaymentMutation.mutateAsync(multiContactPayload as any);
+      
+      toast.success(`Multi-contact payment created successfully with ${validAllocations.length} allocations!`);
 
-        // Group allocations by contact
-        const contactGroups = multiContactAllocations.reduce((groups, allocation) => {
-          if (!groups[allocation.contactId] && allocation.pledgeId > 0 && allocation.allocatedAmount > 0) {
-            groups[allocation.contactId] = [];
-          }
-          if (allocation.pledgeId > 0 && allocation.allocatedAmount > 0) {
-            groups[allocation.contactId].push(allocation);
-          }
-          return groups;
-        }, {} as Record<number, MultiContactAllocation[]>);
-
-        // Create individual payments for each contact's allocations
-        const paymentPromises: Promise<any>[] = [];
-
-        for (const [contactIdStr, contactAllocations] of Object.entries(contactGroups)) {
-          const contactId = parseInt(contactIdStr);
-          const contactTotal = contactAllocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
-
-          if (contactTotal > 0) {
-            // Create allocations array for this contact
-            const allocations = contactAllocations.map((allocation) => ({
-              pledgeId: Number(allocation.pledgeId),
-              installmentScheduleId: null,
-              allocatedAmount: Number(allocation.allocatedAmount),
-              currency: data.currency,
-              notes: allocation.notes,
-              receiptNumber: allocation.receiptNumber,
-              receiptType: allocation.receiptType,
-              receiptIssued: allocation.receiptIssued || false,
-            }));
-
-            const contactPaymentPayload = {
-              ...basePayload,
-              amount: contactTotal,
-              amountUsd: contactTotal / exchangeRateNum, // Convert to USD
-              pledgeId: 0, // Split payment across multiple pledges
-              isThirdPartyPayment: true,
-              payerContactId: contactId,
-              thirdPartyContactId: contactId,
-              allocations: allocations as any,
-            };
-
-            paymentPromises.push(createPaymentMutation.mutateAsync(contactPaymentPayload as any));
-          }
-        }
-
-        // Execute all payments
-        await Promise.all(paymentPromises);
-
-        toast.success(`Multi-contact payment created successfully for ${Object.keys(contactGroups).length} contacts!`);
-
-      } else if (isSplit) {
-        if (!data.allocations || data.allocations.length === 0) {
-          throw new Error("Split payment requires at least one allocation.");
-        }
-
-        // Validate all allocations have valid pledge IDs
-        for (const allocation of data.allocations) {
-          if (!allocation.pledgeId || allocation.pledgeId === 0) {
-            throw new Error("All allocations must have a valid pledge selected.");
-          }
-          if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
-            throw new Error("All allocations must have an amount greater than 0.");
-          }
-        }
-
-        const paymentPayload = {
-          ...basePayload,
-          pledgeId: 0,
-          // Cast allocations to any to bypass TypeScript checking
-          allocations: data.allocations.map((allocation) => ({
-            pledgeId: Number(allocation.pledgeId),
-            installmentScheduleId: allocation.installmentScheduleId ? Number(allocation.installmentScheduleId) : null,
-            allocatedAmount: Number(allocation.allocatedAmount) || 0, // Changed from 'amount' to 'allocatedAmount'
-            currency: data.currency, // Add currency from the main payment
-            notes: allocation.notes || null,
-            receiptNumber: allocation.receiptNumber || null,
-            receiptType: allocation.receiptType || null,
-            receiptIssued: allocation.receiptIssued || false,
-          })) as any, // Type assertion to bypass strict typing
-        };
-
-        await createPaymentMutation.mutateAsync(paymentPayload as any);
-      } else {
-        if (!data.pledgeId || data.pledgeId === 0) {
-          throw new Error("Single payment requires a valid pledge ID.");
-        }
-
-        const paymentPayload = {
-          ...basePayload,
-          pledgeId: Number(data.pledgeId),
-          installmentScheduleId: data.allocations?.length === 1 && data.allocations[0].installmentScheduleId
-            ? Number(data.allocations[0].installmentScheduleId)
-            : null,
-        };
-
-        await createPaymentMutation.mutateAsync(paymentPayload as any);
+    } else if (isSplit) {
+      // Handle regular split payment (single contact, multiple pledges)
+      if (!data.allocations || data.allocations.length === 0) {
+        throw new Error("Split payment requires at least one allocation.");
       }
 
-      // Success handling
-      const paymentType = isMultiContact
-        ? "Multi-contact payment"
-        : isThirdParty
-          ? "Third-party payment"
-          : "Payment";
+      // Validate all allocations have valid pledge IDs
+      for (const allocation of data.allocations) {
+        if (!allocation.pledgeId || allocation.pledgeId === 0) {
+          throw new Error("All allocations must have a valid pledge selected.");
+        }
+        if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
+          throw new Error("All allocations must have an amount greater than 0.");
+        }
+      }
+
+      const paymentPayload = {
+        ...basePayload,
+        pledgeId: 0,
+        // Cast allocations to any to bypass TypeScript checking
+        allocations: data.allocations.map((allocation) => ({
+          pledgeId: Number(allocation.pledgeId),
+          installmentScheduleId: allocation.installmentScheduleId ? Number(allocation.installmentScheduleId) : null,
+          allocatedAmount: Number(allocation.allocatedAmount) || 0,
+          currency: data.currency, // Add currency from the main payment
+          notes: allocation.notes || null,
+          receiptNumber: allocation.receiptNumber || null,
+          receiptType: allocation.receiptType || null,
+          receiptIssued: allocation.receiptIssued || false,
+        })) as any, // Type assertion to bypass strict typing
+      };
+
+      await createPaymentMutation.mutateAsync(paymentPayload as any);
+      toast.success("Split payment created successfully!");
+
+    } else {
+      // Handle single payment to single pledge
+      if (!data.pledgeId || data.pledgeId === 0) {
+        throw new Error("Single payment requires a valid pledge ID.");
+      }
+
+      // For single payments, determine the payer
+      // If third-party is enabled, use the selected contact or current user
+      const actualPayerId = isThirdParty 
+        ? (selectedThirdPartyContact?.id || contactId)
+        : undefined;
+
+      const paymentPayload = {
+        ...basePayload,
+        pledgeId: Number(data.pledgeId),
+        payerContactId: actualPayerId,
+        installmentScheduleId: data.allocations?.length === 1 && data.allocations[0].installmentScheduleId
+          ? Number(data.allocations[0].installmentScheduleId)
+          : null,
+      };
+
+      await createPaymentMutation.mutateAsync(paymentPayload as any);
+      
+      // Success message for single payment
+      const paymentType = isThirdParty ? "Third-party payment" : "Payment";
       const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
       toast.success(`${paymentType}${target} created successfully!`);
-      resetForm();
-      setOpen(false);
-
-    } catch (error) {
-      console.error("Error creating payment:", error);
-      toast.error(error instanceof Error ? error.message : "Failed to create payment");
     }
-  };
 
+    // Reset form and close dialog on success
+    resetForm();
+    setOpen(false);
+
+  } catch (error) {
+    console.error("Error creating payment:", error);
+    toast.error(error instanceof Error ? error.message : "Failed to create payment");
+  }
+};
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (!newOpen) {
@@ -993,14 +992,20 @@ export default function PaymentFormDialog({
 
   const handleThirdPartyToggle = (checked: boolean) => {
     form.setValue("isThirdPartyPayment", checked);
+
     if (!checked) {
       setSelectedThirdPartyContact(null);
       setContactSearch("");
       form.setValue("thirdPartyContactId", null);
-      // Reset multi-contact section when third party is disabled
-      setShowMultiContactSection(false);
-      form.setValue("isMultiContactPayment", false);
-      setMultiContactAllocations([]);
+
+      // If third-party is disabled, also disable multi-contact
+      // since multi-contact requires third-party payment
+      if (showMultiContactSection) {
+        setShowMultiContactSection(false);
+        form.setValue("isMultiContactPayment", false);
+        setMultiContactAllocations([]);
+        form.setValue("isSplitPayment", false);
+      }
     }
   };
 
@@ -1026,11 +1031,16 @@ export default function PaymentFormDialog({
   const handleMultiContactToggle = (checked: boolean) => {
     setShowMultiContactSection(checked);
     form.setValue("isMultiContactPayment", checked);
+
     if (!checked) {
       setMultiContactAllocations([]);
       // Reset split payment if multi-contact is disabled
       form.setValue("isSplitPayment", false);
     } else {
+      // AUTOMATICALLY enable third-party payment when multi-contact is enabled
+      // since multi-contact payments are inherently third-party payments
+      form.setValue("isThirdPartyPayment", true);
+
       // Enable split payment when multi-contact is enabled
       form.setValue("isSplitPayment", true);
       form.setValue("pledgeId", null);

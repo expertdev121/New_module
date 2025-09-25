@@ -47,6 +47,7 @@ import {
   CreditCard,
   Split,
   Users,
+  ArrowRight,
 } from "lucide-react";
 import {
   useDeletePaymentMutation,
@@ -168,10 +169,23 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   const SplitPaymentBadge = ({ payment }: { payment: ApiPayment }) => {
     if (!payment.isSplitPayment) return null;
 
+    // Check if it's a multi-contact payment by looking at unique contact IDs in allocations
+    const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
+    const isMultiContact = uniqueContacts.size > 1;
+
     return (
-      <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200">
-        <Split className="h-3 w-3 mr-1" />
-        Split ({payment.allocationCount})
+      <Badge variant="outline" className={isMultiContact ? "bg-green-50 text-green-700 border-green-200" : "bg-purple-50 text-purple-700 border-purple-200"}>
+        {isMultiContact ? (
+          <>
+            <Users className="h-3 w-3 mr-1" />
+            Multi-Contact ({payment.allocationCount})
+          </>
+        ) : (
+          <>
+            <Split className="h-3 w-3 mr-1" />
+            Split ({payment.allocationCount})
+          </>
+        )}
       </Badge>
     );
   };
@@ -191,11 +205,15 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
   // Payment Type Indicator with Plan Badge
   const PaymentTypeIndicator = ({ payment }: { payment: ApiPayment }) => {
     if (payment.isSplitPayment) {
+      // Check if it's multi-contact
+      const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
+      const isMultiContact = uniqueContacts.size > 1;
+      
       return (
         <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-1 text-purple-600">
-            <Split className="h-4 w-4" />
-            <span className="text-xs font-medium">Split</span>
+          <div className={`flex items-center gap-1 ${isMultiContact ? 'text-green-600' : 'text-purple-600'}`}>
+            {isMultiContact ? <Users className="h-4 w-4" /> : <Split className="h-4 w-4" />}
+            <span className="text-xs font-medium">{isMultiContact ? 'Multi' : 'Split'}</span>
           </div>
           <SplitPaymentBadge payment={payment} />
         </div>
@@ -217,7 +235,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     return (
       <div className="flex items-center gap-1 text-green-600">
         <CreditCard className="h-4 w-4" />
-        <span className="text-xs font-medium">Paid</span>
+        <span className="text-xs font-medium">Direct</span>
       </div>
     );
   };
@@ -234,20 +252,21 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     );
   };
 
-    const ThirdPartyBadge = ({ payment }: { payment: ApiPayment }) => {
+  // Updated Third Party Badge - now shows "Paid By"
+  const PaidByBadge = ({ payment }: { payment: ApiPayment }) => {
     if (!payment.isThirdPartyPayment) {
       return <span className="text-gray-400">-</span>;
     }
 
     return (
       <div className="flex flex-col items-center gap-1">
-        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
           <Users className="h-3 w-3 mr-1" />
-          Paid For
+          Paid By
         </Badge>
-        {payment.pledgeOwnerName && (
-          <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.pledgeOwnerName}>
-            {payment.pledgeOwnerName}
+        {payment.payerContactName && (
+          <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.payerContactName}>
+            {payment.payerContactName}
           </span>
         )}
       </div>
@@ -412,24 +431,53 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     return payment.amountUsd || "0";
   };
 
-  // Helper function to get applied amount in pledge currency
+  // Updated helper function to get applied amount in pledge currency for multi-currency support
   const getAppliedAmountPledgeCurrency = (payment: ApiPayment) => {
     if (payment.isSplitPayment && payment.allocations) {
-      // For split payments, sum all allocated amounts in pledge currency (using allocatedAmountInPledgeCurrency)
-      const totalAllocated = payment.allocations.reduce((sum, allocation) => {
-        return sum + parseFloat(allocation.allocatedAmountInPledgeCurrency?.toString() || "0");
-      }, 0);
-      // Use the pledge currency from the first allocation's pledge if available, else fallback to payment's pledgeOriginalCurrency or payment currency
-      const pledgeCurrency =
-        payment.allocations[0]?.pledge?.currency ||
-        payment.pledgeOriginalCurrency ||
-        payment.currency;
-      return { amount: totalAllocated.toString(), currency: pledgeCurrency };
+      // For split payments with multiple currencies, return array of amounts per currency
+      const currencyGroups = payment.allocations.reduce((acc, allocation) => {
+        const pledgeCurrency = allocation.pledge?.currency || allocation.pledgeCurrency || 'USD';
+        const amount = parseFloat(allocation.allocatedAmountInPledgeCurrency?.toString() || '0');
+        
+        if (acc[pledgeCurrency]) {
+          acc[pledgeCurrency] += amount;
+        } else {
+          acc[pledgeCurrency] = amount;
+        }
+        
+        return acc;
+      }, {} as Record<string, number>);
+
+      // Return formatted string for multiple currencies
+      const currencies = Object.keys(currencyGroups);
+      if (currencies.length === 1) {
+        // Single currency - return as before
+        const currency = currencies[0];
+        return {
+          amount: currencyGroups[currency].toString(),
+          currency: currency,
+          isMultiCurrency: false
+        };
+      } else {
+        // Multiple currencies - return combined display
+        const formattedAmounts = currencies.map(currency => {
+          const formatted = formatCurrency(currencyGroups[currency].toString(), currency);
+          return `${formatted.symbol}${formatted.amount}`;
+        }).join(' + ');
+        
+        return {
+          amount: formattedAmounts,
+          currency: 'MULTI',
+          isMultiCurrency: true
+        };
+      }
     }
+
     // For non-split payments, use the payment's amountInPledgeCurrency and pledgeOriginalCurrency
     return {
       amount: payment.amountInPledgeCurrency || payment.amount,
       currency: payment.pledgeOriginalCurrency || payment.currency,
+      isMultiCurrency: false
     };
   };
 
@@ -549,7 +597,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                     Status
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Third Party
+                    Paid By
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
                     Scheduled
@@ -586,7 +634,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                   // Loading skeleton
                   Array.from({ length: currentLimit }).map((_, index) => (
                     <TableRow key={index}>
-                      {Array.from({ length: 12 }).map((_, cellIndex) => (
+                      {Array.from({ length: 13 }).map((_, cellIndex) => (
                         <TableCell key={cellIndex}>
                           <Skeleton className="h-4 w-20" />
                         </TableCell>
@@ -596,7 +644,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                 ) : data?.payments.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={12}
+                      colSpan={13}
                       className="text-center py-8 text-gray-500"
                     >
                       No payments found
@@ -616,7 +664,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                           <PaymentStatusBadge status={payment.paymentStatus} />
                         </TableCell>
                         <TableCell className="text-center">
-                          <ThirdPartyBadge payment={payment} />
+                          <PaidByBadge payment={payment} />
                         </TableCell>
                         <TableCell className="font-medium">
                           {formatDateWithFallback(payment.paymentDate)}
@@ -634,24 +682,21 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                         </TableCell>
                         <TableCell>
                           {(() => {
-                            const appliedAmount =
-                              getAppliedAmountPledgeCurrency(payment);
-                            return (
-                              <span className="font-medium">
-                                {
-                                  formatCurrency(
-                                    appliedAmount.amount,
-                                    appliedAmount.currency
-                                  ).symbol
-                                }
-                                {
-                                  formatCurrency(
-                                    appliedAmount.amount,
-                                    appliedAmount.currency
-                                  ).amount
-                                }
-                              </span>
-                            );
+                            const appliedAmount = getAppliedAmountPledgeCurrency(payment);
+                            if (appliedAmount.isMultiCurrency) {
+                              return (
+                                <span className="font-medium text-sm">
+                                  {appliedAmount.amount}
+                                </span>
+                              );
+                            } else {
+                              const formatted = formatCurrency(appliedAmount.amount, appliedAmount.currency);
+                              return (
+                                <span className="font-medium">
+                                  {formatted.symbol}{formatted.amount}
+                                </span>
+                              );
+                            }
                           })()}
                         </TableCell>
                         <TableCell>
@@ -710,7 +755,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                       {/* Expanded Row Content */}
                       {expandedRows.has(payment.id) && (
                         <TableRow>
-                          <TableCell colSpan={12} className="bg-gray-50 p-6">
+                          <TableCell colSpan={13} className="bg-gray-50 p-6">
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               {/* Column 1: Payment Details */}
                               <div className="space-y-3">
@@ -718,23 +763,32 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   Payment Details
                                 </h4>
                                 <div className="space-y-2 text-sm">
-                                  {/* UPDATED Third Party Payment info */}
+                                  {/* Third Party Payment info - Enhanced */}
                                   {payment.isThirdPartyPayment && (
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-600">Third Party Payment:</span>
-                                      <div className="flex flex-col items-end">
-                                        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                    <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+                                      <div className="flex items-center gap-2 mb-2">
+                                        <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200">
                                           <Users className="h-3 w-3 mr-1" />
-                                          Paid For
+                                          Third Party Payment
                                         </Badge>
-                                        {payment.pledgeOwnerName && (
-                                          <span className="text-xs text-gray-500 mt-1">
-                                            For: {payment.pledgeOwnerName}
-                                          </span>
+                                      </div>
+                                      <div className="space-y-1 text-xs">
+                                        {payment.payerContactName && (
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-orange-700 font-medium">Paid By:</span>
+                                            <span className="text-orange-800">{payment.payerContactName}</span>
+                                          </div>
+                                        )}
+                                        {payment.pledgeOwnerName && !payment.isSplitPayment && (
+                                          <div className="flex items-center gap-2">
+                                            <span className="text-orange-700 font-medium">Paid For:</span>
+                                            <span className="text-orange-800">{payment.pledgeOwnerName}</span>
+                                          </div>
                                         )}
                                       </div>
                                     </div>
                                   )}
+                                  
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Status:
@@ -762,7 +816,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                   </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
-                                      Amount (Plg Currency):
+                                      Amount ({payment.currency}):
                                     </span>
                                     <span className="font-medium">
                                       {
@@ -791,6 +845,9 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                               </div>
                               {/* Column 2: Receipt/Method Information */}
                               <div className="space-y-3">
+                                <h4 className="font-semibold text-gray-900">
+                                  Payment Method & Receipt
+                                </h4>
                                 <div className="space-y-2 text-sm">
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
@@ -813,7 +870,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Account:
                                     </span>
                                     <span className="font-medium">
-                                      {(payment.account)}
+                                      {payment.account || "N/A"}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -840,15 +897,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                               </div>
                               {/* Column 3: Campaign/Solicitor/IDs */}
                               <div className="space-y-3">
+                                <h4 className="font-semibold text-gray-900">
+                                  Additional Information
+                                </h4>
                                 <div className="space-y-2 text-sm">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-600">
-                                      Campaign Detail:
-                                    </span>
-                                    <span className="font-medium">
-                                      {"N/A"}
-                                    </span>
-                                  </div>
                                   <div className="flex justify-between">
                                     <span className="text-gray-600">
                                       Solicitor:
@@ -873,67 +925,207 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       {payment.paymentPlanId ? `#${payment.paymentPlanId}` : "N/A"}
                                     </span>
                                   </div>
+                                  {payment.bonusAmount && (
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-600">
+                                        Bonus Amount:
+                                      </span>
+                                      <span className="font-medium text-green-600">
+                                        ${formatUSDAmount(payment.bonusAmount)}
+                                      </span>
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>
-                            {/* Split Payment Allocations - FIXED SECTION */}
+
+                            {/* Enhanced Split Payment Allocations Section */}
                             {payment.isSplitPayment && payment.allocations && payment.allocations.length > 0 && (
                               <div className="mt-6 pt-4 border-t">
-                                <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                                  <Users className="h-4 w-4" />
-                                  Payment Allocations ({payment.allocations.length})
-                                </h4>
-                                <div className="space-y-3">
-                                  {payment.allocations.map((allocation, index) => (
-                                    <div
-                                      key={allocation.id || index}
-                                      className="bg-white p-4 rounded-lg border border-gray-200 hover:border-purple-200 transition-colors"
-                                    >
-                                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        <div>
-                                          <h5 className="font-medium text-gray-900 mb-2">
-                                            Pledge #{allocation.pledgeId}
-                                          </h5>
-                                          <p className="text-sm text-gray-600 mb-2">
-                                            {allocation.pledgeDescription || "No description"}
-                                          </p>
-                                          {allocation.installmentScheduleId && (
-                                            <p className="text-xs text-blue-600">
-                                              Installment #{allocation.installmentScheduleId}
-                                            </p>
-                                          )}
-                                        </div>
-                                        <div>
-                                          <div className="space-y-1">
-                                            <div className="flex justify-between">
-                                              <span className="text-sm text-gray-600">Amount:</span>
-                                              <span className="text-sm font-medium">
-                                                {formatCurrency(allocation.allocatedAmount.toString(), allocation.currency).symbol}
-                                                {formatCurrency(allocation.allocatedAmount.toString(), allocation.currency).amount}
+                                {(() => {
+                                  // Check if it's multi-contact by unique pledge owners
+                                  const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
+                                  const isMultiContact = uniqueContacts.size > 1;
+                                  
+                                  return (
+                                    <>
+                                      <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                        {isMultiContact ? (
+                                          <>
+                                            <Users className="h-4 w-4 text-green-600" />
+                                            <span className="text-green-600">Multi-Contact Payment Allocations</span>
+                                          </>
+                                        ) : (
+                                          <>
+                                            <Split className="h-4 w-4 text-purple-600" />
+                                            <span className="text-purple-600">Split Payment Allocations</span>
+                                          </>
+                                        )}
+                                        <Badge variant="outline" className={isMultiContact ? "bg-green-50 text-green-700 border-green-200" : "bg-purple-50 text-purple-700 border-purple-200"}>
+                                          {payment.allocations.length} allocations
+                                        </Badge>
+                                      </h4>
+                                      
+                                      {/* Summary for multi-contact payments */}
+                                      {isMultiContact && payment.isThirdPartyPayment && (
+                                        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                          <div className="flex items-center justify-between text-sm">
+                                            <div className="flex items-center gap-2">
+                                              <ArrowRight className="h-4 w-4 text-blue-600" />
+                                              <span className="font-medium text-blue-800">
+                                                {payment.payerContactName || "Unknown"} paid for {uniqueContacts.size} people's pledges
                                               </span>
                                             </div>
-                                            <div className="flex justify-between">
-                                              <span className="text-sm text-gray-600">USD:</span>
-                                              <span className="text-sm font-medium">
-                                                {formatUSDAmount(allocation.allocatedAmountUsd)}
-                                              </span>
+                                            <span className="text-blue-700 font-medium">
+                                              Total: {formatCurrency(payment.amount, payment.currency).symbol}
+                                              {formatCurrency(payment.amount, payment.currency).amount}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      )}
+                                      
+                                      <div className="space-y-3">
+                                        {payment.allocations.map((allocation, index) => (
+                                          <div
+                                            key={allocation.id || index}
+                                            className="bg-white p-4 rounded-lg border border-gray-200 hover:border-purple-200 transition-colors"
+                                          >
+                                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                              {/* Pledge Information */}
+                                              <div>
+                                                <h5 className="font-medium text-gray-900 mb-2 flex items-center gap-2">
+                                                  <Badge variant="outline" className="text-xs">
+                                                    #{allocation.pledgeId}
+                                                  </Badge>
+                                                  Pledge
+                                                </h5>
+                                                <p className="text-sm text-gray-600 mb-2">
+                                                  {allocation.pledgeDescription || "No description"}
+                                                </p>
+                                                {allocation.pledgeOwnerName && (
+                                                  <div className="flex items-center gap-1 text-xs">
+                                                    <Users className="h-3 w-3 text-gray-400" />
+                                                    <span className="text-gray-500">Owner:</span>
+                                                    <span className="font-medium text-gray-700">{allocation.pledgeOwnerName}</span>
+                                                  </div>
+                                                )}
+                                                {allocation.installmentScheduleId && (
+                                                  <p className="text-xs text-blue-600 mt-1">
+                                                    Installment #{allocation.installmentScheduleId}
+                                                  </p>
+                                                )}
+                                              </div>
+                                              
+                                              {/* Amount Information */}
+                                              <div>
+                                                <h6 className="font-medium text-gray-800 mb-2 text-sm">Amounts</h6>
+                                                <div className="space-y-1">
+                                                  <div className="flex justify-between text-xs">
+                                                    <span className="text-gray-600">Allocated:</span>
+                                                    <span className="font-medium">
+                                                      {formatCurrency(allocation.allocatedAmount.toString(), allocation.currency).symbol}
+                                                      {formatCurrency(allocation.allocatedAmount.toString(), allocation.currency).amount}
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex justify-between text-xs">
+                                                    <span className="text-gray-600">USD:</span>
+                                                    <span className="font-medium">
+                                                      ${formatUSDAmount(allocation.allocatedAmountUsd)}
+                                                    </span>
+                                                  </div>
+                                                  {allocation.allocatedAmountInPledgeCurrency && (
+                                                    <div className="flex justify-between text-xs">
+                                                      <span className="text-gray-600">Pledge Currency:</span>
+                                                      <span className="font-medium">
+                                                        {(() => {
+                                                          const pledgeCurrency = allocation.pledge?.currency || allocation.pledgeCurrency || 'USD';
+                                                          const formatted = formatCurrency(
+                                                            allocation.allocatedAmountInPledgeCurrency.toString(),
+                                                            pledgeCurrency
+                                                          );
+                                                          return `${formatted.symbol}${formatted.amount}`;
+                                                        })()}
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+                                              
+                                              {/* Receipt Information */}
+                                              <div>
+                                                <h6 className="font-medium text-gray-800 mb-2 text-sm">Receipt</h6>
+                                                <div className="space-y-1 text-xs">
+                                                  <div className="flex justify-between">
+                                                    <span className="text-gray-600">Number:</span>
+                                                    <span className="font-medium">
+                                                      {allocation.receiptNumber || "N/A"}
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-gray-600">Type:</span>
+                                                    <span className="font-medium">
+                                                      {allocation.receiptType || "N/A"}
+                                                    </span>
+                                                  </div>
+                                                  <div className="flex justify-between">
+                                                    <span className="text-gray-600">Issued:</span>
+                                                    <span className={`font-medium ${allocation.receiptIssued ? "text-green-600" : "text-red-600"}`}>
+                                                      {allocation.receiptIssued ? "Yes" : "No"}
+                                                    </span>
+                                                  </div>
+                                                </div>
+                                              </div>
+                                              
+                                              {/* Notes */}
+                                              <div>
+                                                {allocation.notes && (
+                                                  <div>
+                                                    <h6 className="font-medium text-gray-800 mb-2 text-sm">Notes</h6>
+                                                    <p className="text-xs text-gray-700 bg-gray-50 p-2 rounded max-h-20 overflow-y-auto">
+                                                      {allocation.notes}
+                                                    </p>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ))}
+                                      </div>
+
+                                      {/* Updated Allocation Summary */}
+                                      <div className="mt-4 p-3 bg-gray-50 border border-gray-200 rounded-lg">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                          <div>
+                                            <span className="text-gray-600">Total Allocations:</span>
+                                            <div className="font-medium">{payment.allocations.length}</div>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-600">Total Amount:</span>
+                                            <div className="font-medium">
+                                              {formatCurrency(payment.amount, payment.currency).symbol}
+                                              {formatCurrency(payment.amount, payment.currency).amount}
+                                            </div>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-600">Total USD:</span>
+                                            <div className="font-medium">${formatUSDAmount(payment.amountUsd)}</div>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-600">Pledge Currencies:</span>
+                                            <div className="font-medium text-purple-600">
+                                              {(() => {
+                                                const currencies = [...new Set(payment.allocations.map(a => 
+                                                  a.pledge?.currency || a.pledgeCurrency || 'USD'
+                                                ))];
+                                                return currencies.length > 1 ? `${currencies.length} currencies` : currencies[0];
+                                              })()}
                                             </div>
                                           </div>
                                         </div>
-                                        <div>
-                                          {allocation.notes && (
-                                            <div>
-                                              <span className="text-sm text-gray-600">Notes:</span>
-                                              <p className="text-sm text-gray-900 mt-1 bg-gray-50 p-2 rounded">
-                                                {allocation.notes}
-                                              </p>
-                                            </div>
-                                          )}
-                                        </div>
                                       </div>
-                                    </div>
-                                  ))}
-                                </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             )}
 
@@ -992,7 +1184,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                           <br />
                                           <br />
                                           <strong className="text-blue-600">Note:</strong> This is a third-party payment
-                                          {payment.pledgeOwnerName && ` made for ${payment.pledgeOwnerName}`}.
+                                          {payment.payerContactName && ` made by ${payment.payerContactName}`}
+                                          {payment.pledgeOwnerName && !payment.isSplitPayment && ` for ${payment.pledgeOwnerName}`}.
                                         </>
                                       )}
                                       <br />
@@ -1016,7 +1209,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Status: {payment.paymentStatus}
                                       <br />
                                       Type: {payment.isSplitPayment
-                                        ? "Split Payment"
+                                        ? (() => {
+                                            const uniqueContacts = new Set(payment.allocations?.map(a => a.pledgeOwnerName).filter(Boolean));
+                                            return uniqueContacts.size > 1 ? "Multi-Contact Payment" : "Split Payment";
+                                          })()
                                         : payment.paymentPlanId
                                           ? "Planned Payment"
                                           : "Direct Payment"}
