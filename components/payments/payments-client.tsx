@@ -973,7 +973,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                             <div className="flex items-center gap-2">
                                               <ArrowRight className="h-4 w-4 text-blue-600" />
                                               <span className="font-medium text-blue-800">
-                                                {payment.payerContactName || "Unknown"} paid for {uniqueContacts.size} people's pledges
+                                                {payment.payerContactName || "Unknown"} paid for {uniqueContacts.size} people&apos;'s pledges
                                               </span>
                                             </div>
                                             <span className="text-blue-700 font-medium">

@@ -17,16 +17,7 @@ class AppError extends Error {
   }
 }
 
-const PaymentStatusEnum = z.enum([
-  "pending",
-  "completed",
-  "failed",
-  "cancelled",
-  "refunded",
-  "processing",
-  "expected"
-]);
-
+const PaymentStatusEnum = z.enum(["pending", "completed", "failed", "cancelled", "refunded", "processing", "expected"]);
 const QueryParamsSchema = z.object({
   pledgeId: z.number().positive(),
   page: z.number().min(1).default(1),
@@ -35,7 +26,7 @@ const QueryParamsSchema = z.object({
   paymentStatus: PaymentStatusEnum.optional(),
 });
 
-// Enhanced allocation schema with better validation
+// Allocation schemas
 const allocationUpdateSchema = z.object({
   id: z.number().optional(),
   pledgeId: z.number().positive(),
@@ -52,15 +43,12 @@ const allocationUpdateSchema = z.object({
   return data.allocatedAmount !== undefined || data.amount !== undefined;
 }, {
   message: "Either allocatedAmount or amount must be provided",
-}).transform((data) => {
-  return {
-    ...data,
-    allocatedAmount: data.allocatedAmount ?? data.amount!,
-    amount: undefined,
-  };
-});
+}).transform((data) => ({
+  ...data,
+  allocatedAmount: data.allocatedAmount ?? data.amount!,
+  amount: undefined,
+}));
 
-// Multi-contact allocation schema
 const multiContactPledgeSchema = z.object({
   pledgeId: z.number().positive(),
   pledgeDescription: z.string(),
@@ -68,14 +56,13 @@ const multiContactPledgeSchema = z.object({
   balance: z.number(),
   allocatedAmount: z.number().positive()
 });
-
 const multiContactAllocationSchema = z.object({
   contactId: z.number().positive(),
   contactName: z.string(),
   pledges: z.array(multiContactPledgeSchema)
 });
 
-// Updated payment schema to include multi-contact support
+// The main payment update schema
 const updatePaymentSchema = z.object({
   paymentId: z.number().positive("Payment ID is required and must be positive"),
   amount: z.number().positive("Amount must be positive").optional(),
@@ -107,69 +94,76 @@ const updatePaymentSchema = z.object({
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
   installmentScheduleId: z.number().positive("Installment schedule ID must be positive").optional().nullable(),
 
-  // Third-party payment fields
-  isThirdPartyPayment: z.boolean().optional(),
+  isThirdPartyPayment: z.boolean().optional().default(false),
   payerContactId: z.number().positive("Payer contact ID must be positive").optional().nullable(),
+  thirdPartyContactId: z.number().positive("Third-party contact ID must be positive").optional().nullable(),
 
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationUpdateSchema).optional(),
 
-  // Multi-contact payment fields
-  isMultiContactPayment: z.boolean().optional(),
+  isMultiContactPayment: z.boolean().optional().default(false),
   multiContactAllocations: z.array(multiContactAllocationSchema).optional(),
 
   autoAdjustAllocations: z.boolean().optional(),
   redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
-}).refine((data) => {
-  // Validate split payment allocation totals
-  if (data.isSplitPayment && data.allocations && data.allocations.length > 0 && data.amount) {
-    const totalAllocated = data.allocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
-    const difference = Math.abs(totalAllocated - data.amount);
-    return difference < 0.01;
-  }
-  return true;
-}, {
-  message: "Total allocation amount must equal the payment amount for split payments",
-}).refine((data) => {
-  // Validate multi-contact payment allocation totals
-  if (data.isMultiContactPayment && data.multiContactAllocations && data.multiContactAllocations.length > 0 && data.amount) {
-    const totalAllocated = data.multiContactAllocations.reduce((contactSum, contact) => {
-      return contactSum + contact.pledges.reduce((pledgeSum, pledge) => pledgeSum + pledge.allocatedAmount, 0);
-    }, 0);
-    const difference = Math.abs(totalAllocated - data.amount);
-    return difference < 0.01;
-  }
-  return true;
-}, {
-  message: "Total multi-contact allocation amount must equal the payment amount",
-}).refine((data) => {
-  // Third-party payment validation
-  if (data.isThirdPartyPayment && !data.payerContactId) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Payer contact must be set for third-party payments",
-  path: ["payerContactId"],
-}).refine((data) => {
-  // Payment plan + third-party conflict validation
-  if (data.isThirdPartyPayment && data.paymentPlanId) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Third-party payments are not supported for payment plan payments",
-  path: ["isThirdPartyPayment"],
-}).refine((data) => {
-  // Multi-contact payments should be split payments
-  if (data.isMultiContactPayment && !data.isSplitPayment) {
-    return false;
-  }
-  return true;
-}, {
-  message: "Multi-contact payments must be split payments",
-  path: ["isMultiContactPayment"],
-});
+})
+  .transform((data) => {
+    // Automatically set isThirdPartyPayment if isMultiContactPayment is true
+    if (data.isMultiContactPayment) {
+      data.isThirdPartyPayment = true;
+    }
+    return data;
+  })
+  .refine((data) => {
+    if (data.isSplitPayment && data.allocations && data.allocations.length > 0 && data.amount) {
+      const totalAllocated = data.allocations.reduce((sum, alloc) => sum + alloc.allocatedAmount, 0);
+      const difference = Math.abs(totalAllocated - data.amount);
+      return difference < 0.01;
+    }
+    return true;
+  }, {
+    message: "Total allocation amount must equal the payment amount for split payments",
+  })
+  .refine((data) => {
+    if (data.isMultiContactPayment && data.multiContactAllocations && data.multiContactAllocations.length > 0 && data.amount) {
+      const totalAllocated = data.multiContactAllocations.reduce((contactSum, contact) => {
+        return contactSum + contact.pledges.reduce((pledgeSum, pledge) => pledgeSum + pledge.allocatedAmount, 0);
+      }, 0);
+      const difference = Math.abs(totalAllocated - data.amount);
+      return difference < 0.01;
+    }
+    return true;
+  }, {
+    message: "Total multi-contact allocation amount must equal the payment amount",
+  })
+  .refine((data) => {
+    if (data.isThirdPartyPayment && !(data.payerContactId || data.thirdPartyContactId)) {
+      return false;
+    }
+    return true;
+  }, {
+    message: "Payer contact must be set for third-party payments",
+    path: ["payerContactId"],
+  })
+  .refine((data) => {
+    if (data.isThirdPartyPayment && data.paymentPlanId) {
+      return false;
+    }
+    return true;
+  }, {
+    message: "Third-party payments are not supported for payment plan payments",
+    path: ["isThirdPartyPayment"],
+  })
+  .refine((data) => {
+    if (data.isMultiContactPayment && !data.isSplitPayment) {
+      return false;
+    }
+    return true;
+  }, {
+    message: "Multi-contact payments must be split payments",
+    path: ["isMultiContactPayment"],
+  });
+
 
 type AllocationResponse = {
   id: number;
@@ -781,25 +775,33 @@ export async function PATCH(
 
     existingAllocations.forEach(alloc => pledgesToUpdate.add(alloc.pledgeId));
 
-    // Build the update data object with enhanced currency support
     const buildUpdateData = async (data: typeof validatedData) => {
-      const {
-        paymentId: _,
-        allocations: __,
-        isSplitPayment: ___,
-        autoAdjustAllocations: ____,
-        redistributionMethod: _____,
-        multiContactAllocations: ______,
-        isMultiContactPayment: _______,
-        ...dataToUpdate
-      } = data;
+      const { paymentId, allocations, isSplitPayment, autoAdjustAllocations, redistributionMethod, multiContactAllocations, isMultiContactPayment, thirdPartyContactId, ...dataToUpdate } = data;
 
       const baseUpdateData: Record<string, string | number | boolean | null | undefined | Date> = {
         ...dataToUpdate,
-        isThirdPartyPayment: data.isThirdPartyPayment || false,
-        payerContactId: data.isThirdPartyPayment ? data.payerContactId : null,
         updatedAt: new Date(),
       };
+
+      // FIXED: Proper third-party payment handling for ALL payment types including multi-contact
+      if (data.isThirdPartyPayment !== undefined) {
+        baseUpdateData.isThirdPartyPayment = data.isThirdPartyPayment;
+
+        if (data.isThirdPartyPayment) {
+          // Use thirdPartyContactId if provided, otherwise payerContactId
+          baseUpdateData.payerContactId = data.payerContactId;
+        } else {
+          // Only set to null if explicitly converting from third-party to regular
+          baseUpdateData.payerContactId = null;
+        }
+      } else if (data.payerContactId !== undefined) {
+        // If just updating the payer contact ID without changing isThirdPartyPayment
+        baseUpdateData.payerContactId = data.thirdPartyContactId || data.payerContactId;
+        // Ensure isThirdPartyPayment is true when setting a payer contact
+        if (baseUpdateData.payerContactId) {
+          baseUpdateData.isThirdPartyPayment = true;
+        }
+      }
 
       // Use receivedDate when present, fall back to today's date
       const exchangeRateDate = data.receivedDate || new Date().toISOString().split('T')[0];
@@ -894,7 +896,7 @@ export async function PATCH(
         validatedData.multiContactAllocations,
         paymentCurrency,
         exchangeRateDate,
-        validatedData.isThirdPartyPayment ? validatedData.payerContactId : null
+        validatedData.isThirdPartyPayment ? (validatedData.thirdPartyContactId || validatedData.payerContactId) : null
       );
 
       // Add all pledges from multi-contact allocations to update list
@@ -998,7 +1000,7 @@ export async function PATCH(
           validatedData.multiContactAllocations,
           paymentCurrency,
           exchangeRateDate,
-          validatedData.isThirdPartyPayment ? validatedData.payerContactId : null
+          validatedData.isThirdPartyPayment ? (validatedData.thirdPartyContactId || validatedData.payerContactId) : null
         );
 
         validatedData.multiContactAllocations.forEach(contact => {
@@ -1108,7 +1110,7 @@ export async function PATCH(
             receiptType: alloc.receiptType ?? null,
             receiptIssued: alloc.receiptIssued ?? false,
             notes: alloc.notes ?? null,
-            payerContactId: validatedData.isThirdPartyPayment ? validatedData.payerContactId : null,
+            payerContactId: validatedData.isThirdPartyPayment ? (validatedData.thirdPartyContactId || validatedData.payerContactId) : null,
             createdAt: new Date(),
             updatedAt: new Date(),
           };
@@ -1183,7 +1185,7 @@ export async function PATCH(
           validatedData.multiContactAllocations,
           paymentCurrency,
           exchangeRateDate,
-          validatedData.isThirdPartyPayment ? validatedData.payerContactId : null
+          validatedData.isThirdPartyPayment ? (validatedData.thirdPartyContactId || validatedData.payerContactId) : null
         );
 
         validatedData.multiContactAllocations.forEach(contact => {
@@ -1314,7 +1316,7 @@ export async function PATCH(
               currency: allocationCurrency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR",
               notes: allocation.notes ?? null,
               installmentScheduleId: allocation.installmentScheduleId ?? null,
-              payerContactId: validatedData.isThirdPartyPayment ? validatedData.payerContactId : null,
+              payerContactId: validatedData.isThirdPartyPayment ? (validatedData.thirdPartyContactId || validatedData.payerContactId) : null,
               updatedAt: new Date(),
             };
 
@@ -1345,7 +1347,7 @@ export async function PATCH(
               receiptType: allocation.receiptType ?? null,
               receiptIssued: allocation.receiptIssued ?? false,
               notes: allocation.notes ?? null,
-              payerContactId: validatedData.isThirdPartyPayment ? validatedData.payerContactId : null,
+              payerContactId: validatedData.isThirdPartyPayment ? (validatedData.thirdPartyContactId || validatedData.payerContactId) : null,
               createdAt: new Date(),
               updatedAt: new Date(),
             };
