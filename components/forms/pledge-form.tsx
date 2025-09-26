@@ -2,8 +2,8 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 "use client";
 
-import type React from "react";
-import { useState, useEffect, useMemo } from "react";
+import React from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Check, ChevronsUpDown, PlusCircle, Edit } from "lucide-react";
+import { Check, ChevronsUpDown, PlusCircle, Edit, X } from "lucide-react";
 import {
   Form,
   FormControl,
@@ -35,8 +35,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
-
 import {
   Command,
   CommandEmpty,
@@ -53,9 +53,9 @@ import {
   useCreatePledgeAndPayMutation,
   useUpdatePledgeMutation,
 } from "@/lib/query/pledge/usePledgeQuery";
+import { useTagsQuery } from "@/lib/query/tags/useTagsQuery";
 import PaymentDialog from "./payment-form";
 import { getCategoryItems } from "@/lib/data/categories";
-
 import {
   Card,
   CardContent,
@@ -63,6 +63,18 @@ import {
   CardTitle,
   CardDescription,
 } from "@/components/ui/card";
+
+// Tag interface
+interface Tag {
+  id: number;
+  name: string;
+  description: string | null;
+  showOnPledge: boolean;
+  showOnPayment: boolean;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 
 const supportedCurrencies = [
   "USD",
@@ -75,18 +87,12 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
-// Static categories for display (you'll need to replace this with your actual categories)
+// Static categories for display
 const STATIC_CATEGORIES = [
   { id: 1, name: "Donation", description: "General donations" },
   { id: 2, name: "Tuition", description: "Educational tuition fees" },
   { id: 3, name: "Miscellaneous", description: "Miscellaneous fees and charges" },
-  // Add your other categories here
 ];
-
-// Helper function to maintain precision without rounding
-const maintainPrecision = (value: number): number => {
-  return value;
-};
 
 const pledgeSchema = z.object({
   contactId: z.number().positive("Contact ID is required"),
@@ -111,29 +117,56 @@ const pledgeSchema = z.object({
   exchangeRateDate: z.string().optional(),
   campaignCode: z.string().optional(),
   notes: z.string().optional(),
+  tagIds: z.array(z.number()).optional(),
 });
 
 type PledgeFormData = z.infer<typeof pledgeSchema>;
 
+// UPDATED: Support both direct pledge data and full API response structure
 interface PledgeData {
   id?: number;
-  contactId: number;
-  categoryId?: number;
-  description: string;
-  pledgeDate: string;
-  currency: string;
-  originalAmount: number;
-  originalAmountUsd: number;
-  exchangeRate: number;
+  contactId?: number;
+  description?: string;
+  pledgeDate?: string;
+  currency?: string;
+  originalAmount?: number;
+  originalAmountUsd?: number;
+  exchangeRate?: number;
   campaignCode?: string;
   notes?: string;
+  category?: {
+    id: number;
+    name: string;
+    description: string;
+  };
+  tags?: Array<{
+    id: number;
+    name: string;
+    description: string;
+    showOnPayment: boolean;
+    showOnPledge: boolean;
+    isActive: boolean;
+  }>;
+  // Support for full API response structure
+  pledge?: {
+    id?: number;
+    contactId?: number;
+    description?: string;
+    pledgeDate?: string;
+    currency?: string;
+    originalAmount?: number;
+    originalAmountUsd?: number;
+    exchangeRate?: number;
+    campaignCode?: string;
+    notes?: string;
+  };
 }
 
 interface PledgeDialogProps {
   contactId: number;
   contactName?: string;
   mode?: "create" | "edit";
-  pledgeData?: PledgeData;
+  pledgeData?: any; // Allow any structure to handle different API response formats
   onPledgeCreated?: (pledgeId: number) => void;
   onPledgeCreatedAndPay?: (pledgeId: number) => void;
   onPledgeUpdated?: (pledgeId: number) => void;
@@ -146,7 +179,7 @@ export default function PledgeDialog({
   contactId,
   contactName,
   mode = "create",
-  pledgeData,
+  pledgeData: rawPledgeData,
   onPledgeCreated,
   onPledgeCreatedAndPay,
   onPledgeUpdated,
@@ -154,12 +187,32 @@ export default function PledgeDialog({
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
 }: PledgeDialogProps) {
+  
+  // ENHANCED: Normalize pledge data structure
+  const pledgeData = React.useMemo(() => {
+    if (!rawPledgeData) return null;
+    
+    // Handle full API response structure (has pledge, tags, category at root)
+    if (rawPledgeData.pledge && rawPledgeData.tags !== undefined) {
+      return {
+        ...rawPledgeData.pledge,
+        category: rawPledgeData.category,
+        tags: rawPledgeData.tags || [],
+      };
+    }
+    
+    // Handle direct pledge data structure
+    return rawPledgeData;
+  }, [rawPledgeData]);
+  
   const [internalOpen, setInternalOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [createdPledge, setCreatedPledge] = useState<any>(null);
+  const [isFormInitialized, setIsFormInitialized] = useState(false);
 
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const [itemSelectionPopoverOpen, setItemSelectionPopoverOpen] = useState(false);
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
   
   // State for category items
   const [categoryItems, setCategoryItems] = useState<string[]>([]);
@@ -170,20 +223,29 @@ export default function PledgeDialog({
   );
   const defaultCategoryId = donationCategory?.id || null;
 
-  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(
-    mode === "edit" ? pledgeData?.categoryId || null : defaultCategoryId
-  );
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
 
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setOpen = controlledOnOpenChange || setInternalOpen;
 
   const isEditMode = mode === "edit";
 
-  const getDefaultValues = (): PledgeFormData => {
+  // Tags query - only fetch tags that should show on pledges
+  const { data: tagsData, isLoading: isLoadingTags } = useTagsQuery({
+    showOnPledge: true,
+    isActive: true,
+  });
+  const availableTags: Tag[] = tagsData?.tags || [];
+
+  // ENHANCED getDefaultValues with better debugging
+  const getDefaultValues = useCallback((): PledgeFormData => {
     if (isEditMode && pledgeData) {
-      return {
+      const extractedTagIds = pledgeData.tags?.map((tag: { id: number; name: string }) => tag.id) || [];
+      
+      const values = {
         contactId: pledgeData.contactId || contactId,
-        categoryId: pledgeData.categoryId,
+        categoryId: pledgeData.category?.id,
         currency: pledgeData.currency as (typeof supportedCurrencies)[number],
         exchangeRate: Math.max(pledgeData.exchangeRate || 1, 0.0001),
         originalAmount: Math.max(pledgeData.originalAmount || 1, 0.01),
@@ -193,9 +255,13 @@ export default function PledgeDialog({
         exchangeRateDate: pledgeData.pledgeDate,
         campaignCode: pledgeData.campaignCode || "",
         notes: pledgeData.notes || "",
+        tagIds: extractedTagIds,
       };
+      
+      return values;
     }
-    return {
+
+    const defaultValues = {
       contactId,
       categoryId: defaultCategoryId || undefined,
       currency: "USD" as const,
@@ -207,8 +273,11 @@ export default function PledgeDialog({
       exchangeRateDate: new Date().toISOString().split("T")[0],
       campaignCode: "",
       notes: "",
+      tagIds: [],
     };
-  };
+    
+    return defaultValues;
+  }, [isEditMode, pledgeData, contactId, defaultCategoryId]);
 
   const form = useForm<PledgeFormData>({
     resolver: zodResolver(pledgeSchema),
@@ -220,7 +289,26 @@ export default function PledgeDialog({
   const watchedOriginalAmount = form.watch("originalAmount");
   const watchedExchangeRateDate = form.watch("exchangeRateDate");
   const watchedExchangeRate = form.watch("exchangeRate");
-  const watchedCategoryId = form.watch("categoryId"); // Watch category changes
+  const watchedCategoryId = form.watch("categoryId");
+  const watchedTagIds = form.watch("tagIds");
+
+  // ENHANCED Selected tags objects with better fallback logic
+  const selectedTags = (() => {
+    // First try to get tags from available tags (normal flow)
+    const tagsFromAvailable = availableTags.filter((tag: Tag) => 
+      (watchedTagIds?.includes(tag.id) || selectedTagIds.includes(tag.id))
+    );
+    
+    // If no tags found in available tags but we have pledge data tags, use those
+    if (tagsFromAvailable.length === 0 && isEditMode && pledgeData?.tags) {
+      const tagsFromPledge = pledgeData.tags.filter((pledgeTag: any) => 
+        (watchedTagIds?.includes(pledgeTag.id) || selectedTagIds.includes(pledgeTag.id))
+      );
+      return tagsFromPledge;
+    }
+    
+    return tagsFromAvailable;
+  })();
 
   const { data: exchangeRatesData, isLoading: isLoadingRates, error: ratesError } =
     useExchangeRates(watchedExchangeRateDate);
@@ -235,7 +323,7 @@ export default function PledgeDialog({
       setCategoryItems([]);
       return;
     }
-    
+
     setLoadingCategoryItems(true);
     try {
       const items = await getCategoryItems(categoryId);
@@ -249,6 +337,85 @@ export default function PledgeDialog({
     }
   };
 
+  // SIMPLIFIED initialization - force it to run
+  useEffect(() => {
+    if (open && isEditMode && pledgeData && !isFormInitialized) {
+      // Force initialization regardless of tag loading state
+      setTimeout(async () => {
+        try {
+          const categoryId = pledgeData.category?.id || defaultCategoryId;
+          const pledgeTagIds = pledgeData.tags?.map((tag: any) => tag.id) || [];
+          
+          // Set component state
+          setSelectedCategoryId(categoryId);
+          setSelectedTagIds(pledgeTagIds);
+          
+          // Get default values and reset form
+          const values = getDefaultValues();
+          form.reset(values);
+          
+          // Wait a bit then force set the values
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Force set category
+          if (categoryId) {
+            form.setValue("categoryId", categoryId, { shouldValidate: true, shouldDirty: true });
+            await fetchCategoryItems(categoryId);
+          }
+          
+          // Force set tags
+          if (pledgeTagIds.length > 0) {
+            form.setValue("tagIds", pledgeTagIds, { shouldValidate: true, shouldDirty: true });
+          }
+          
+          // Trigger validation
+          await form.trigger();
+          
+          setIsFormInitialized(true);
+          
+        } catch (error) {
+          console.error("Initialization error:", error);
+        }
+      }, 200);
+      
+    } else if (open && !isEditMode) {
+      // Create mode
+      const defaultValues = getDefaultValues();
+      form.reset(defaultValues);
+      setSelectedCategoryId(defaultCategoryId);
+      setSelectedTagIds([]);
+      
+      if (defaultCategoryId) {
+        fetchCategoryItems(defaultCategoryId);
+      }
+      
+    } else if (!open) {
+      // Dialog closed
+      setIsFormInitialized(false);
+      if (!isEditMode) {
+        setCategoryItems([]);
+        setSelectedCategoryId(defaultCategoryId);
+        setSelectedTagIds([]);
+      }
+    }
+  }, [open, isEditMode, pledgeData?.id, isFormInitialized]);
+
+  // Watch for category changes and fetch items
+  useEffect(() => {
+    if (watchedCategoryId && watchedCategoryId !== selectedCategoryId) {
+      setSelectedCategoryId(watchedCategoryId);
+      fetchCategoryItems(watchedCategoryId);
+    }
+  }, [watchedCategoryId, selectedCategoryId]);
+
+  // Sync selectedTagIds with watchedTagIds
+  useEffect(() => {
+    if (watchedTagIds && Array.isArray(watchedTagIds)) {
+      setSelectedTagIds(watchedTagIds);
+    }
+  }, [watchedTagIds]);
+
+  // Contact ID validation
   useEffect(() => {
     if (!contactId || contactId <= 0) {
       console.error("Invalid contactId prop:", contactId);
@@ -257,52 +424,9 @@ export default function PledgeDialog({
     }
   }, [contactId]);
 
-  // Initial setup when dialog opens
-  useEffect(() => {
-    if (open) {
-      const categoryToUse = isEditMode && pledgeData?.categoryId 
-        ? pledgeData.categoryId 
-        : defaultCategoryId;
-
-      setSelectedCategoryId(categoryToUse);
-
-      if (isEditMode && pledgeData) {
-        const values = getDefaultValues();
-        if (!values.contactId) {
-          console.error("ContactId is missing in form values!");
-          values.contactId = contactId;
-        }
-        form.reset(values);
-      } else {
-        // For create mode, reset to default values
-        const defaultValues = getDefaultValues();
-        form.reset(defaultValues);
-      }
-
-      // Fetch items for the initial category
-      if (categoryToUse) {
-        fetchCategoryItems(categoryToUse);
-      }
-    } else {
-      // Reset state when dialog closes
-      if (!isEditMode) {
-        setCategoryItems([]);
-        setSelectedCategoryId(defaultCategoryId);
-      }
-    }
-  }, [open, isEditMode, pledgeData, contactId, defaultCategoryId]);
-
-  // Watch for category changes and fetch items
-  useEffect(() => {
-    if (watchedCategoryId && watchedCategoryId !== selectedCategoryId) {
-      setSelectedCategoryId(watchedCategoryId);
-      fetchCategoryItems(watchedCategoryId);
-    }
-  }, [watchedCategoryId]);
-
   // Handle exchange rate updates in edit mode
   useEffect(() => {
-    if (isEditMode && pledgeData && open && exchangeRatesData?.data?.rates) {
+    if (isEditMode && pledgeData && open && exchangeRatesData?.data?.rates && isFormInitialized) {
       setTimeout(() => {
         const currentCurrency = form.getValues("currency");
         const currentOriginalAmount = form.getValues("originalAmount");
@@ -326,7 +450,7 @@ export default function PledgeDialog({
         form.trigger();
       }, 100);
     }
-  }, [isEditMode, pledgeData, open, exchangeRatesData, form]);
+  }, [isEditMode, pledgeData, open, exchangeRatesData, form, isFormInitialized]);
 
   useEffect(() => {
     if (
@@ -357,12 +481,12 @@ export default function PledgeDialog({
     form.setValue("categoryId", id, { shouldValidate: true });
     setSelectedCategoryId(id);
     setCategoryPopoverOpen(false);
-    
+
     // Clear description when changing categories (except in edit mode)
     if (!isEditMode) {
       form.setValue("description", "", { shouldValidate: true });
     }
-    
+
     // Fetch items for the new category
     await fetchCategoryItems(id);
   };
@@ -372,9 +496,28 @@ export default function PledgeDialog({
     setItemSelectionPopoverOpen(false);
   };
 
+  // ENHANCED Tag handling functions
+  const handleTagToggle = (tagId: number) => {
+    const currentTagIds = form.getValues("tagIds") || [];
+    const newTagIds = currentTagIds.includes(tagId)
+      ? currentTagIds.filter((id: number) => id !== tagId)
+      : [...currentTagIds, tagId];
+    
+    form.setValue("tagIds", newTagIds, { shouldValidate: true });
+    setSelectedTagIds(newTagIds);
+  };
+
+  const handleTagRemove = (tagId: number) => {
+    const currentTagIds = form.getValues("tagIds") || [];
+    const newTagIds = currentTagIds.filter((id: number) => id !== tagId);
+    
+    form.setValue("tagIds", newTagIds, { shouldValidate: true });
+    setSelectedTagIds(newTagIds);
+  };
+
   const isDonationCategory = selectedCategoryId
     ? STATIC_CATEGORIES.find((cat) => cat.id === selectedCategoryId)?.name?.toLowerCase() ===
-      "donation"
+    "donation"
     : false;
 
   const onSubmit = async (data: PledgeFormData, shouldOpenPayment = false) => {
@@ -401,6 +544,7 @@ export default function PledgeDialog({
         exchangeRate: data.exchangeRate,
         campaignCode: data.campaignCode || undefined,
         notes: data.notes,
+        tagIds: data.tagIds || [],
       };
 
       if (isEditMode) {
@@ -442,7 +586,9 @@ export default function PledgeDialog({
     const defaultValues = getDefaultValues();
     form.reset(defaultValues);
     setSelectedCategoryId(defaultCategoryId);
+    setSelectedTagIds([]);
     setCategoryItems([]);
+    setIsFormInitialized(false);
   };
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -458,7 +604,6 @@ export default function PledgeDialog({
   };
 
   const handleAmountBlur = (field: any, value: number) => {
-    // Remove rounding on blur, use raw value
     field.onChange(value);
   };
 
@@ -467,7 +612,7 @@ export default function PledgeDialog({
     createPledgeAndPayMutation.isPending ||
     updatePledgeMutation.isPending;
 
-  const selectedCategory = selectedCategoryId ? 
+  const selectedCategory = selectedCategoryId ?
     STATIC_CATEGORIES.find(cat => cat.id === selectedCategoryId) : null;
 
   const defaultTrigger = isEditMode ? (
@@ -484,6 +629,22 @@ export default function PledgeDialog({
 
   const shouldRenderTrigger = controlledOpen === undefined;
 
+  // Get contact name for dialog description
+  const getContactDisplayName = () => {
+    if (contactName) return contactName;
+    
+    // If we have pledge data with contact information, extract the name
+    if (isEditMode && rawPledgeData?.contact?.fullName) {
+      return rawPledgeData.contact.fullName;
+    }
+    
+    if (isEditMode && rawPledgeData?.contact?.firstName && rawPledgeData?.contact?.lastName) {
+      return `${rawPledgeData.contact.firstName} ${rawPledgeData.contact.lastName}`;
+    }
+    
+    return `contact ID ${contactId}`;
+  };
+
   return (
     <>
       <Dialog open={open} onOpenChange={handleOpenChange}>
@@ -495,8 +656,8 @@ export default function PledgeDialog({
             <DialogTitle>{isEditMode ? "Edit Pledge" : "Create Pledge"}</DialogTitle>
             <DialogDescription>
               {isEditMode
-                ? `Edit pledge for ${contactName || `contact ID ${contactId}`}.`
-                : `Add a new pledge for ${contactName || `contact ID ${contactId}`}.`}
+                ? `Edit pledge for ${getContactDisplayName()}.`
+                : `Add a new pledge for ${getContactDisplayName()}.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -539,8 +700,8 @@ export default function PledgeDialog({
                               >
                                 {field.value
                                   ? STATIC_CATEGORIES.find(
-                                      (category) => category.id === field.value
-                                    )?.name
+                                    (category) => category.id === field.value
+                                  )?.name
                                   : "Select category"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
@@ -612,7 +773,6 @@ export default function PledgeDialog({
                   )}
 
                   {/* Description */}
-                  {/* Description */}
                   <FormField
                     control={form.control}
                     name="description"
@@ -639,8 +799,8 @@ export default function PledgeDialog({
                                   (loadingCategoryItems
                                     ? "Loading items..."
                                     : categoryItems.length === 0
-                                    ? "No items available"
-                                    : `Select item from ${selectedCategory?.name}`)}
+                                      ? "No items available"
+                                      : `Select item from ${selectedCategory?.name}`)}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </FormControl>
@@ -680,6 +840,127 @@ export default function PledgeDialog({
                         </Popover>
                         <FormDescription>
                           Select a description for the pledge.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Tags Field - Enhanced with better debugging */}
+                  <FormField
+                    control={form.control}
+                    name="tagIds"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Tags</FormLabel>
+
+                        {/* Selected Tags Display */}
+                        {selectedTags.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {selectedTags.map((tag: any) => (
+                              <Badge key={tag.id} variant="secondary" className="px-2 py-1">
+                                {tag.name}
+                                <button
+                                  type="button"
+                                  onClick={() => handleTagRemove(tag.id)}
+                                  className="ml-2 hover:text-red-500 transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Tag Selection Popover */}
+                        <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  form.formState.errors.tagIds && "border-red-500"
+                                )}
+                                disabled={isLoadingTags}
+                              >
+                                {isLoadingTags
+                                  ? "Loading tags..."
+                                  : availableTags.length === 0
+                                    ? "No tags available"
+                                    : `Add tags (${selectedTags.length} selected)`
+                                }
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0" align="start">
+                            <Command shouldFilter={true}>
+                              <CommandInput
+                                placeholder="Search tags..."
+                                className="h-9 border-0 border-b rounded-none focus:ring-0"
+                              />
+                              <CommandList className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                                {/* Show all available tags AND pledge tags for debugging */}
+                                {availableTags.length === 0 && !isLoadingTags && (
+                                  <CommandEmpty>No tags available.</CommandEmpty>
+                                )}
+
+                                {/* Loading state */}
+                                {isLoadingTags && (
+                                  <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                                    Loading tags...
+                                  </div>
+                                )}
+
+                                {/* Available tags */}
+                                {availableTags.length > 0 && !isLoadingTags && (
+                                  <>
+                                    <CommandEmpty>No tags match your search.</CommandEmpty>
+                                    <CommandGroup className="p-2">
+                                      {availableTags.map((tag: Tag) => {
+                                        const isSelected = selectedTagIds.includes(tag.id);
+                                        return (
+                                          <CommandItem
+                                            key={tag.id}
+                                            value={tag.name}
+                                            keywords={[tag.name, tag.description || ""]}
+                                            onSelect={() => handleTagToggle(tag.id)}
+                                            className={cn(
+                                              "flex items-center space-x-2 rounded-sm px-2 py-2 cursor-pointer transition-colors",
+                                              "hover:bg-accent hover:text-accent-foreground",
+                                              isSelected && "bg-accent/50"
+                                            )}
+                                          >
+                                            <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                              <div className="flex-1 min-w-0">
+                                                <div className="font-medium truncate">{tag.name}</div>
+                                                {tag.description && (
+                                                  <div className="text-xs text-muted-foreground truncate">
+                                                    {tag.description}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              <Check
+                                                className={cn(
+                                                  "h-4 w-4 flex-shrink-0",
+                                                  isSelected ? "opacity-100" : "opacity-0"
+                                                )}
+                                              />
+                                            </div>
+                                          </CommandItem>
+                                        );
+                                      })}
+                                    </CommandGroup>
+                                  </>
+                                )}
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormDescription>
+                          Select tags to categorize this pledge for better organization and filtering.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -801,8 +1082,8 @@ export default function PledgeDialog({
                           {isEditMode
                             ? "Exchange rate from original pledge"
                             : isLoadingRates
-                            ? "Loading exchange rate..."
-                            : `Rate for ${watchedExchangeRateDate || "today"}`}
+                              ? "Loading exchange rate..."
+                              : `Rate for ${watchedExchangeRateDate || "today"}`}
                         </FormDescription>
                         <FormMessage />
                       </FormItem>

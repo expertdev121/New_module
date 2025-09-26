@@ -9,6 +9,8 @@ import {
   paymentPlan,
   payment,
   paymentAllocations,
+  pledgeTags,
+  tag,
 } from "@/lib/db/schema";
 import { sql, eq, and, or, not, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
@@ -70,6 +72,8 @@ const pledgeSchema = z.object({
   exchangeRate: z.number().positive("Exchange rate must be positive"),
   campaignCode: z.string().optional(),
   notes: z.string().optional(),
+  // NEW: Add tag IDs array
+  tagIds: z.array(z.number().positive()).optional(),
 });
 
 const querySchema = z.object({
@@ -83,6 +87,8 @@ const querySchema = z.object({
   startDate: z.string().optional(),
   endDate: z.string().optional(),
   campaignCode: z.string().optional(),
+  // NEW: Add tag filtering
+  tagIds: z.array(z.number().positive()).optional(),
 });
 
 export async function POST(request: NextRequest) {
@@ -111,12 +117,29 @@ export async function POST(request: NextRequest) {
       notes: validatedData.notes || null,
     };
 
-    const result = await db.insert(pledge).values(newPledge).returning();
+    // Create the pledge first
+    const [createdPledge] = await db.insert(pledge).values(newPledge).returning();
+
+    // Handle tag associations if provided (without transaction)
+    if (validatedData.tagIds && validatedData.tagIds.length > 0) {
+      try {
+        const tagInsertData = validatedData.tagIds.map((tagId) => ({
+          pledgeId: createdPledge.id,
+          tagId: tagId,
+        }));
+
+        await db.insert(pledgeTags).values(tagInsertData);
+      } catch (tagError) {
+        console.error("Error adding tags to pledge:", tagError);
+        // Continue without failing the entire operation
+        // The pledge is created, but tags might not be associated
+      }
+    }
 
     return NextResponse.json(
       {
         message: "Pledge created successfully",
-        pledge: result[0],
+        pledge: createdPledge,
       },
       { status: 201 }
     );
@@ -141,6 +164,19 @@ export async function POST(request: NextRequest) {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    
+    // Handle tagIds array parameter
+    const tagIdsParam = searchParams.get("tagIds");
+    let tagIds: number[] | undefined;
+    if (tagIdsParam) {
+      try {
+        tagIds = JSON.parse(tagIdsParam).map((id: any) => parseInt(id)).filter((id: any) => !isNaN(id));
+      } catch {
+        // If JSON parsing fails, try comma-separated values
+        tagIds = tagIdsParam.split(",").map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+      }
+    }
+
     const parsedParams = querySchema.safeParse({
       contactId: searchParams.get("contactId")
         ? parseInt(searchParams.get("contactId")!)
@@ -158,6 +194,7 @@ export async function GET(request: NextRequest) {
       startDate: searchParams.get("startDate") ?? undefined,
       endDate: searchParams.get("endDate") ?? undefined,
       campaignCode: searchParams.get("campaignCode") ?? undefined,
+      tagIds: tagIds,
     });
 
     if (!parsedParams.success) {
@@ -184,6 +221,7 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate,
       campaignCode,
+      tagIds: filterTagIds,
     } = parsedParams.data;
     const offset = (page - 1) * limit;
 
@@ -219,6 +257,17 @@ export async function GET(request: NextRequest) {
     }
     if (startDate) conditions.push(sql`${pledge.pledgeDate} >= ${startDate}`);
     if (endDate) conditions.push(sql`${pledge.pledgeDate} <= ${endDate}`);
+
+    // NEW: Add tag filtering condition
+    if (filterTagIds && filterTagIds.length > 0) {
+      conditions.push(
+        sql`${pledge.id} IN (
+          SELECT DISTINCT ${pledgeTags.pledgeId} 
+          FROM ${pledgeTags} 
+          WHERE ${pledgeTags.tagId} = ANY(${filterTagIds})
+        )`
+      );
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -283,6 +332,21 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
+    // NEW: Get tags for all pledges in the result set
+    const pledgeTagsQuery = db
+      .select({
+        pledgeId: pledgeTags.pledgeId,
+        tagId: tag.id,
+        tagName: tag.name,
+        tagDescription: tag.description,
+        showOnPayment: tag.showOnPayment,
+        showOnPledge: tag.showOnPledge,
+        isActive: tag.isActive,
+      })
+      .from(pledgeTags)
+      .innerJoin(tag, eq(pledgeTags.tagId, tag.id))
+      .where(eq(tag.isActive, true));
+
     // Get scheduled amounts - only payments without receive date and status expected/pending/processing
     const scheduledPaymentsQuery = db
       .select({
@@ -328,8 +392,9 @@ export async function GET(request: NextRequest) {
       .where(whereClause);
 
     // Execute all queries
-    const [pledges, scheduledPayments, scheduledAllocations, totalCountResult] = await Promise.all([
+    const [pledges, pledgeTagsResults, scheduledPayments, scheduledAllocations, totalCountResult] = await Promise.all([
       pledgesQuery.execute(),
+      pledgeTagsQuery.execute(),
       scheduledPaymentsQuery.execute(),
       scheduledAllocationsQuery.execute(),
       countQuery.execute(),
@@ -352,6 +417,22 @@ export async function GET(request: NextRequest) {
       }
     });
 
+    // NEW: Create map for pledge tags
+    const pledgeTagsMap = new Map<number, any[]>();
+    pledgeTagsResults.forEach((tagResult) => {
+      if (!pledgeTagsMap.has(tagResult.pledgeId)) {
+        pledgeTagsMap.set(tagResult.pledgeId, []);
+      }
+      pledgeTagsMap.get(tagResult.pledgeId)!.push({
+        id: tagResult.tagId,
+        name: tagResult.tagName,
+        description: tagResult.tagDescription,
+        showOnPayment: tagResult.showOnPayment,
+        showOnPledge: tagResult.showOnPledge,
+        isActive: tagResult.isActive,
+      });
+    });
+
     // Debug log first pledge with relationship data
     if (pledges.length > 0) {
       const firstPledge = pledges[0];
@@ -369,7 +450,7 @@ export async function GET(request: NextRequest) {
     const totalCount = Number(totalCountResult[0]?.count || 0);
     const totalPages = Math.ceil(totalCount / limit);
 
-    // Format the response with structured relationship data
+    // Format the response with structured relationship data and tags
     const formattedPledges = pledges.map((pledgeItem: PledgeQueryResult) => {
       // Combine scheduled payments and allocations (no payment plans)
       const scheduledPaymentAmount = parseFloat(scheduledPaymentsMap.get(pledgeItem.id) || "0");
@@ -381,6 +462,9 @@ export async function GET(request: NextRequest) {
       const balanceNumeric = parseFloat(pledgeItem.balance || "0");
       const scheduledNumeric = totalScheduledAmount;
       const unscheduledAmount = Math.max(0, balanceNumeric - scheduledNumeric).toString();
+
+      // NEW: Get tags for this pledge
+      const pledgeTags = pledgeTagsMap.get(pledgeItem.id) || [];
 
       const formattedPledge = {
         ...pledgeItem,
@@ -423,6 +507,9 @@ export async function GET(request: NextRequest) {
           name: pledgeItem.categoryName,
           description: pledgeItem.categoryDescription,
         } : null,
+
+        // NEW: Add tags data
+        tags: pledgeTags,
       };
 
       return formattedPledge;
@@ -443,6 +530,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // NEW: Count pledges with tags for debugging
+    const pledgesWithTags = formattedPledges.filter(p => p.tags.length > 0);
+    console.log(`=== PLEDGES API DEBUG: ${pledgesWithTags.length} pledges have tags ===`);
+
     const response = {
       pledges: formattedPledges,
       pagination: {
@@ -462,6 +553,7 @@ export async function GET(request: NextRequest) {
         startDate,
         endDate,
         campaignCode,
+        tagIds: filterTagIds, // NEW: Include tag filtering in response
       },
     };
 

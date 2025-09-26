@@ -10,9 +10,6 @@ import type {
 import {
   contact,
   pledge,
-  studentRoles,
-  contactRoles,
-  payment,
   NewContact,
 } from "@/lib/db/schema";
 import { z } from "zod";
@@ -34,10 +31,6 @@ interface ContactResponse {
   totalPledgedUsd: number;
   totalPaidUsd: number;
   currentBalanceUsd: number;
-  studentProgram: string | null;
-  studentStatus: string | null;
-  roleName: string | null;
-  lastPaymentDate: Date | null;
 }
 
 const querySchema = z.object({
@@ -95,19 +88,6 @@ export async function GET(request: NextRequest) {
       .groupBy(pledge.contactId)
       .as("pledgeSummary");
 
-    // ✅ Aggregate last payment date per contact
-    const lastPaymentSummary = db
-      .select({
-        contactId: pledge.contactId,
-        lastPaymentDate: sql<Date>`MAX(${payment.paymentDate})`.as(
-          "lastPaymentDate"
-        ),
-      })
-      .from(pledge)
-      .leftJoin(payment, eq(pledge.id, payment.pledgeId))
-      .groupBy(pledge.contactId)
-      .as("lastPaymentSummary");
-
     // ✅ Looser search: split search into words, remove punctuation, match any term (OR logic)
     const terms = search
       ? search
@@ -146,19 +126,12 @@ export async function GET(request: NextRequest) {
       totalPledgedUsd: pledgeSummary.totalPledgedUsd,
       totalPaidUsd: pledgeSummary.totalPaidUsd,
       currentBalanceUsd: pledgeSummary.currentBalanceUsd,
-      studentProgram: studentRoles.program,
-      studentStatus: studentRoles.status,
-      roleName: contactRoles.roleName,
-      lastPaymentDate: lastPaymentSummary.lastPaymentDate,
     };
 
     const query = db
       .select(selectedFields)
       .from(contact)
       .leftJoin(pledgeSummary, eq(contact.id, pledgeSummary.contactId))
-      .leftJoin(lastPaymentSummary, eq(contact.id, lastPaymentSummary.contactId))
-      .leftJoin(studentRoles, eq(contact.id, studentRoles.contactId))
-      .leftJoin(contactRoles, eq(contact.id, contactRoles.contactId))
       .where(whereClause)
       .groupBy(
         contact.id,
@@ -172,13 +145,9 @@ export async function GET(request: NextRequest) {
         contact.address,
         contact.createdAt,
         contact.updatedAt,
-        studentRoles.program,
-        studentRoles.status,
-        contactRoles.roleName,
         pledgeSummary.totalPledgedUsd,
         pledgeSummary.totalPaidUsd,
-        pledgeSummary.currentBalanceUsd,
-        lastPaymentSummary.lastPaymentDate
+        pledgeSummary.currentBalanceUsd
       );
 
     let orderByField:

@@ -8,15 +8,19 @@ import {
   paymentPlan,
   bonusCalculation,
   NewPledge,
+  pledgeTags,
+  tag,
+  relationships,
 } from "@/lib/db/schema";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
 
 const updatePledgeSchema = z.object({
   contactId: z.number().positive().optional(),
   categoryId: z.number().positive().optional(),
-  relationshipId: z.number().positive().optional(), // Add this line
+  relationshipId: z.number().positive().optional(),
   pledgeDate: z.string().min(1, "Pledge date is required").optional(),
   description: z.string().min(1, "Description is required").optional(),
   originalAmount: z.number().positive("Pledge amount must be positive").optional(),
@@ -31,6 +35,8 @@ const updatePledgeSchema = z.object({
   campaignCode: z.string().optional(),
   notes: z.string().optional(),
   isActive: z.boolean().optional(),
+  // NEW: Add tag IDs array for updates
+  tagIds: z.array(z.number().positive()).optional(),
 });
 
 export async function GET(
@@ -44,8 +50,13 @@ export async function GET(
       return NextResponse.json({ error: "Invalid pledge ID" }, { status: 400 });
     }
 
+    // Create aliases for different contact joins
+    const primaryContact = alias(contact, "primary_contact");
+    const relatedContact = alias(contact, "related_contact");
+
     const pledgeDetailsQuery = db
       .select({ 
+        // Pledge fields
         id: pledge.id,
         pledgeDate: pledge.pledgeDate,
         description: pledge.description,
@@ -63,21 +74,55 @@ export async function GET(
         createdAt: pledge.createdAt,
         updatedAt: pledge.updatedAt,
 
-        contactId: contact.id,
-        contactFirstName: contact.firstName,
-        contactLastName: contact.lastName,
-        contactEmail: contact.email,
-        contactPhone: contact.phone,
+        // Primary contact fields
+        contactId: primaryContact.id,
+        contactFirstName: primaryContact.firstName,
+        contactLastName: primaryContact.lastName,
+        contactEmail: primaryContact.email,
+        contactPhone: primaryContact.phone,
 
+        // Category fields
         categoryId: category.id,
         categoryName: category.name,
         categoryDescription: category.description,
+
+        // Relationship fields
+        relationshipId: relationships.id,
+        relationshipType: relationships.relationshipType,
+        relationshipIsActive: relationships.isActive,
+        relationshipNotes: relationships.notes,
+
+        // Related contact fields
+        relatedContactId: relatedContact.id,
+        relatedContactFirstName: relatedContact.firstName,
+        relatedContactLastName: relatedContact.lastName,
+        relatedContactEmail: relatedContact.email,
+        relatedContactPhone: relatedContact.phone,
       })
       .from(pledge)
-      .leftJoin(contact, eq(pledge.contactId, contact.id))
+      .leftJoin(primaryContact, eq(pledge.contactId, primaryContact.id))
       .leftJoin(category, eq(pledge.categoryId, category.id))
+      .leftJoin(relationships, eq(pledge.relationshipId, relationships.id))
+      .leftJoin(relatedContact, eq(relationships.relatedContactId, relatedContact.id))
       .where(eq(pledge.id, pledgeId))
       .limit(1);
+
+    // NEW: Get tags for this pledge
+    const pledgeTagsQuery = db
+      .select({
+        tagId: tag.id,
+        tagName: tag.name,
+        tagDescription: tag.description,
+        showOnPayment: tag.showOnPayment,
+        showOnPledge: tag.showOnPledge,
+        isActive: tag.isActive,
+      })
+      .from(pledgeTags)
+      .innerJoin(tag, eq(pledgeTags.tagId, tag.id))
+      .where(and(
+        eq(pledgeTags.pledgeId, pledgeId),
+        eq(tag.isActive, true)
+      ));
 
     // Get payment summary for this pledge
     const paymentSummaryQuery = db
@@ -117,8 +162,9 @@ export async function GET(
       .orderBy(sql`${paymentPlan.createdAt} DESC`);
 
     // Execute all queries
-    const [pledgeDetails, paymentSummary, paymentPlans] = await Promise.all([
+    const [pledgeDetails, pledgeTagsResults, paymentSummary, paymentPlans] = await Promise.all([
       pledgeDetailsQuery.execute(),
+      pledgeTagsQuery.execute(),
       paymentSummaryQuery.execute(),
       paymentPlansQuery.execute(),
     ]);
@@ -136,6 +182,16 @@ export async function GET(
     const balance = parseFloat(pledgeData.balance);
     const paymentPercentage =
       originalAmount > 0 ? (totalPaid / originalAmount) * 100 : 0;
+
+    // NEW: Format tags
+    const tags = pledgeTagsResults.map((tagResult) => ({
+      id: tagResult.tagId,
+      name: tagResult.tagName,
+      description: tagResult.tagDescription,
+      showOnPayment: tagResult.showOnPayment,
+      showOnPledge: tagResult.showOnPledge,
+      isActive: tagResult.isActive,
+    }));
 
     const response = {
       pledge: {
@@ -184,6 +240,24 @@ export async function GET(
             description: pledgeData.categoryDescription,
           }
         : null,
+      // NEW: Add relationship data structure
+      relationship: pledgeData.relationshipId ? {
+        id: pledgeData.relationshipId,
+        type: pledgeData.relationshipType,
+        isActive: pledgeData.relationshipIsActive,
+        notes: pledgeData.relationshipNotes,
+        relatedContact: pledgeData.relatedContactId ? {
+          id: pledgeData.relatedContactId,
+          firstName: pledgeData.relatedContactFirstName,
+          lastName: pledgeData.relatedContactLastName,
+          email: pledgeData.relatedContactEmail,
+          phone: pledgeData.relatedContactPhone,
+          fullName: `${pledgeData.relatedContactFirstName || ""} ${pledgeData.relatedContactLastName || ""}`.trim(),
+        } : null,
+        label: `${pledgeData.relationshipType || ""} - ${pledgeData.relatedContactFirstName || ""} ${pledgeData.relatedContactLastName || ""}`.trim(),
+      } : null,
+      // NEW: Add tags data
+      tags: tags,
       paymentSummary: {
         totalPayments: Number(summaryData.totalPayments || 0),
         lastPaymentDate: summaryData.lastPaymentDate,
@@ -308,7 +382,7 @@ export async function PUT(
     // Add updatedAt timestamp
     updateData.updatedAt = new Date();
 
-    // Perform the update
+    // Perform the pledge update
     const result = await db
       .update(pledge)
       .set(updateData)
@@ -320,6 +394,30 @@ export async function PUT(
         { error: "Failed to update pledge" },
         { status: 400 }
       );
+    }
+
+    // NEW: Handle tag associations if provided (without transaction)
+    if (validatedData.tagIds !== undefined) {
+      try {
+        // First, delete existing tag associations
+        await db
+          .delete(pledgeTags)
+          .where(eq(pledgeTags.pledgeId, pledgeId));
+
+        // Then, add new tag associations
+        if (validatedData.tagIds.length > 0) {
+          const tagInsertData = validatedData.tagIds.map((tagId) => ({
+            pledgeId: pledgeId,
+            tagId: tagId,
+          }));
+
+          await db.insert(pledgeTags).values(tagInsertData);
+        }
+      } catch (tagError) {
+        console.error("Error updating pledge tags:", tagError);
+        // Continue without failing the entire operation
+        // The pledge is updated, but tags might not be updated
+      }
     }
 
     return NextResponse.json(
@@ -349,7 +447,6 @@ export async function PUT(
   }
 }
 
-
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -361,6 +458,7 @@ export async function DELETE(
     if (isNaN(pledgeId)) {
       return NextResponse.json({ error: "Invalid pledge ID" }, { status: 400 });
     }
+    
     const existingPledge = await db
       .select({ id: pledge.id })
       .from(pledge)
@@ -370,7 +468,9 @@ export async function DELETE(
     if (existingPledge.length === 0) {
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
     }
-    const [relatedPayments, relatedPaymentPlans, bonusCalculations] =
+
+    // Get counts of related records including pledge tags
+    const [relatedPayments, relatedPaymentPlans, bonusCalculations, relatedPledgeTags] =
       await Promise.all([
         db
           .select({ count: sql<number>`count(*)` })
@@ -385,16 +485,28 @@ export async function DELETE(
           .from(bonusCalculation)
           .innerJoin(payment, eq(payment.id, bonusCalculation.paymentId))
           .where(eq(payment.pledgeId, pledgeId)),
+        // NEW: Count pledge tags
+        db
+          .select({ count: sql<number>`count(*)` })
+          .from(pledgeTags)
+          .where(eq(pledgeTags.pledgeId, pledgeId)),
       ]);
 
     const paymentCount = Number(relatedPayments[0]?.count || 0);
     const paymentPlanCount = Number(relatedPaymentPlans[0]?.count || 0);
     const bonusCalculationCount = Number(bonusCalculations[0]?.count || 0);
+    const pledgeTagCount = Number(relatedPledgeTags[0]?.count || 0);
+
     const deletedRecords = {
       bonusCalculations: bonusCalculationCount,
       payments: paymentCount,
       paymentPlans: paymentPlanCount,
+      pledgeTags: pledgeTagCount, // NEW: Include pledge tags count
     };
+
+    // Delete related records in proper order (no transactions with Neon HTTP)
+    
+    // Delete bonus calculations first
     if (bonusCalculationCount > 0) {
       await db.delete(bonusCalculation).where(
         sql`${bonusCalculation.paymentId} IN (
@@ -403,14 +515,22 @@ export async function DELETE(
       );
     }
 
+    // Delete payments
     if (paymentCount > 0) {
       await db.delete(payment).where(eq(payment.pledgeId, pledgeId));
     }
 
+    // Delete payment plans
     if (paymentPlanCount > 0) {
       await db.delete(paymentPlan).where(eq(paymentPlan.pledgeId, pledgeId));
     }
 
+    // NEW: Delete pledge tags
+    if (pledgeTagCount > 0) {
+      await db.delete(pledgeTags).where(eq(pledgeTags.pledgeId, pledgeId));
+    }
+
+    // Finally, delete the pledge
     await db.delete(pledge).where(eq(pledge.id, pledgeId));
 
     return NextResponse.json({
