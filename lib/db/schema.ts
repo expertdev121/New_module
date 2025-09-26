@@ -390,6 +390,64 @@ export const categoryItem = pgTable("category_item", {
 export type CategoryItem = typeof categoryItem.$inferSelect;
 export type NewCategoryItem = typeof categoryItem.$inferInsert;
 
+export const tag = pgTable("tag", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  showOnPayment: boolean("show_on_payment").default(true).notNull(),
+  showOnPledge: boolean("show_on_pledge").default(true).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Tag = typeof tag.$inferSelect;
+export type NewTag = typeof tag.$inferInsert;
+
+export const paymentTags = pgTable(
+  "payment_tags",
+  {
+    id: serial("id").primaryKey(),
+    paymentId: integer("payment_id")
+      .references(() => payment.id, { onDelete: "cascade" })
+      .notNull(),
+    tagId: integer("tag_id")
+      .references(() => tag.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    paymentIdIdx: index("payment_tags_payment_id_idx").on(table.paymentId),
+    tagIdIdx: index("payment_tags_tag_id_idx").on(table.tagId),
+    uniquePaymentTag: uniqueIndex("payment_tags_unique").on(table.paymentId, table.tagId),
+  })
+);
+
+export type PaymentTag = typeof paymentTags.$inferSelect;
+export type NewPaymentTag = typeof paymentTags.$inferInsert;
+
+export const pledgeTags = pgTable(
+  "pledge_tags",
+  {
+    id: serial("id").primaryKey(),
+    pledgeId: integer("pledge_id")
+      .references(() => pledge.id, { onDelete: "cascade" })
+      .notNull(),
+    tagId: integer("tag_id")
+      .references(() => tag.id, { onDelete: "cascade" })
+      .notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => ({
+    pledgeIdIdx: index("pledge_tags_pledge_id_idx").on(table.pledgeId),
+    tagIdIdx: index("pledge_tags_tag_id_idx").on(table.tagId),
+    uniquePledgeTag: uniqueIndex("pledge_tags_unique").on(table.pledgeId, table.tagId),
+  })
+);
+
+export type PledgeTag = typeof pledgeTags.$inferSelect;
+export type NewPledgeTag = typeof pledgeTags.$inferInsert;
+
 export const pledge = pgTable(
   "pledge",
   {
@@ -950,6 +1008,33 @@ export const categoryItemRelations = relations(categoryItem, ({ one }) => ({
   }),
 }));
 
+export const tagRelations = relations(tag, ({ many }) => ({
+  paymentTags: many(paymentTags),
+  pledgeTags: many(pledgeTags),
+}));
+
+export const paymentTagsRelations = relations(paymentTags, ({ one }) => ({
+  payment: one(payment, {
+    fields: [paymentTags.paymentId],
+    references: [payment.id],
+  }),
+  tag: one(tag, {
+    fields: [paymentTags.tagId],
+    references: [tag.id],
+  }),
+}));
+
+export const pledgeTagsRelations = relations(pledgeTags, ({ one }) => ({
+  pledge: one(pledge, {
+    fields: [pledgeTags.pledgeId],
+    references: [pledge.id],
+  }),
+  tag: one(tag, {
+    fields: [pledgeTags.tagId],
+    references: [tag.id],
+  }),
+}));
+
 export const pledgeRelations = relations(pledge, ({ one, many }) => ({
   contact: one(contact, {
     fields: [pledge.contactId],
@@ -966,6 +1051,7 @@ export const pledgeRelations = relations(pledge, ({ one, many }) => ({
   paymentPlans: many(paymentPlan),
   payments: many(payment),
   paymentAllocations: many(paymentAllocations),
+  pledgeTags: many(pledgeTags),
 }));
 
 export const paymentPlanRelations = relations(paymentPlan, ({ one, many }) => ({
@@ -1032,6 +1118,7 @@ export const paymentRelations = relations(payment, ({ one, many }) => ({
   }),
   paymentAllocations: many(paymentAllocations),
   currencyConversions: many(currencyConversionLog),
+  paymentTags: many(paymentTags),
 }));
 
 export const solicitorRelations = relations(solicitor, ({ one, many }) => ({
