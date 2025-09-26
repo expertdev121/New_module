@@ -62,48 +62,71 @@ const multiContactAllocationSchema = z.object({
   pledges: z.array(multiContactPledgeSchema)
 });
 
-// The main payment update schema
+// The main payment update schema - EXPANDED to include ALL fields
 const updatePaymentSchema = z.object({
   paymentId: z.number().positive("Payment ID is required and must be positive"),
   amount: z.number().positive("Amount must be positive").optional(),
   currency: z.enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"]).optional(),
   amountUsd: z.number().positive("Amount in USD must be positive").optional(),
   amountInPledgeCurrency: z.number().positive("Amount in pledge currency must be positive").optional(),
+  amountInPlanCurrency: z.number().positive("Amount in plan currency must be positive").optional(),
   exchangeRate: z.number().positive("Exchange rate must be positive").optional(),
+  pledgeCurrencyExchangeRate: z.number().positive("Pledge currency exchange rate must be positive").optional(),
+  planCurrencyExchangeRate: z.number().positive("Plan currency exchange rate must be positive").optional(),
+  
+  // Date fields
   paymentDate: z.string().min(1, "Payment date is required").optional(),
   receivedDate: z.string().optional().nullable(),
+  checkDate: z.string().optional().nullable(),
+  
+  // Payment method and details
   paymentMethod: z.enum([
     "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
+    "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
     "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
   ]).optional(),
   methodDetail: z.string().optional().nullable(),
   paymentStatus: PaymentStatusEnum.optional(),
+  
+  // Account and reference fields
   account: z.string().optional().nullable(),
-  checkDate: z.string().optional().nullable(),
+  referenceNumber: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),
+  
+  // Receipt fields
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(["invoice", "confirmation", "receipt", "other"]).optional().nullable(),
   receiptIssued: z.boolean().optional(),
+  
+  // Solicitor and bonus fields
   solicitorId: z.number().positive("Solicitor ID must be positive").optional().nullable(),
   bonusPercentage: z.number().min(0).max(100).optional().nullable(),
   bonusAmount: z.number().min(0).optional().nullable(),
   bonusRuleId: z.number().positive("Bonus rule ID must be positive").optional().nullable(),
+  
+  // Notes and relationship
   notes: z.string().optional().nullable(),
+  relationshipId: z.number().positive("Relationship ID must be positive").optional().nullable(),
+  
+  // Core payment associations
   pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
   installmentScheduleId: z.number().positive("Installment schedule ID must be positive").optional().nullable(),
 
+  // Third-party payment fields
   isThirdPartyPayment: z.boolean().optional().default(false),
   payerContactId: z.number().positive("Payer contact ID must be positive").optional().nullable(),
   thirdPartyContactId: z.number().positive("Third-party contact ID must be positive").optional().nullable(),
 
+  // Split payment fields
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationUpdateSchema).optional(),
 
+  // Multi-contact payment fields
   isMultiContactPayment: z.boolean().optional().default(false),
   multiContactAllocations: z.array(multiContactAllocationSchema).optional(),
 
+  // Auto-adjustment fields
   autoAdjustAllocations: z.boolean().optional(),
   redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
 })
@@ -775,13 +798,126 @@ export async function PATCH(
 
     existingAllocations.forEach(alloc => pledgesToUpdate.add(alloc.pledgeId));
 
+    // UPDATED buildUpdateData function to handle ALL fields from the schema
     const buildUpdateData = async (data: typeof validatedData) => {
-      const { paymentId, allocations, isSplitPayment, autoAdjustAllocations, redistributionMethod, multiContactAllocations, isMultiContactPayment, thirdPartyContactId, ...dataToUpdate } = data;
+      const { 
+        paymentId, 
+        allocations, 
+        isSplitPayment, 
+        autoAdjustAllocations, 
+        redistributionMethod, 
+        multiContactAllocations, 
+        isMultiContactPayment, 
+        thirdPartyContactId, 
+        ...dataToUpdate 
+      } = data;
 
       const baseUpdateData: Record<string, string | number | boolean | null | undefined | Date> = {
-        ...dataToUpdate,
         updatedAt: new Date(),
       };
+
+      // Handle all core payment fields
+      if (dataToUpdate.amount !== undefined) {
+        baseUpdateData.amount = dataToUpdate.amount.toString();
+      }
+      if (dataToUpdate.currency !== undefined) {
+        baseUpdateData.currency = dataToUpdate.currency;
+      }
+      if (dataToUpdate.amountUsd !== undefined) {
+        baseUpdateData.amountUsd = dataToUpdate.amountUsd.toFixed(2);
+      }
+      if (dataToUpdate.amountInPledgeCurrency !== undefined) {
+        baseUpdateData.amountInPledgeCurrency = dataToUpdate.amountInPledgeCurrency.toFixed(2);
+      }
+      if (dataToUpdate.amountInPlanCurrency !== undefined) {
+        baseUpdateData.amountInPlanCurrency = dataToUpdate.amountInPlanCurrency.toFixed(2);
+      }
+      if (dataToUpdate.exchangeRate !== undefined) {
+        baseUpdateData.exchangeRate = dataToUpdate.exchangeRate.toFixed(4);
+      }
+      if (dataToUpdate.pledgeCurrencyExchangeRate !== undefined) {
+        baseUpdateData.pledgeCurrencyExchangeRate = dataToUpdate.pledgeCurrencyExchangeRate.toFixed(4);
+      }
+      if (dataToUpdate.planCurrencyExchangeRate !== undefined) {
+        baseUpdateData.planCurrencyExchangeRate = dataToUpdate.planCurrencyExchangeRate.toFixed(4);
+      }
+
+      // Date fields
+      if (dataToUpdate.paymentDate !== undefined) {
+        baseUpdateData.paymentDate = dataToUpdate.paymentDate;
+      }
+      if (dataToUpdate.receivedDate !== undefined) {
+        baseUpdateData.receivedDate = dataToUpdate.receivedDate;
+      }
+      if (dataToUpdate.checkDate !== undefined) {
+        baseUpdateData.checkDate = dataToUpdate.checkDate;
+      }
+
+      // Payment method and details
+      if (dataToUpdate.paymentMethod !== undefined) {
+        baseUpdateData.paymentMethod = dataToUpdate.paymentMethod;
+      }
+      if (dataToUpdate.methodDetail !== undefined) {
+        baseUpdateData.methodDetail = dataToUpdate.methodDetail;
+      }
+      if (dataToUpdate.paymentStatus !== undefined) {
+        baseUpdateData.paymentStatus = dataToUpdate.paymentStatus;
+      }
+
+      // Account and reference fields
+      if (dataToUpdate.account !== undefined) {
+        baseUpdateData.account = dataToUpdate.account;
+      }
+      if (dataToUpdate.referenceNumber !== undefined) {
+        baseUpdateData.referenceNumber = dataToUpdate.referenceNumber;
+      }
+      if (dataToUpdate.checkNumber !== undefined) {
+        baseUpdateData.checkNumber = dataToUpdate.checkNumber;
+      }
+
+      // Receipt fields
+      if (dataToUpdate.receiptNumber !== undefined) {
+        baseUpdateData.receiptNumber = dataToUpdate.receiptNumber;
+      }
+      if (dataToUpdate.receiptType !== undefined) {
+        baseUpdateData.receiptType = dataToUpdate.receiptType;
+      }
+      if (dataToUpdate.receiptIssued !== undefined) {
+        baseUpdateData.receiptIssued = dataToUpdate.receiptIssued;
+      }
+
+      // Solicitor and bonus fields
+      if (dataToUpdate.solicitorId !== undefined) {
+        baseUpdateData.solicitorId = dataToUpdate.solicitorId;
+      }
+      if (dataToUpdate.bonusPercentage !== undefined) {
+        baseUpdateData.bonusPercentage = dataToUpdate.bonusPercentage?.toString() || null;
+      }
+      if (dataToUpdate.bonusAmount !== undefined) {
+        baseUpdateData.bonusAmount = dataToUpdate.bonusAmount?.toString() || null;
+      }
+      if (dataToUpdate.bonusRuleId !== undefined) {
+        baseUpdateData.bonusRuleId = dataToUpdate.bonusRuleId;
+      }
+
+      // Notes and relationship
+      if (dataToUpdate.notes !== undefined) {
+        baseUpdateData.notes = dataToUpdate.notes;
+      }
+      if (dataToUpdate.relationshipId !== undefined) {
+        baseUpdateData.relationshipId = dataToUpdate.relationshipId;
+      }
+
+      // Core payment associations
+      if (dataToUpdate.pledgeId !== undefined) {
+        baseUpdateData.pledgeId = dataToUpdate.pledgeId;
+      }
+      if (dataToUpdate.paymentPlanId !== undefined) {
+        baseUpdateData.paymentPlanId = dataToUpdate.paymentPlanId;
+      }
+      if (dataToUpdate.installmentScheduleId !== undefined) {
+        baseUpdateData.installmentScheduleId = dataToUpdate.installmentScheduleId;
+      }
 
       // FIXED: Proper third-party payment handling for ALL payment types including multi-contact
       if (data.isThirdPartyPayment !== undefined) {
@@ -808,15 +944,19 @@ export async function PATCH(
       const newCurrency = data.currency || currentPayment.currency;
       const newAmount = data.amount || parseFloat(currentPayment.amount);
 
+      // Auto-calculate USD conversion if amount or currency changed
       if (data.amount || data.currency) {
-        const usdConversion = await convertCurrency(newAmount, newCurrency, 'USD', exchangeRateDate);
-        baseUpdateData.amountUsd = usdConversion.convertedAmount.toFixed(2);
-        baseUpdateData.exchangeRate = usdConversion.exchangeRate.toFixed(4);
+        if (!dataToUpdate.amountUsd && !dataToUpdate.exchangeRate) {
+          const usdConversion = await convertCurrency(newAmount, newCurrency, 'USD', exchangeRateDate);
+          baseUpdateData.amountUsd = usdConversion.convertedAmount.toFixed(2);
+          baseUpdateData.exchangeRate = usdConversion.exchangeRate.toFixed(4);
+        }
       }
 
+      // Auto-calculate pledge currency conversion if applicable
       if ((data.amount || data.currency) && (data.pledgeId || currentPayment.pledgeId)) {
         const targetPledgeId = data.pledgeId || currentPayment.pledgeId;
-        if (targetPledgeId) {
+        if (targetPledgeId && !dataToUpdate.amountInPledgeCurrency && !dataToUpdate.pledgeCurrencyExchangeRate) {
           const pledgeData = await db
             .select({ currency: pledge.currency })
             .from(pledge)
@@ -832,9 +972,10 @@ export async function PATCH(
         }
       }
 
+      // Auto-calculate plan currency conversion if applicable
       if ((data.amount || data.currency) && (data.paymentPlanId || currentPayment.paymentPlanId)) {
         const targetPaymentPlanId = data.paymentPlanId || currentPayment.paymentPlanId;
-        if (targetPaymentPlanId) {
+        if (targetPaymentPlanId && !dataToUpdate.amountInPlanCurrency && !dataToUpdate.planCurrencyExchangeRate) {
           const planData = await db
             .select({ currency: paymentPlan.currency })
             .from(paymentPlan)
@@ -849,12 +990,6 @@ export async function PATCH(
           }
         }
       }
-
-      ["amount", "bonusPercentage", "bonusAmount"].forEach((f) => {
-        if (baseUpdateData[f] !== undefined && baseUpdateData[f] !== null) {
-          baseUpdateData[f] = baseUpdateData[f].toString();
-        }
-      });
 
       return baseUpdateData;
     };
@@ -1419,12 +1554,12 @@ export async function PATCH(
         exchangeRate: payment.exchangeRate,
         paymentDate: payment.paymentDate,
         receivedDate: payment.receivedDate,
+        checkDate: payment.checkDate,
         paymentMethod: payment.paymentMethod,
         methodDetail: payment.methodDetail,
         paymentStatus: payment.paymentStatus,
         referenceNumber: payment.referenceNumber,
         checkNumber: payment.checkNumber,
-        checkDate: payment.checkDate,
         account: payment.account,
         receiptNumber: payment.receiptNumber,
         receiptType: payment.receiptType,
@@ -1597,7 +1732,7 @@ export async function PATCH(
     }
     return ErrorHandler.handle(err);
   }
-}
+} 
 
 export async function GET(
   request: NextRequest,
