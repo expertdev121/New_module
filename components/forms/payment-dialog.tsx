@@ -33,6 +33,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -59,6 +60,8 @@ import { usePledgeDetailsQuery } from "@/lib/query/payment-plans/usePaymentPlanQ
 import { PlusCircleIcon } from "lucide-react";
 import { usePledgesQuery } from "@/lib/query/usePledgeData";
 import useContactId from "@/hooks/use-contact-id";
+// ADD THIS IMPORT FOR TAGS
+import { useTagsQuery } from "@/lib/query/tags/useTagsQuery";
 
 interface Solicitor {
   id: number;
@@ -122,6 +125,18 @@ interface ContactOption {
   firstName: string;
   lastName: string;
   fullName: string;
+}
+
+// ADD TAG INTERFACE
+interface Tag {
+  id: number;
+  name: string;
+  description: string | null;
+  showOnPayment: boolean;
+  showOnPledge: boolean;
+  isActive: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 const useSolicitors = (params: { search?: string; status?: "active" | "inactive" | "suspended" } = {}) =>
@@ -286,7 +301,7 @@ const allocationSchema = z.object({
   receiptIssued: z.boolean().optional(),
 });
 
-// Payment schema
+// UPDATED Payment schema - ADD TAGS
 const paymentSchema = z.object({
   amount: z.number().optional(),
   currency: z.enum(supportedCurrencies).optional(),
@@ -320,6 +335,9 @@ const paymentSchema = z.object({
   isSplitPayment: z.boolean().optional(),
   isMultiContactPayment: z.boolean().optional(),
   allocations: z.array(allocationSchema).optional(),
+
+  // ADD TAGS TO SCHEMA
+  tagIds: z.array(z.number()).optional(),
 });
 
 type PaymentFormData = z.infer<typeof paymentSchema>;
@@ -390,6 +408,8 @@ export default function PaymentFormDialog({
             receiptIssued: false,
           },
         ],
+      // ADD DEFAULT TAGS
+      tagIds: [],
     },
   });
 
@@ -410,6 +430,8 @@ export default function PaymentFormDialog({
   const watchedIsMultiContactPayment = form.watch("isMultiContactPayment");
   const watchedMainPledgeId = form.watch("pledgeId");
   const watchedIsThirdParty = form.watch("isThirdPartyPayment");
+  // ADD TAG WATCHES
+  const watchedTagIds = form.watch('tagIds');
 
   const { data: solicitorsData, isLoading: isLoadingSolicitors } = useSolicitors({ status: "active" });
   const createPaymentMutation = useCreatePaymentMutation();
@@ -421,6 +443,17 @@ export default function PaymentFormDialog({
   const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
   const [showMultiContactSection, setShowMultiContactSection] = useState(false);
   const [multiContactAllocations, setMultiContactAllocations] = useState<MultiContactAllocation[]>([]);
+
+  // ADD TAG STATE
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+
+  // ADD TAGS QUERY - only fetch tags that should show on payments
+  const { data: tagsData, isLoading: isLoadingTags } = useTagsQuery({
+    showOnPayment: true,
+    isActive: true
+  });
+  const availableTags: Tag[] = tagsData?.tags || [];
 
   // Multi-contact allocation functions
   const addMultiContactAllocation = (preSelectedContactId?: number) => {
@@ -452,6 +485,30 @@ export default function PaymentFormDialog({
       return total + allocation.allocatedAmount;
     }, 0);
   };
+
+  // ADD TAG HANDLING FUNCTIONS
+  const handleTagToggle = (tagId: number) => {
+    const currentTagIds = form.getValues('tagIds') || [];
+    const newTagIds = currentTagIds.includes(tagId)
+      ? currentTagIds.filter(id => id !== tagId)
+      : [...currentTagIds, tagId];
+
+    form.setValue('tagIds', newTagIds, { shouldValidate: true });
+    setSelectedTagIds(newTagIds);
+  };
+
+  const handleTagRemove = (tagId: number) => {
+    const currentTagIds = form.getValues('tagIds') || [];
+    const newTagIds = currentTagIds.filter(id => id !== tagId);
+
+    form.setValue('tagIds', newTagIds, { shouldValidate: true });
+    setSelectedTagIds(newTagIds);
+  };
+
+  // Selected tags for display
+  const selectedTags = availableTags.filter(tag =>
+    (watchedTagIds?.includes(tag.id) || selectedTagIds.includes(tag.id))
+  );
 
   // Refs to store last valid date values
   const lastValidPaymentDateRef = useRef<string | null>(null);
@@ -664,6 +721,13 @@ export default function PaymentFormDialog({
     }
   }, [selectedPledgeCurrency, watchedCurrency, watchedAmount, exchangeRatesData, form]);
 
+  // ADD SYNC EFFECT FOR TAGS
+  useEffect(() => {
+    if (watchedTagIds && Array.isArray(watchedTagIds)) {
+      setSelectedTagIds(watchedTagIds);
+    }
+  }, [watchedTagIds]);
+
   const resetForm = useCallback(() => {
     form.reset({
       amount: 0,
@@ -713,189 +777,195 @@ export default function PaymentFormDialog({
             receiptIssued: false,
           },
         ],
+      // RESET TAGS
+      tagIds: [],
     });
     setShowSolicitorSection(false);
     setSelectedThirdPartyContact(null);
     setContactSearch("");
     setMultiContactAllocations([]);
     setShowMultiContactSection(false);
+    // RESET TAG STATE
+    setSelectedTagIds([]);
   }, [form, initialPledgeId]);
 
- const onSubmit = async (data: PaymentFormData) => {
-  try {
-    // Validate required fields first
-    if (!data.amount || data.amount <= 0) {
-      throw new Error("Payment amount is required and must be greater than 0");
-    }
-
-    if (!data.currency) {
-      throw new Error("Currency is required");
-    }
-
-    if (!data.paymentStatus) {
-      throw new Error("Payment status is required");
-    }
-
-    if (!data.paymentDate) {
-      throw new Error("Payment date is required");
-    }
-
-    const exchangeRateNum = Number(data.exchangeRate) || 1;
-    const amountNum = Number(data.amount);
-    const amountUsdNum = Number(data.amountUsd) || (amountNum * exchangeRateNum);
-
-    const isSplit = data.isSplitPayment;
-    const isMultiContact = watchedIsMultiContactPayment && multiContactAllocations.length > 0;
-    // Multi-contact payments are always third-party payments
-    const isThirdParty = data.isThirdPartyPayment || isMultiContact;
-
-    // Build base payload with correct type assertions
-    const basePayload = {
-      amount: amountNum,
-      currency: data.currency as any,
-      amountUsd: amountUsdNum,
-      exchangeRate: exchangeRateNum,
-      paymentDate: data.paymentDate,
-      receivedDate: data.receivedDate || undefined,
-      paymentMethod: data.paymentMethod as any,
-      methodDetail: data.methodDetail || undefined,
-      account: data.account || undefined,
-      checkDate: data.checkDate || undefined,
-      checkNumber: data.checkNumber || undefined,
-      paymentStatus: data.paymentStatus as any,
-      solicitorId: data.solicitorId ? Number(data.solicitorId) : undefined,
-      bonusPercentage: data.bonusPercentage || undefined,
-      bonusAmount: data.bonusAmount || undefined,
-      bonusRuleId: data.bonusRuleId || undefined,
-      notes: data.notes || undefined,
-      isThirdPartyPayment: isThirdParty,
-      isMultiContactPayment: isMultiContact,
-      payerContactId: isThirdParty ? (contactId || undefined) : undefined,
-      thirdPartyContactId: selectedThirdPartyContact?.id || undefined,
-    };
-
-    if (isMultiContact) {
-      // Handle multi-contact payment
-      if (getTotalMultiContactAllocation() !== (data.amount || 0)) {
-        throw new Error("Multi-contact payment allocation amounts must equal the total payment amount");
+  const onSubmit = async (data: PaymentFormData) => {
+    try {
+      // Validate required fields first
+      if (!data.amount || data.amount <= 0) {
+        throw new Error("Payment amount is required and must be greater than 0");
       }
 
-      // Validate all allocations have valid data
-      const validAllocations = multiContactAllocations.filter(
-        allocation => allocation.contactId > 0 && allocation.pledgeId > 0 && allocation.allocatedAmount > 0
-      );
-
-      if (validAllocations.length === 0) {
-        throw new Error("At least one valid allocation is required for multi-contact payment");
+      if (!data.currency) {
+        throw new Error("Currency is required");
       }
 
-      // For multi-contact payments, we need to determine who is the actual payer
-      // This could be:
-      // 1. The current user (contactId) - paying for multiple other people's pledges
-      // 2. A selected third-party contact - if explicitly selected in the UI
-      const actualPayerId = selectedThirdPartyContact?.id || contactId;
-      
-      if (!actualPayerId) {
-        throw new Error("Unable to determine payer for multi-contact payment");
+      if (!data.paymentStatus) {
+        throw new Error("Payment status is required");
       }
 
-      // Create a single payment with all allocations
-      const multiContactPayload = {
-        ...basePayload,
-        pledgeId: 0, // Indicates this is a split payment
-        payerContactId: actualPayerId, // The person making the payment
-        // Convert multi-contact allocations to the format expected by the API
-        allocations: validAllocations.map((allocation) => ({
-          contactId: Number(allocation.contactId), // The beneficiary contact for each allocation
-          pledgeId: Number(allocation.pledgeId),
-          installmentScheduleId: null,
-          allocatedAmount: Number(allocation.allocatedAmount),
-          currency: data.currency,
-          notes: allocation.notes,
-          receiptNumber: allocation.receiptNumber,
-          receiptType: allocation.receiptType,
-          receiptIssued: allocation.receiptIssued || false,
-        })) as any,
+      if (!data.paymentDate) {
+        throw new Error("Payment date is required");
+      }
+
+      const exchangeRateNum = Number(data.exchangeRate) || 1;
+      const amountNum = Number(data.amount);
+      const amountUsdNum = Number(data.amountUsd) || (amountNum * exchangeRateNum);
+
+      const isSplit = data.isSplitPayment;
+      const isMultiContact = watchedIsMultiContactPayment && multiContactAllocations.length > 0;
+      // Multi-contact payments are always third-party payments
+      const isThirdParty = data.isThirdPartyPayment || isMultiContact;
+
+      // Build base payload with correct type assertions
+      const basePayload = {
+        amount: amountNum,
+        currency: data.currency as any,
+        amountUsd: amountUsdNum,
+        exchangeRate: exchangeRateNum,
+        paymentDate: data.paymentDate,
+        receivedDate: data.receivedDate || undefined,
+        paymentMethod: data.paymentMethod as any,
+        methodDetail: data.methodDetail || undefined,
+        account: data.account || undefined,
+        checkDate: data.checkDate || undefined,
+        checkNumber: data.checkNumber || undefined,
+        paymentStatus: data.paymentStatus as any,
+        solicitorId: data.solicitorId ? Number(data.solicitorId) : undefined,
+        bonusPercentage: data.bonusPercentage || undefined,
+        bonusAmount: data.bonusAmount || undefined,
+        bonusRuleId: data.bonusRuleId || undefined,
+        notes: data.notes || undefined,
+        isThirdPartyPayment: isThirdParty,
+        isMultiContactPayment: isMultiContact,
+        payerContactId: isThirdParty ? (contactId || undefined) : undefined,
+        thirdPartyContactId: selectedThirdPartyContact?.id || undefined,
+        // ADD TAGS TO PAYLOAD
+        tagIds: data.tagIds || [],
       };
 
-      // Send as a single payment request
-      await createPaymentMutation.mutateAsync(multiContactPayload as any);
-      
-      toast.success(`Multi-contact payment created successfully with ${validAllocations.length} allocations!`);
-
-    } else if (isSplit) {
-      // Handle regular split payment (single contact, multiple pledges)
-      if (!data.allocations || data.allocations.length === 0) {
-        throw new Error("Split payment requires at least one allocation.");
-      }
-
-      // Validate all allocations have valid pledge IDs
-      for (const allocation of data.allocations) {
-        if (!allocation.pledgeId || allocation.pledgeId === 0) {
-          throw new Error("All allocations must have a valid pledge selected.");
+      if (isMultiContact) {
+        // Handle multi-contact payment
+        if (getTotalMultiContactAllocation() !== (data.amount || 0)) {
+          throw new Error("Multi-contact payment allocation amounts must equal the total payment amount");
         }
-        if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
-          throw new Error("All allocations must have an amount greater than 0.");
+
+        // Validate all allocations have valid data
+        const validAllocations = multiContactAllocations.filter(
+          allocation => allocation.contactId > 0 && allocation.pledgeId > 0 && allocation.allocatedAmount > 0
+        );
+
+        if (validAllocations.length === 0) {
+          throw new Error("At least one valid allocation is required for multi-contact payment");
         }
+
+        // For multi-contact payments, we need to determine who is the actual payer
+        // This could be:
+        // 1. The current user (contactId) - paying for multiple other people's pledges
+        // 2. A selected third-party contact - if explicitly selected in the UI
+        const actualPayerId = selectedThirdPartyContact?.id || contactId;
+
+        if (!actualPayerId) {
+          throw new Error("Unable to determine payer for multi-contact payment");
+        }
+
+        // Create a single payment with all allocations
+        const multiContactPayload = {
+          ...basePayload,
+          pledgeId: 0, // Indicates this is a split payment
+          payerContactId: actualPayerId, // The person making the payment
+          // Convert multi-contact allocations to the format expected by the API
+          allocations: validAllocations.map((allocation) => ({
+            contactId: Number(allocation.contactId), // The beneficiary contact for each allocation
+            pledgeId: Number(allocation.pledgeId),
+            installmentScheduleId: null,
+            allocatedAmount: Number(allocation.allocatedAmount),
+            currency: data.currency,
+            notes: allocation.notes,
+            receiptNumber: allocation.receiptNumber,
+            receiptType: allocation.receiptType,
+            receiptIssued: allocation.receiptIssued || false,
+          })) as any,
+        };
+
+        // Send as a single payment request
+        await createPaymentMutation.mutateAsync(multiContactPayload as any);
+
+        toast.success(`Multi-contact payment created successfully with ${validAllocations.length} allocations!`);
+
+      } else if (isSplit) {
+        // Handle regular split payment (single contact, multiple pledges)
+        if (!data.allocations || data.allocations.length === 0) {
+          throw new Error("Split payment requires at least one allocation.");
+        }
+
+        // Validate all allocations have valid pledge IDs
+        for (const allocation of data.allocations) {
+          if (!allocation.pledgeId || allocation.pledgeId === 0) {
+            throw new Error("All allocations must have a valid pledge selected.");
+          }
+          if (!allocation.allocatedAmount || allocation.allocatedAmount <= 0) {
+            throw new Error("All allocations must have an amount greater than 0.");
+          }
+        }
+
+        const paymentPayload = {
+          ...basePayload,
+          pledgeId: 0,
+          // Cast allocations to any to bypass TypeScript checking
+          allocations: data.allocations.map((allocation) => ({
+            pledgeId: Number(allocation.pledgeId),
+            installmentScheduleId: allocation.installmentScheduleId ? Number(allocation.installmentScheduleId) : null,
+            allocatedAmount: Number(allocation.allocatedAmount) || 0,
+            currency: data.currency, // Add currency from the main payment
+            notes: allocation.notes || null,
+            receiptNumber: allocation.receiptNumber || null,
+            receiptType: allocation.receiptType || null,
+            receiptIssued: allocation.receiptIssued || false,
+          })) as any, // Type assertion to bypass strict typing
+        };
+
+        await createPaymentMutation.mutateAsync(paymentPayload as any);
+        toast.success("Split payment created successfully!");
+
+      } else {
+        // Handle single payment to single pledge
+        if (!data.pledgeId || data.pledgeId === 0) {
+          throw new Error("Single payment requires a valid pledge ID.");
+        }
+
+        // For single payments, determine the payer
+        // If third-party is enabled, use the selected contact or current user
+        const actualPayerId = isThirdParty
+          ? (contactId)
+          : undefined;
+
+        const paymentPayload = {
+          ...basePayload,
+          pledgeId: Number(data.pledgeId),
+          payerContactId: actualPayerId,
+          installmentScheduleId: data.allocations?.length === 1 && data.allocations[0].installmentScheduleId
+            ? Number(data.allocations[0].installmentScheduleId)
+            : null,
+        };
+
+        await createPaymentMutation.mutateAsync(paymentPayload as any);
+
+        // Success message for single payment
+        const paymentType = isThirdParty ? "Third-party payment" : "Payment";
+        const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
+        toast.success(`${paymentType}${target} created successfully!`);
       }
 
-      const paymentPayload = {
-        ...basePayload,
-        pledgeId: 0,
-        // Cast allocations to any to bypass TypeScript checking
-        allocations: data.allocations.map((allocation) => ({
-          pledgeId: Number(allocation.pledgeId),
-          installmentScheduleId: allocation.installmentScheduleId ? Number(allocation.installmentScheduleId) : null,
-          allocatedAmount: Number(allocation.allocatedAmount) || 0,
-          currency: data.currency, // Add currency from the main payment
-          notes: allocation.notes || null,
-          receiptNumber: allocation.receiptNumber || null,
-          receiptType: allocation.receiptType || null,
-          receiptIssued: allocation.receiptIssued || false,
-        })) as any, // Type assertion to bypass strict typing
-      };
+      // Reset form and close dialog on success
+      resetForm();
+      setOpen(false);
 
-      await createPaymentMutation.mutateAsync(paymentPayload as any);
-      toast.success("Split payment created successfully!");
-
-    } else {
-      // Handle single payment to single pledge
-      if (!data.pledgeId || data.pledgeId === 0) {
-        throw new Error("Single payment requires a valid pledge ID.");
-      }
-
-      // For single payments, determine the payer
-      // If third-party is enabled, use the selected contact or current user
-      const actualPayerId = isThirdParty 
-        ? (contactId)
-        : undefined;
-
-      const paymentPayload = {
-        ...basePayload,
-        pledgeId: Number(data.pledgeId),
-        payerContactId: actualPayerId,
-        installmentScheduleId: data.allocations?.length === 1 && data.allocations[0].installmentScheduleId
-          ? Number(data.allocations[0].installmentScheduleId)
-          : null,
-      };
-
-      await createPaymentMutation.mutateAsync(paymentPayload as any);
-      
-      // Success message for single payment
-      const paymentType = isThirdParty ? "Third-party payment" : "Payment";
-      const target = selectedThirdPartyContact ? ` for ${selectedThirdPartyContact.fullName}` : "";
-      toast.success(`${paymentType}${target} created successfully!`);
+    } catch (error) {
+      console.error("Error creating payment:", error);
+      toast.error(error instanceof Error ? error.message : "Failed to create payment");
     }
-
-    // Reset form and close dialog on success
-    resetForm();
-    setOpen(false);
-
-  } catch (error) {
-    console.error("Error creating payment:", error);
-    toast.error(error instanceof Error ? error.message : "Failed to create payment");
-  }
-};
+  };
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
     if (!newOpen) {
@@ -1516,6 +1586,132 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
+
+                  {/* ADD TAGS FIELD HERE */}
+                  <FormField
+                    control={form.control}
+                    name="tagIds"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-col md:col-span-2">
+                        <FormLabel>Tags</FormLabel>
+
+                        {/* Selected Tags Display */}
+                        {selectedTags.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-2">
+                            {selectedTags.map((tag: any) => (
+                              <Badge
+                                key={tag.id}
+                                variant="secondary"
+                                className="px-2 py-1"
+                              >
+                                {tag.name}
+                                <button
+                                  type="button"
+                                  onClick={() => handleTagRemove(tag.id)}
+                                  className="ml-2 hover:text-red-500 transition-colors"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Tag Selection Popover */}
+                        <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                className={cn(
+                                  "w-full justify-between",
+                                  form.formState.errors.tagIds && "border-red-500"
+                                )}
+                                disabled={isLoadingTags}
+                              >
+                                {isLoadingTags ? (
+                                  "Loading tags..."
+                                ) : availableTags.length === 0 ? (
+                                  "No tags available"
+                                ) : (
+                                  <>Add tags ({selectedTags.length} selected)</>
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-full p-0" align="start">
+                            <Command shouldFilter={true}>
+                              <CommandInput
+                                placeholder="Search tags..."
+                                className="h-9 border-0 border-b rounded-none focus:ring-0"
+                              />
+                              <CommandList className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                                {availableTags.length === 0 && !isLoadingTags && (
+                                  <CommandEmpty>No tags available.</CommandEmpty>
+                                )}
+
+                                {/* Loading state */}
+                                {isLoadingTags && (
+                                  <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                                    Loading tags...
+                                  </div>
+                                )}
+
+                                {/* Available tags */}
+                                {availableTags.length > 0 && !isLoadingTags && (
+                                  <CommandEmpty>No tags match your search.</CommandEmpty>
+                                )}
+
+                                <CommandGroup className="p-2">
+                                  {availableTags.map((tag: any) => {
+                                    const isSelected = selectedTagIds.includes(tag.id);
+
+                                    return (
+                                      <CommandItem
+                                        key={tag.id}
+                                        value={tag.name}
+                                        keywords={[tag.name, tag.description]}
+                                        onSelect={() => handleTagToggle(tag.id)}
+                                        className={cn(
+                                          "flex items-center space-x-2 rounded-sm px-2 py-2 cursor-pointer transition-colors",
+                                          "hover:bg-accent hover:text-accent-foreground",
+                                          isSelected && "bg-accent/50"
+                                        )}
+                                      >
+                                        <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                          <div className="flex-1 min-w-0">
+                                            <div className="font-medium truncate">{tag.name}</div>
+                                            {tag.description && (
+                                              <div className="text-xs text-muted-foreground truncate">
+                                                {tag.description}
+                                              </div>
+                                            )}
+                                          </div>
+                                        </div>
+                                        <Check
+                                          className={cn(
+                                            "h-4 w-4 flex-shrink-0",
+                                            isSelected ? "opacity-100" : "opacity-0"
+                                          )}
+                                        />
+                                      </CommandItem>
+                                    );
+                                  })}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+
+                        <FormDescription>
+                          Select tags to categorize this payment for better organization and filtering.
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -1889,9 +2085,11 @@ export default function PaymentFormDialog({
                             control={form.control}
                             name={`allocations.${index}.pledgeId`}
                             render={({ field }) => (
-                              <FormItem>
+                              <FormItem
+                                className="flex flex-col"
+                              >
                                 <FormLabel>
-                                  Pledge *
+                                  Select Pledge
                                   {watchedIsThirdParty && selectedThirdPartyContact && (
                                     <span className="text-sm text-muted-foreground ml-2">
                                       (from {selectedThirdPartyContact.fullName}&apos;s pledges)
@@ -1905,45 +2103,53 @@ export default function PaymentFormDialog({
                                         variant="outline"
                                         role="combobox"
                                         className={cn(
-                                          "w-full flex justify-between items-center min-w-0",
-                                          (!field.value || field.value === 0) && "text-muted-foreground"
+                                          "w-full justify-between",
+                                          !field.value && "text-muted-foreground"
                                         )}
                                         disabled={isLoadingPledges || (watchedIsThirdParty && !selectedThirdPartyContact)}
                                       >
-                                        <span className="block truncate max-w-[calc(100%-1.5rem)]" style={{ minWidth: 0 }}>
-                                          {field.value && field.value !== 0
-                                            ? pledgeOptions.find((pledge) => pledge.value === field.value)?.label
-                                            : isLoadingPledges
-                                              ? "Loading pledges..."
-                                              : watchedIsThirdParty && !selectedThirdPartyContact
-                                                ? "Select a contact first"
-                                                : "Select pledge"}
-                                        </span>
+                                        {field.value
+                                          ? pledgeOptions.find(
+                                            (pledge: any) => pledge.value === field.value
+                                          )?.label
+                                          : isLoadingPledges
+                                            ? "Loading pledges..."
+                                            : watchedIsThirdParty && !selectedThirdPartyContact
+                                              ? "Select a contact first"
+                                              : "Select pledge"}
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
                                     </FormControl>
                                   </PopoverTrigger>
-                                  <PopoverContent className="w-[400px] p-0">
+                                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                                     <Command>
                                       <CommandInput placeholder="Search pledges..." className="h-9" />
-                                      <CommandList>
+                                      <CommandList className="max-h-[200px] overflow-y-auto">
                                         <CommandEmpty>No pledge found.</CommandEmpty>
                                         <CommandGroup>
-                                          {pledgeOptions.map((pledge, pledgeIndex: number) => (
+                                          {pledgeOptions.map((pledge: any, pledgeIndex: number) => (
                                             <CommandItem
                                               value={pledge.label}
-                                              key={`pledge-allocation-${pledge.value}-${pledgeIndex}`}
+                                              key={`pledge-${pledge.value}-${pledgeIndex}-${index}`}
                                               onSelect={() => {
                                                 field.onChange(pledge.value);
+                                                // Auto-fill allocation amount with unscheduled amount
+                                                const currentAllocations = form.getValues("allocations") || [];
+                                                if (currentAllocations[index]) {
+                                                  form.setValue(
+                                                    `allocations.${index}.allocatedAmount`,
+                                                    pledge.unscheduledAmount || pledge.balance
+                                                  );
+                                                }
                                               }}
                                             >
+                                              {pledge.label}
                                               <Check
                                                 className={cn(
-                                                  "mr-2 h-4 w-4",
+                                                  "ml-auto h-4 w-4",
                                                   pledge.value === field.value ? "opacity-100" : "opacity-0"
                                                 )}
                                               />
-                                              <span className="block truncate">{pledge.label}</span>
                                             </CommandItem>
                                           ))}
                                         </CommandGroup>
@@ -1962,7 +2168,7 @@ export default function PaymentFormDialog({
                             name={`allocations.${index}.allocatedAmount`}
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Allocated Amount *</FormLabel>
+                                <FormLabel>Allocated Amount ({watchedCurrency || "USD"})</FormLabel>
                                 <FormControl>
                                   <Input
                                     type="number"
@@ -1972,7 +2178,6 @@ export default function PaymentFormDialog({
                                       const value = e.target.value;
                                       field.onChange(value ? parseFloat(value) : 0);
                                     }}
-                                    value={field.value || 0}
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -1980,7 +2185,7 @@ export default function PaymentFormDialog({
                             )}
                           />
 
-                          {/* Receipt Fields */}
+                          {/* Receipt Number */}
                           <FormField
                             control={form.control}
                             name={`allocations.${index}.receiptNumber`}
@@ -1988,23 +2193,31 @@ export default function PaymentFormDialog({
                               <FormItem>
                                 <FormLabel>Receipt Number</FormLabel>
                                 <FormControl>
-                                  <Input {...field} value={field.value || ""} />
+                                  <Input
+                                    placeholder="Optional receipt number"
+                                    {...field}
+                                    value={field.value ?? ""}
+                                  />
                                 </FormControl>
                                 <FormMessage />
                               </FormItem>
                             )}
                           />
 
+                          {/* Receipt Type */}
                           <FormField
                             control={form.control}
                             name={`allocations.${index}.receiptType`}
                             render={({ field }) => (
                               <FormItem>
                                 <FormLabel>Receipt Type</FormLabel>
-                                <Select onValueChange={field.onChange} value={field.value || "none"}>
+                                <Select
+                                  onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                                  value={field.value || "none"}
+                                >
                                   <FormControl>
                                     <SelectTrigger>
-                                      <SelectValue placeholder="Select type" />
+                                      <SelectValue placeholder="Select receipt type" />
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
@@ -2021,18 +2234,21 @@ export default function PaymentFormDialog({
                             )}
                           />
 
-                          {/* Receipt Issued Switch */}
+                          {/* Receipt Issued */}
                           <FormField
                             control={form.control}
                             name={`allocations.${index}.receiptIssued`}
                             render={({ field }) => (
-                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                              <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3">
                                 <div className="space-y-0.5">
-                                  <FormLabel>Receipt Issued</FormLabel>
+                                  <FormLabel className="text-base">Receipt Issued</FormLabel>
+                                  <FormDescription>
+                                    Mark if receipt has been issued for this allocation
+                                  </FormDescription>
                                 </div>
                                 <FormControl>
                                   <Switch
-                                    checked={field.value || false}
+                                    checked={field.value}
                                     onCheckedChange={field.onChange}
                                   />
                                 </FormControl>
@@ -2040,19 +2256,18 @@ export default function PaymentFormDialog({
                             )}
                           />
 
-                          {/* Notes field spanning full width */}
+                          {/* Notes */}
                           <FormField
                             control={form.control}
                             name={`allocations.${index}.notes`}
                             render={({ field }) => (
-                              <FormItem className="md:col-span-2">
+                              <FormItem>
                                 <FormLabel>Notes</FormLabel>
                                 <FormControl>
                                   <Textarea
+                                    placeholder="Optional notes for this allocation..."
                                     {...field}
-                                    value={field.value || ""}
-                                    placeholder="Add notes for this allocation..."
-                                    rows={3}
+                                    value={field.value ?? ""}
                                   />
                                 </FormControl>
                                 <FormMessage />
@@ -2061,103 +2276,85 @@ export default function PaymentFormDialog({
                           />
                         </div>
 
-                        {/* Pledge Balance Information */}
+                        {/* Display pledge balance information */}
                         {watchedAllocations?.[index]?.pledgeId && (
-                          <div className="mt-4 p-3 bg-blue-50 rounded-md">
-                            {(() => {
-                              const pledgeOption = pledgeOptions.find(p => p.value === watchedAllocations[index].pledgeId);
-                              const allocatedAmount = watchedAllocations[index]?.allocatedAmount || 0;
-                              const paymentCurrency = watchedCurrency as "USD" | "ILS" | "EUR" | "JPY" | "GBP" | "AUD" | "CAD" | "ZAR";
-                              const pledgeCurrency = pledgeOption?.currency || paymentCurrency;
+                          <div className="mt-4 p-3 bg-gray-50 rounded-md border">
+                            <div className="text-sm space-y-1">
+                              {(() => {
+                                const pledgeId = watchedAllocations[index].pledgeId;
+                                const pledge = pledgeOptions.find((p: any) => p.value === pledgeId);
+                                const allocatedAmount = watchedAllocations[index].allocatedAmount || 0;
 
-                              let amountInPledgeCurrency = allocatedAmount;
-                              let exchangeRateToPledge = 1;
+                                if (!pledge) return null;
 
-                              // Calculate conversion if currencies differ
-                              if (paymentCurrency !== pledgeCurrency && exchangeRatesData?.data?.rates) {
-                                const paymentRate = parseFloat(exchangeRatesData.data.rates[paymentCurrency]) || 1;
-                                const pledgeRate = parseFloat(exchangeRatesData.data.rates[pledgeCurrency]) || 1;
-                                exchangeRateToPledge = pledgeRate / paymentRate;
-                                amountInPledgeCurrency = allocatedAmount * exchangeRateToPledge;
-                              }
-
-                              return (
-                                <div className="text-sm space-y-1">
-                                  <div className="font-medium text-blue-800 mb-2">
-                                    Pledge Balance: {pledgeOption?.label || `Pledge #${watchedAllocations[index].pledgeId}`}
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span>Amount in Pledge Currency ({pledgeCurrency}):</span>
-                                    <span className="font-medium">
-                                      {pledgeCurrency} {amountInPledgeCurrency.toLocaleString()}
-                                    </span>
-                                  </div>
-                                  {paymentCurrency !== pledgeCurrency && (
-                                    <div className="flex justify-between text-xs text-blue-600">
-                                      <span>Exchange Rate ({paymentCurrency} to {pledgeCurrency}):</span>
-                                      <span>{exchangeRateToPledge.toFixed(4)}</span>
+                                return (
+                                  <>
+                                    <div className="flex justify-between">
+                                      <span>Pledge Balance:</span>
+                                      <span className="font-medium">
+                                        {pledge.currency} {pledge.balance.toLocaleString()}
+                                      </span>
                                     </div>
-                                  )}
-                                  <div className="flex justify-between">
-                                    <span>After allocation:</span>
-                                    <span className="font-medium">
-                                      {pledgeCurrency} {((pledgeOption?.balance || 0) - amountInPledgeCurrency).toLocaleString()}
-                                    </span>
-                                  </div>
-                                </div>
-                              );
-                            })()}
+                                    <div className="flex justify-between">
+                                      <span>Amount in Pledge Currency:</span>
+                                      <span className="font-medium">
+                                        {pledge.currency} {getAmountInPledgeCurrency(allocatedAmount, pledgeId).toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span>After allocation:</span>
+                                      <span className="font-medium">
+                                        {pledge.currency} {(pledge.balance - getAmountInPledgeCurrency(allocatedAmount, pledgeId)).toLocaleString()}
+                                      </span>
+                                    </div>
+                                  </>
+                                );
+                              })()}
+                            </div>
                           </div>
                         )}
                       </div>
                     ))
                   ) : (
-                    <div className="text-center text-gray-500 py-8">
-                      No allocations added yet. Click &quot;Add Allocation&quot; to get started.
-                    </div>
+                    <p className="text-center text-gray-500">No allocations added yet.</p>
                   )}
 
-                  {/* Add Allocation Button */}
                   <Button
                     type="button"
                     variant="outline"
+                    size="sm"
+                    className="w-full"
                     onClick={addAllocation}
-                    className="w-full flex items-center justify-center gap-2 border-dashed border-2 py-6"
                   >
-                    <Plus className="h-5 w-5" />
-                    Add Another Allocation
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Allocation
                   </Button>
 
-                  {/* Summary Section */}
-                  <div className="bg-gray-50 rounded-lg p-4 border">
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-semibold text-gray-800">Allocation Summary</h4>
-                      <Badge variant={Math.abs(remainingToAllocate) < 0.01 ? "default" : "destructive"}>
-                        {Math.abs(remainingToAllocate) < 0.01 ? "Balanced" : "Unbalanced"}
-                      </Badge>
-                    </div>
+                  {/* Summary for split payments */}
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="font-medium text-blue-900 mb-3">Payment Summary</h4>
                     <div className="space-y-2 text-sm">
                       <div className="flex justify-between">
-                        <span>Total Payment Amount:</span>
-                        <span className="font-medium">{watchedCurrency} {(watchedAmount || 0).toFixed(2)}</span>
+                        <span>Payment Amount:</span>
+                        <span className="font-medium">{watchedCurrency || "USD"} {(watchedAmount || 0).toLocaleString()}</span>
                       </div>
                       <div className="flex justify-between">
                         <span>Total Allocated:</span>
-                        <span className="font-medium">{watchedCurrency} {totalAllocatedAmount.toFixed(2)}</span>
+                        <span className="font-medium">{watchedCurrency || "USD"} {totalAllocatedAmount.toLocaleString()}</span>
                       </div>
-                      <div className="flex justify-between border-t pt-2">
-                        <span>Remaining to Allocate:</span>
+                      <div className="flex justify-between">
+                        <span>Remaining:</span>
                         <span className={cn(
                           "font-medium",
-                          Math.abs(remainingToAllocate) < 0.01 ? "text-green-600" : "text-red-600"
+                          Math.abs(remainingToAllocate) > 0.01 ? "text-red-600" : "text-green-600"
                         )}>
-                          {watchedCurrency} {remainingToAllocate.toFixed(2)}
+                          {watchedCurrency || "USD"} {remainingToAllocate.toLocaleString()}
                         </span>
                       </div>
                     </div>
-                    {Math.abs(remainingToAllocate) >= 0.01 && (
-                      <div className="mt-3 p-2 bg-yellow-50 border border-yellow-200 rounded text-sm text-yellow-800">
-                        ⚠️ Total allocations must equal the payment amount before submitting.
+                    {Math.abs(remainingToAllocate) > 0.01 && (
+                      <div className="mt-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                        ⚠️ Total allocations should equal payment amount
                       </div>
                     )}
                   </div>
@@ -2178,53 +2375,20 @@ export default function PaymentFormDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Payment Method</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                className={cn(
-                                  "w-full justify-between",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                {field.value
-                                  ? paymentMethods.find((method) => method.value === field.value)?.label
-                                  : "Select payment method"}
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                            <Command>
-                              <CommandInput placeholder="Search payment methods..." />
-                              <CommandList className="max-h-[200px] overflow-y-auto">
-                                <CommandEmpty>No payment method found.</CommandEmpty>
-                                <CommandGroup>
-                                  {paymentMethods.map((method, index) => (
-                                    <CommandItem
-                                      value={method.label}
-                                      key={`payment-method-${method.value}-${index}`}
-                                      onSelect={() => {
-                                        form.setValue("paymentMethod", method.value, { shouldValidate: true, shouldDirty: true });
-                                      }}
-                                    >
-                                      <Check
-                                        className={cn(
-                                          "mr-2 h-4 w-4",
-                                          method.value === field.value ? "opacity-100" : "opacity-0"
-                                        )}
-                                      />
-                                      {method.label}
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
+                        <Select onValueChange={field.onChange} value={field.value}>
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select payment method" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {paymentMethods.map((method) => (
+                              <SelectItem key={method.value} value={method.value}>
+                                {method.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </FormItem>
                     )}
                   />
@@ -2235,67 +2399,24 @@ export default function PaymentFormDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Method Detail</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                className={cn(
-                                  "w-full justify-between",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                {field.value
-                                  ? methodDetails.find((detail) => detail.value === field.value)?.label
-                                  : "Select method detail"}
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                            <Command>
-                              <CommandInput placeholder="Search method details..." />
-                              <CommandList className="max-h-[200px] overflow-y-auto">
-                                <CommandEmpty>No method detail found.</CommandEmpty>
-                                <CommandGroup>
-                                  <CommandItem
-                                    value="None"
-                                    onSelect={() => {
-                                      form.setValue("methodDetail", undefined, { shouldValidate: true, shouldDirty: true });
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        !field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    None
-                                  </CommandItem>
-                                  {methodDetails.map((detail, index) => (
-                                    <CommandItem
-                                      value={detail.value}
-                                      key={`method-detail-${detail.value}-${index}`}
-                                      onSelect={() => {
-                                        form.setValue("methodDetail", detail.value, { shouldValidate: true, shouldDirty: true });
-                                      }}
-                                    >
-                                      <Check
-                                        className={cn(
-                                          "mr-2 h-4 w-4",
-                                          detail.value === field.value ? "opacity-100" : "opacity-0"
-                                        )}
-                                      />
-                                      {detail.label}
-                                    </CommandItem>
-                                  ))}
-                                </CommandGroup>
-                              </CommandList>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
+                        <Select
+                          onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                          value={field.value || "none"}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select method detail" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {methodDetails.map((detail) => (
+                              <SelectItem key={detail.value} value={detail.value}>
+                                {detail.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </FormItem>
                     )}
                   />
@@ -2306,108 +2427,27 @@ export default function PaymentFormDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Account</FormLabel>
-                        <Popover>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                variant="outline"
-                                role="combobox"
-                                className={cn(
-                                  "w-full justify-between",
-                                  !field.value && "text-muted-foreground"
-                                )}
-                              >
-                                {field.value
-                                  ? accountOptions.find((account) => account.value === field.value)?.label
-                                  : "Select account"}
-                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
-                            <Command>
-                              <CommandInput placeholder="Search accounts..." />
-                              <CommandEmpty>No account found.</CommandEmpty>
-                              <CommandGroup>
-                                <CommandItem
-                                  value="None"
-                                  onSelect={() => {
-                                    form.setValue("account", null, { shouldValidate: true, shouldDirty: true });
-                                  }}
-                                >
-                                  <Check
-                                    className={cn(
-                                      "mr-2 h-4 w-4",
-                                      !field.value ? "opacity-100" : "opacity-0"
-                                    )}
-                                  />
-                                  None
-                                </CommandItem>
-                                {accountOptions.map((account, index) => (
-                                  <CommandItem
-                                    value={account.value}
-                                    key={`account-${account.value}-${index}`}
-                                    onSelect={() => {
-                                      form.setValue("account", account.value, { shouldValidate: true, shouldDirty: true });
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        account.value === field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {account.label}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </Command>
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
+                        <Select
+                          onValueChange={(value) => field.onChange(value === "none" ? null : value)}
+                          value={field.value || "none"}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select account" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {accountOptions.map((account) => (
+                              <SelectItem key={account.value} value={account.value}>
+                                {account.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </FormItem>
                     )}
                   />
-
-                  <div className="flex gap-4 md:col-span-2">
-                    <FormField
-                      control={form.control}
-                      name="checkDate"
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormLabel>Check Date</FormLabel>
-                          <FormControl>
-                            <Input type="date" {...field} value={field.value ?? ""} onInput={(e) => {
-                              const target = e.target as HTMLInputElement;
-                              const value = target.value;
-                              if (value) {
-                                const parts = value.split("-");
-                                if (parts[0] && parts[0].length > 4) {
-                                  target.value = field.value ?? "";
-                                  return;
-                                }
-                              }
-                              field.onChange(value);
-                            }} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="checkNumber"
-                      render={({ field }) => (
-                        <FormItem className="flex-1">
-                          <FormLabel>Check Number</FormLabel>
-                          <FormControl>
-                            <Input {...field} value={field.value || ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
 
                   <FormField
                     control={form.control}
@@ -2418,7 +2458,7 @@ export default function PaymentFormDialog({
                         <Select onValueChange={field.onChange} value={field.value}>
                           <FormControl>
                             <SelectTrigger>
-                              <SelectValue placeholder="Select status" />
+                              <SelectValue placeholder="Select payment status" />
                             </SelectTrigger>
                           </FormControl>
                           <SelectContent>
@@ -2432,40 +2472,62 @@ export default function PaymentFormDialog({
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={form.control}
+                    name="checkDate"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Check Date</FormLabel>
+                        <FormControl>
+                          <Input type="date" {...field} value={field.value ?? ""} onInput={(e) => {
+                            const target = e.target as HTMLInputElement;
+                            const value = target.value;
+                            if (value) {
+                              const parts = value.split("-");
+                              if (parts[0] && parts[0].length > 4) {
+                                target.value = lastValidCheckDateRef.current ?? "";
+                                return;
+                              }
+                              lastValidCheckDateRef.current = value;
+                            } else {
+                              lastValidCheckDateRef.current = null;
+                            }
+                            field.onChange(value);
+                          }} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="checkNumber"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Check Number</FormLabel>
+                        <FormControl>
+                          <Input {...field} value={field.value ?? ""} />
+                        </FormControl>
+                      </FormItem>
+                    )}
+                  />
                 </div>
               </CardContent>
             </Card>
 
             {/* Solicitor Section */}
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="show-solicitor-section"
-                checked={showSolicitorSection}
-                onCheckedChange={(checked) => {
-                  setShowSolicitorSection(checked);
-                  if (!checked) {
-                    form.setValue("solicitorId", null);
-                    form.setValue("bonusPercentage", null);
-                    form.setValue("bonusAmount", null);
-                    form.setValue("bonusRuleId", null);
-                  }
-                }}
-              />
-              <label
-                htmlFor="show-solicitor-section"
-                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-              >
-                Assign Solicitor
-              </label>
-            </div>
-
-            {showSolicitorSection && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Solicitor Information</CardTitle>
-                </CardHeader>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-lg">Solicitor & Commission</CardTitle>
+                <Switch
+                  checked={showSolicitorSection}
+                  onCheckedChange={setShowSolicitorSection}
+                />
+              </CardHeader>
+              {showSolicitorSection && (
                 <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <FormField
                       control={form.control}
                       name="solicitorId"
@@ -2485,10 +2547,10 @@ export default function PaymentFormDialog({
                                   disabled={isLoadingSolicitors}
                                 >
                                   {field.value
-                                    ? solicitorOptions.find((solicitor: any) => solicitor.value === field.value)?.label
-                                    : isLoadingSolicitors
-                                      ? "Loading solicitors..."
-                                      : "Select solicitor"}
+                                    ? solicitorOptions.find(
+                                      (solicitor: any) => solicitor.value === field.value
+                                    )?.label
+                                    : "Select solicitor"}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -2496,16 +2558,17 @@ export default function PaymentFormDialog({
                             <PopoverContent className="w-[--radix-popover-trigger-width] p-0">
                               <Command>
                                 <CommandInput placeholder="Search solicitors..." className="h-9" />
-                                <CommandList>
+                                <CommandList className="max-h-[200px] overflow-y-auto">
                                   <CommandEmpty>No solicitor found.</CommandEmpty>
                                   <CommandGroup>
-                                    {solicitorOptions.map((solicitor: any, index: number) => (
+                                    {solicitorOptions.map((solicitor: any, solicitorIndex: number) => (
                                       <CommandItem
                                         value={solicitor.label}
-                                        key={`solicitor-${solicitor.value}-${index}`}
+                                        key={`solicitor-${solicitor.value}-${solicitorIndex}`}
                                         onSelect={() => {
                                           field.onChange(solicitor.value);
-                                          if (solicitor.commissionRate != null) {
+                                          // Auto-fill commission rate if available
+                                          if (solicitor.commissionRate) {
                                             form.setValue("bonusPercentage", solicitor.commissionRate);
                                           }
                                         }}
@@ -2524,10 +2587,10 @@ export default function PaymentFormDialog({
                               </Command>
                             </PopoverContent>
                           </Popover>
-                          <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     <FormField
                       control={form.control}
                       name="bonusPercentage"
@@ -2538,106 +2601,90 @@ export default function PaymentFormDialog({
                             <Input
                               type="number"
                               step="0.01"
+                              min="0"
+                              max="100"
                               {...field}
                               value={field.value ?? ""}
                               onChange={(e) => {
                                 const value = e.target.value;
-                                field.onChange(value === "" ? null : parseFloat(value));
+                                field.onChange(value ? parseFloat(value) : null);
                               }}
                             />
                           </FormControl>
-                          <FormMessage />
                         </FormItem>
                       )}
                     />
+
                     <FormField
                       control={form.control}
                       name="bonusAmount"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Bonus Amount</FormLabel>
-                          <FormControl>
-                            <Input type="number" step="0.01" {...field} disabled value={field.value ?? ""} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="bonusRuleId"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Bonus Rule ID</FormLabel>
+                          <FormLabel>Bonus Amount ({watchedCurrency || "USD"})</FormLabel>
                           <FormControl>
                             <Input
                               type="number"
+                              step="0.01"
                               {...field}
                               value={field.value ?? ""}
-                              onChange={(e) => {
-                                const value = e.target.value;
-                                field.onChange(value === "" ? null : parseInt(value, 10));
-                              }}
+                              disabled
                             />
                           </FormControl>
-                          <FormMessage />
                         </FormItem>
                       )}
                     />
                   </div>
                 </CardContent>
-              </Card>
-            )}
-
-            {/* Notes Section */}
-            <FormField
-              control={form.control}
-              name="notes"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Notes</FormLabel>
-                  <FormControl>
-                    <Textarea {...field} value={field.value || ""} placeholder="Add any notes about this payment..." />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
               )}
-            />
+            </Card>
 
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row justify-end gap-3 pt-6 border-t">
+            {/* Notes */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Additional Notes</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <FormField
+                  control={form.control}
+                  name="notes"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Notes</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Optional notes about this payment..."
+                          {...field}
+                          value={field.value ?? ""}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
+                />
+              </CardContent>
+            </Card>
+
+            {/* Form Actions */}
+            <div className="flex justify-end space-x-2">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                className="sm:order-1"
               >
                 Cancel
               </Button>
-              <Button
-                type="submit"
-                disabled={
-                  createPaymentMutation.isPending ||
-                  (watchedIsSplitPayment && Math.abs(remainingToAllocate) >= 0.01 && !showMultiContactSection) ||
-                  (showMultiContactSection && Math.abs((watchedAmount || 0) - getTotalMultiContactAllocation()) >= 0.01) ||
-                  (!watchedMainPledgeId && !watchedIsSplitPayment && !watchedIsMultiContactPayment)
-                }
-                className="sm:order-2"
-              >
+              <Button type="submit" disabled={createPaymentMutation.isPending}>
                 {createPaymentMutation.isPending ? "Creating..." : "Create Payment"}
               </Button>
             </div>
-
-            {/* Additional Dialogs */}
-            {contactId && (
-              <PledgeDialog
-                contactId={contactId}
-                open={pledgeDialogOpen}
-                onOpenChange={setPledgeDialogOpen}
-              />
-            )}
           </form>
         </Form>
+
+        {/* Pledge Dialog */}
+        <PledgeDialog
+          open={pledgeDialogOpen}
+          onOpenChange={setPledgeDialogOpen}
+          contactId={targetContactId || 0}
+        />
       </DialogContent>
     </Dialog>
   );

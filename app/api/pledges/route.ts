@@ -58,6 +58,15 @@ interface PledgeQueryResult {
   relatedContactPhone: string | null;
 }
 
+interface PledgeTagSummary {
+  id: number;
+  name: string;
+  description: string | null;
+  showOnPayment: boolean;
+  showOnPledge: boolean;
+  isActive: boolean;
+}
+
 const pledgeSchema = z.object({
   contactId: z.number().positive(),
   categoryId: z.number().positive().optional(),
@@ -170,7 +179,10 @@ export async function GET(request: NextRequest) {
     let tagIds: number[] | undefined;
     if (tagIdsParam) {
       try {
-        tagIds = JSON.parse(tagIdsParam).map((id: any) => parseInt(id)).filter((id: any) => !isNaN(id));
+        tagIds = (JSON.parse(tagIdsParam) as unknown[]).map((id: unknown) => {
+          const num = typeof id === 'number' ? id : typeof id === 'string' ? parseInt(id, 10) : NaN;
+          return num;
+        }).filter((id) => !isNaN(id));
       } catch {
         // If JSON parsing fails, try comma-separated values
         tagIds = tagIdsParam.split(",").map(id => parseInt(id.trim())).filter(id => !isNaN(id));
@@ -418,7 +430,7 @@ export async function GET(request: NextRequest) {
     });
 
     // NEW: Create map for pledge tags
-    const pledgeTagsMap = new Map<number, any[]>();
+    const pledgeTagsMap = new Map<number, PledgeTagSummary[]>();
     pledgeTagsResults.forEach((tagResult) => {
       if (!pledgeTagsMap.has(tagResult.pledgeId)) {
         pledgeTagsMap.set(tagResult.pledgeId, []);

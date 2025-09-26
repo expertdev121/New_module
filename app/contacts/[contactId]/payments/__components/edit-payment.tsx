@@ -64,6 +64,7 @@ import { useUpdatePaymentMutation } from "@/lib/query/payments/usePaymentQuery";
 import { usePledgeDetailsQuery } from "@/lib/query/payment-plans/usePaymentPlanQuery";
 import { usePledgesQuery } from "@/lib/query/usePledgeData";
 import useContactId from "@/hooks/use-contact-id";
+import { useTagsQuery } from "@/lib/query/tags/useTagsQuery";
 
 interface Solicitor {
   id: number;
