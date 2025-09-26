@@ -38,6 +38,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -86,7 +87,16 @@ interface Pledge {
   };
   contactId?: number;
 }
+interface Tag {
+  id: number;
+  name: string;
+}
 
+interface TagsSelectorProps {
+  value?: number[];
+  onChange: (value: number[]) => void;
+  availableTags?: Tag[];
+}
 interface Contact {
   id: number;
   firstName: string;
@@ -157,6 +167,7 @@ interface Payment {
   receivedDate: string | null;
   paymentMethod: string;
   methodDetail: string | null;
+  tagIds?: number[];
   paymentStatus: string;
   checkNumber: string | null;
   checkDate?: string | null;
@@ -344,6 +355,59 @@ const accountOptions = [
 ] as const;
 
 const NO_SELECTION = "__NONE__"; // Sentinel for 'None' selection for Select components
+export function TagsSelector({ value = [], onChange, availableTags = [] }: TagsSelectorProps) {
+  const selectedTags = availableTags.filter(tag => value.includes(tag.id));
+
+  const handleTagAdd = (tagId: string) => {
+    const id = parseInt(tagId);
+    if (!value.includes(id)) {
+      onChange([...value, id]);
+    }
+  };
+
+  const handleTagRemove = (tagId: number) => {
+    const newValue = value.filter(id => id !== tagId);
+    onChange(newValue);
+  };
+
+  return (
+    <div className="space-y-2">
+      <Select onValueChange={handleTagAdd}>
+        <SelectTrigger>
+          <SelectValue placeholder="Select tags..." />
+        </SelectTrigger>
+        <SelectContent>
+          {/* Show all tags, don't filter out selected ones */}
+          {availableTags.map(tag => (
+            <SelectItem key={tag.id} value={tag.id.toString()}>
+              {tag.name}
+              {/* Remove the checkmark - no ✓ needed */}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {selectedTags.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {selectedTags.map(tag => (
+            <Badge key={tag.id} variant="secondary" className="flex items-center gap-1">
+              {tag.name}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleTagRemove(tag.id);
+                }}
+              />
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 const editPaymentSchema = z
   .object({
@@ -360,6 +424,7 @@ const editPaymentSchema = z
     paymentMethod: z.string().optional().nullable(),
     paymentStatus: z.string().optional(),
     account: z.string().optional().nullable(),
+    tagIds: z.array(z.number()).optional(),
     checkDate: z.string().optional().nullable(),
     checkNumber: z.string().optional().nullable(),
     receiptNumber: z.string().optional().nullable(),
@@ -467,8 +532,35 @@ export default function EditPaymentDialog({
   // Multi-contact payment state
   const [multiContactAllocations, setMultiContactAllocations] = useState<MultiContactAllocation[]>([]);
 
+  const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
+
+  const handleTagToggle = (tagId: number) => {
+    const currentTagIds = form.getValues('tagIds') || [];
+    const newTagIds = currentTagIds.includes(tagId)
+      ? currentTagIds.filter(id => id !== tagId)
+      : [...currentTagIds, tagId];
+
+    form.setValue('tagIds', newTagIds, { shouldValidate: true });
+    setSelectedTagIds(newTagIds);
+  };
+
+  const handleTagRemove = (tagId: number) => {
+    const currentTagIds = form.getValues('tagIds') || [];
+    const newTagIds = currentTagIds.filter(id => id !== tagId);
+
+    form.setValue('tagIds', newTagIds, { shouldValidate: true });
+    setSelectedTagIds(newTagIds);
+  };
+
   // Check if this payment is already a third-party or multi-contact payment
   const isExistingThirdPartyPayment = payment.isThirdPartyPayment || false;
+  const { data: tagsData, isLoading: isLoadingTags } = useTagsQuery({
+    showOnPayment: true,
+    isActive: true
+  });
+
+  const availableTags: Tag[] = tagsData?.tags || [];
 
   // Enhanced multi-contact payment detection logic
   const isExistingMultiContactPayment = useMemo(() => {
@@ -535,6 +627,7 @@ export default function EditPaymentDialog({
     },
     enabled: showMultiContactSection,
   });
+  
 
   const form = useForm<EditPaymentFormData>({
     resolver: zodResolver(editPaymentSchema),
@@ -547,6 +640,7 @@ export default function EditPaymentDialog({
       exchangeRate: payment.exchangeRate ? parseFloat(payment.exchangeRate) : 1,
       exchangeRateToPledgeCurrency: 1,
       paymentDate: payment.paymentDate,
+      tagIds: payment.tagIds || [],
       receivedDate: payment.receivedDate || null,
       paymentMethod: payment.paymentMethod ?? undefined,
       methodDetail: payment.methodDetail ?? undefined,
@@ -611,6 +705,7 @@ export default function EditPaymentDialog({
   const watchedCurrency = form.watch("currency");
   const watchedAmount = form.watch("amount");
   const watchedPaymentDate = form.watch("paymentDate");
+  const watchedTagIds = form.watch('tagIds');
   const watchedReceivedDate = form.watch("receivedDate");
   const watchedSolicitorId = form.watch("solicitorId");
   const watchedBonusPercentage = form.watch("bonusPercentage");
@@ -623,6 +718,15 @@ export default function EditPaymentDialog({
   const watchedThirdPartyContactId = form.watch("thirdPartyContactId");
   const watchedPledgeId = form.watch("pledgeId");
 
+  useEffect(() => {
+    if (watchedTagIds && Array.isArray(watchedTagIds)) {
+      setSelectedTagIds(watchedTagIds);
+    }
+  }, [watchedTagIds]);
+
+  const selectedTags = availableTags.filter(tag =>
+    (watchedTagIds?.includes(tag.id) || selectedTagIds.includes(tag.id))
+  );
   // Get pledges for the current contact or third-party contact
   const targetContactId = selectedThirdPartyContact?.id || contactId;
   const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
@@ -2284,6 +2388,133 @@ export default function EditPaymentDialog({
                     )}
                   />
                 </div>
+
+                {/* ADD TAGS FIELD HERE */}
+                <FormField
+                  control={form.control}
+                  name="tagIds"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-col md:col-span-2">
+                      <FormLabel>Tags</FormLabel>
+
+                      {/* Selected Tags Display */}
+                      {selectedTags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-2">
+                          {selectedTags.map((tag: any) => (
+                            <Badge
+                              key={tag.id}
+                              variant="secondary"
+                              className="px-2 py-1"
+                            >
+                              {tag.name}
+                              <button
+                                type="button"
+                                onClick={() => handleTagRemove(tag.id)}
+                                className="ml-2 hover:text-red-500 transition-colors"
+                              >
+                                <X className="h-3 w-3" />
+                              </button>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Tag Selection Popover */}
+                      <Popover open={tagPopoverOpen} onOpenChange={setTagPopoverOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              variant="outline"
+                              role="combobox"
+                              className={cn(
+                                "w-full justify-between",
+                                form.formState.errors.tagIds && "border-red-500"
+                              )}
+                              disabled={isLoadingTags}
+                            >
+                              {isLoadingTags ? (
+                                "Loading tags..."
+                              ) : availableTags.length === 0 ? (
+                                "No tags available"
+                              ) : (
+                                <>Add tags ({selectedTags.length} selected)</>
+                              )}
+                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-full p-0" align="start">
+                          <Command shouldFilter={true}>
+                            <CommandInput
+                              placeholder="Search tags..."
+                              className="h-9 border-0 border-b rounded-none focus:ring-0"
+                            />
+                            <CommandList className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
+                              {availableTags.length === 0 && !isLoadingTags && (
+                                <CommandEmpty>No tags available.</CommandEmpty>
+                              )}
+
+                              {/* Loading state */}
+                              {isLoadingTags && (
+                                <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+                                  Loading tags...
+                                </div>
+                              )}
+
+                              {/* Available tags */}
+                              {availableTags.length > 0 && !isLoadingTags && (
+                                <CommandEmpty>No tags match your search.</CommandEmpty>
+                              )}
+
+                              <CommandGroup className="p-2">
+                                {availableTags.map((tag: any) => {
+                                  const isSelected = selectedTagIds.includes(tag.id);
+
+                                  return (
+                                    <CommandItem
+                                      key={tag.id}
+                                      value={tag.name}
+                                      keywords={[tag.name, tag.description]}
+                                      onSelect={() => handleTagToggle(tag.id)}
+                                      className={cn(
+                                        "flex items-center space-x-2 rounded-sm px-2 py-2 cursor-pointer transition-colors",
+                                        "hover:bg-accent hover:text-accent-foreground",
+                                        isSelected && "bg-accent/50"
+                                      )}
+                                    >
+                                      <div className="flex items-center space-x-2 flex-1 min-w-0">
+                                        <div className="flex-1 min-w-0">
+                                          <div className="font-medium truncate">{tag.name}</div>
+                                          {tag.description && (
+                                            <div className="text-xs text-muted-foreground truncate">
+                                              {tag.description}
+                                            </div>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <Check
+                                        className={cn(
+                                          "h-4 w-4 flex-shrink-0",
+                                          isSelected ? "opacity-100" : "opacity-0"
+                                        )}
+                                      />
+                                    </CommandItem>
+                                  );
+                                })}
+                              </CommandGroup>
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                      <FormDescription>
+                        Select tags to categorize this payment for better organization and filtering.
+                      </FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+
               </CardContent>
             </Card>
 

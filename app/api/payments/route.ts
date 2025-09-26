@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { payment, pledge, paymentAllocations, installmentSchedule, paymentPlan, solicitor, exchangeRate, currencyConversionLog, currencyEnum, contact } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, installmentSchedule, paymentPlan, solicitor, exchangeRate, currencyConversionLog, currencyEnum, contact, tag, paymentTags } from "@/lib/db/schema";
 import { sql, eq, and, or, lte, desc, inArray } from "drizzle-orm";
+import type { NewPaymentAllocation, NewCurrencyConversionLog, NewPaymentTag } from "@/lib/db/schema";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
-import type { NewPaymentAllocation, NewCurrencyConversionLog } from "@/lib/db/schema";
 
 class AppError extends Error {
   statusCode: number;
@@ -125,6 +125,7 @@ const paymentCreateSchema = z.object({
 
   autoAdjustAllocations: z.boolean().optional(),
   redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
+  tagIds: z.array(z.number().positive()).optional().default([]),
 })
   .superRefine((data, ctx) => {
     const hasAllocations = data.allocations && data.allocations.length > 0;
@@ -262,6 +263,46 @@ async function convertCurrency(
 
   return { convertedAmount, exchangeRate: rate };
 }
+async function validateAndCreatePaymentTags(paymentId: number, tagIds: number[]): Promise<void> {
+  if (!tagIds || tagIds.length === 0) return;
+
+  // Validate that all tag IDs exist and are active for payments
+  const validTags = await db
+    .select({ id: tag.id, name: tag.name })
+    .from(tag)
+    .where(
+      and(
+        inArray(tag.id, tagIds),
+        eq(tag.isActive, true),
+        eq(tag.showOnPayment, true)
+      )
+    );
+
+  if (validTags.length !== tagIds.length) {
+    const validTagIds = validTags.map(t => t.id);
+    const invalidTagIds = tagIds.filter(id => !validTagIds.includes(id));
+    throw new AppError(
+      `Invalid or inactive tag IDs: ${invalidTagIds.join(', ')}`,
+      400,
+      { invalidTagIds, validTagIds }
+    );
+  }
+
+  // Create payment tag associations
+  const paymentTagsToInsert: NewPaymentTag[] = tagIds.map(tagId => ({
+    paymentId,
+    tagId,
+    createdAt: new Date(),
+  }));
+
+  try {
+    await db.insert(paymentTags).values(paymentTagsToInsert);
+  } catch (error) {
+    console.error('Error creating payment tags:', error);
+    throw new AppError('Failed to associate tags with payment', 500);
+  }
+}
+
 
 // Helper functions
 async function updatePaymentPlanTotals(paymentPlanId: number) {
@@ -748,6 +789,7 @@ export async function POST(request: NextRequest) {
 
       const [createdPayment] = await db.insert(payment).values(splitPaymentData).returning();
       if (!createdPayment) throw new AppError("Failed to create payment", 500);
+      await validateAndCreatePaymentTags(createdPayment.id, validatedData.tagIds || []);
 
       console.log("Created single payment with ID:", createdPayment.id);
 
@@ -844,6 +886,7 @@ export async function POST(request: NextRequest) {
 
         const [allocResult] = await db.insert(paymentAllocations).values(allocationToInsert).returning();
         createdAllocations.push(allocResult);
+        await validateAndCreatePaymentTags(createdPayment.id, validatedData.tagIds || []);
 
         // Update installment schedule if applicable
         if (allocation.installmentScheduleId && validatedData.paymentStatus) {
@@ -959,6 +1002,7 @@ export async function POST(request: NextRequest) {
 
       const [createdPayment] = await db.insert(payment).values(newPaymentData).returning();
       if (!createdPayment) throw new AppError("Failed to create payment", 500);
+      await validateAndCreatePaymentTags(createdPayment.id, validatedData.tagIds || []);
 
       // Log currency conversions
       await convertCurrency(
