@@ -35,7 +35,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Search, ChevronDown, ChevronRight, Edit, Trash2 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Search, ChevronDown, ChevronRight, Edit, Trash2, Users } from "lucide-react";
 import { usePaymentPlansQuery, useDeletePaymentPlanMutation } from "@/lib/query/payment-plans/usePaymentPlanQuery";
 import PaymentPlanDialog from "../forms/payment-plan-dialog";
 
@@ -133,7 +134,6 @@ export default function PaymentPlansTable({
     }
   };
 
-  // Fixed formatCurrency function
   const formatCurrency = (amount: string | null | undefined, currency: string) => {
     if (!amount || amount === "0" || amount === "") {
       return { symbol: getCurrencySymbol(currency), amount: '0.00' };
@@ -143,7 +143,6 @@ export default function PaymentPlansTable({
       return { symbol: getCurrencySymbol(currency), amount: '0.00' };
     }
 
-    // Format the number with proper decimal places
     const formatted = value.toLocaleString('en-US', {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
@@ -155,7 +154,6 @@ export default function PaymentPlansTable({
     };
   };
 
-  // Helper function to get currency symbol
   const getCurrencySymbol = (currency: string) => {
     const symbols: { [key: string]: string } = {
       'USD': '$',
@@ -170,20 +168,16 @@ export default function PaymentPlansTable({
     return symbols[currency] || currency;
   };
 
-  // Fixed convertToUSD function - corrected exchange rate logic
   const convertToUSD = (amount: string | null | undefined, exchangeRate: string | null | undefined) => {
     if (!exchangeRate || exchangeRate === '0' || !amount || amount === '0') return null;
     const value = Number(amount);
     const rate = Number(exchangeRate);
     if (isNaN(value) || isNaN(rate) || rate === 0) return null;
 
-    // The exchange rate is returned as USD per foreign currency
-    // So if we have rate = 0.299 USD per ILS, then 47 ILS * 0.299 = USD amount
     const converted = value * rate;
     return converted.toString();
   };
 
-  // Helper function to display amount with USD equivalent
   const displayAmountWithUSD = (
     amount: string | null | undefined,
     currency: string,
@@ -211,36 +205,30 @@ export default function PaymentPlansTable({
     );
   };
 
-  // Fixed getUSDAmount function
   const getUSDAmount = (
     originalAmount: string | null | undefined,
     usdAmount: string | null | undefined,
     exchangeRate: string | null | undefined,
     currency: string
   ) => {
-    // If currency is already USD, return the original amount
     if (currency === 'USD') {
       return originalAmount || '0';
     }
 
-    // If USD amount is explicitly provided and not zero, use it
     if (usdAmount && usdAmount !== "0") {
       return usdAmount;
     }
 
-    // Otherwise convert using exchange rate
     const converted = convertToUSD(originalAmount, exchangeRate);
     return converted || '0';
   };
 
-  // NEW: Helper function to calculate correct installment amount
   const calculateInstallmentAmount = (plan: any) => {
     const totalAmount = Number(plan.totalPlannedAmount || 0);
     const numInstallments = Number(plan.numberOfInstallments || 0);
 
-    // Handle edge cases
     if (numInstallments === 0) {
-      return totalAmount.toString(); // Single payment
+      return totalAmount.toString();
     }
 
     if (totalAmount > 0 && numInstallments > 0) {
@@ -281,7 +269,6 @@ export default function PaymentPlansTable({
     }
   };
 
-  // Helper functions to get installment dates
   const getFirstInstallmentDate = (plan: any) => {
     if (plan.installmentSchedule && plan.installmentSchedule.length > 0) {
       return formatDate(plan.installmentSchedule[0].installmentDate);
@@ -303,7 +290,6 @@ export default function PaymentPlansTable({
     return total - paid;
   };
 
-  // Fixed exchange rate display
   const formatExchangeRate = (rate: string | null | undefined, currency: string) => {
     if (!rate || currency === 'USD') return "N/A";
     const rateNum = Number(rate);
@@ -396,8 +382,10 @@ export default function PaymentPlansTable({
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
+                  <TableHead className="font-semibold text-gray-900">Type</TableHead>
                   <TableHead className="font-semibold text-gray-900">Pledge Date</TableHead>
                   <TableHead className="font-semibold text-gray-900">Pledge Detail</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Third Party</TableHead>
                   <TableHead className="font-semibold text-gray-900">1st Inst</TableHead>
                   <TableHead className="font-semibold text-gray-900">Next Inst</TableHead>
                   <TableHead className="font-semibold text-gray-900">Last Inst</TableHead>
@@ -405,7 +393,6 @@ export default function PaymentPlansTable({
                   <TableHead className="font-semibold text-gray-900">Paid USD</TableHead>
                   <TableHead className="font-semibold text-gray-900">Paid</TableHead>
                   <TableHead className="font-semibold text-gray-900">Balance</TableHead>
-                  
                   <TableHead className="font-semibold text-gray-900">Status</TableHead>
                 </TableRow> 
               </TableHeader>
@@ -413,7 +400,7 @@ export default function PaymentPlansTable({
                 {isLoading ? (
                   Array.from({ length: currentLimit }).map((_, index) => (
                     <TableRow key={index}>
-                      {Array.from({ length: 11 }).map((_, cellIndex) => (
+                      {Array.from({ length: 13 }).map((_, cellIndex) => (
                         <TableCell key={cellIndex}>
                           <Skeleton className="h-4 w-20" />
                         </TableCell>
@@ -422,20 +409,16 @@ export default function PaymentPlansTable({
                   ))
                 ) : data?.paymentPlans.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={11} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                       No payment plans found
                     </TableCell>
                   </TableRow>
                 ) : (
                   data?.paymentPlans.map((plan: any) => {
-                    // Get the correct currency for pledge vs plan
                     const pledgeCurrency = plan.currency;
                     const planCurrency = plan.currency;
-
-                    // Get pledge original amount (this should be the full pledge amount)
                     const pledgeOriginalAmount = plan.totalPlannedAmount;
 
-                    // Calculate USD amounts with corrected logic
                     const totalPlannedUSD = getUSDAmount(
                       plan.totalPlannedAmount,
                       plan.totalPlannedAmountUsd,
@@ -449,7 +432,6 @@ export default function PaymentPlansTable({
                       planCurrency
                     );
 
-                    // Calculate remaining amount correctly
                     const remainingAmount = plan.remainingAmount || (
                       Number(plan.totalPlannedAmount || 0) - Number(plan.totalPaid || 0)
                     ).toString();
@@ -458,10 +440,9 @@ export default function PaymentPlansTable({
                       ? remainingAmount
                       : convertToUSD(remainingAmount, plan.exchangeRate) || '0';
 
-                    // Calculate unscheduled amount (difference between pledge and planned)
-                    const unscheduledAmount = (
-                      Number(pledgeOriginalAmount || 0) - Number(plan.totalPlannedAmount || 0)
-                    ).toString();
+                    // Check if this is a third-party payment plan
+                    const isThirdParty = plan.isThirdPartyPayment || false;
+                    const hasPayerInfo = plan.payerContactName || plan.payerContactId;
 
                     return (
                       <React.Fragment key={plan.id}>
@@ -481,13 +462,84 @@ export default function PaymentPlansTable({
                             </Button>
                           </TableCell>
 
+                          {/* NEW: Payment Type Column */}
+                          <TableCell>
+                            {isThirdParty ? (
+                              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+                                <Users className="h-3 w-3 mr-1" />
+                                3rd Party
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-gray-50 text-gray-700">
+                                Direct
+                              </Badge>
+                            )}
+                          </TableCell>
+
                           {/* Pledge Date */}
                           <TableCell className="font-medium">
                             {formatDate(plan.pledge?.pledgeDate || plan.pledgeDate || plan.startDate)}
                           </TableCell>
 
                           {/* Pledge Detail */}
-                          <TableCell>{plan.pledge?.description || plan.pledgeDescription || plan.planName || "N/A"}</TableCell>
+                          <TableCell>
+                            {plan.pledge?.description || plan.pledgeDescription || plan.planName || "N/A"}
+                          </TableCell>
+
+                          {/* NEW: Third Party Column - shows "Paid By" or "Paid For" based on perspective */}
+                          <TableCell className="text-center">
+                            {isThirdParty ? (
+                              (() => {
+                                // Determine if current contact is the payer or beneficiary
+                                const isCurrentContactPayer = contactId && plan.payerContactId === contactId;
+                                const isCurrentContactBeneficiary = contactId && plan.contactId === contactId;
+
+                                if (isCurrentContactPayer) {
+                                  // Current contact is paying - show "Paid For"
+                                  return (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
+                                        <Users className="h-3 w-3 mr-1" />
+                                        Paid For
+                                      </Badge>
+                                      {plan.pledgeContactName && (
+                                        <span className="text-xs text-gray-600 max-w-20 truncate" title={plan.pledgeContactName}>
+                                          {plan.pledgeContactName}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                } else if (isCurrentContactBeneficiary) {
+                                  // Current contact is beneficiary - show "Paid By"
+                                  return (
+                                    <div className="flex flex-col items-center gap-1">
+                                      <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">
+                                        <Users className="h-3 w-3 mr-1" />
+                                        Paid By
+                                      </Badge>
+                                      {plan.payerContactName && (
+                                        <span className="text-xs text-gray-600 max-w-20 truncate" title={plan.payerContactName}>
+                                          {plan.payerContactName}
+                                        </span>
+                                      )}
+                                    </div>
+                                  );
+                                }
+
+                                // Fallback for unknown perspective
+                                return (
+                                  <div className="flex flex-col items-center gap-1">
+                                    <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
+                                      <Users className="h-3 w-3 mr-1" />
+                                      3rd Party
+                                    </Badge>
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
+                          </TableCell>
 
                           {/* 1st Inst */}
                           <TableCell>{getFirstInstallmentDate(plan)}</TableCell>
@@ -498,7 +550,7 @@ export default function PaymentPlansTable({
                           {/* Last Inst */}
                           <TableCell>{getLastInstallmentDate(plan)}</TableCell>
 
-                          {/* Pledge Amount (original pledge amount in pledge currency) */}
+                          {/* Pledge Amount */}
                           <TableCell>
                             {displayAmountWithUSD(
                               pledgeOriginalAmount,
@@ -516,17 +568,15 @@ export default function PaymentPlansTable({
                             </div>
                           </TableCell>
 
-                          {/* Paid (in plan currency) */}
+                          {/* Paid */}
                           <TableCell>
                             {displayAmountWithUSD(plan.totalPaid || "0", planCurrency, plan.exchangeRate)}
                           </TableCell>
 
-                          {/* Balance (remaining in plan currency) */}
+                          {/* Balance */}
                           <TableCell>
                             {displayAmountWithUSD(remainingAmount, planCurrency, plan.exchangeRate)}
                           </TableCell>
-
-                          
 
                           {/* Status */}
                           <TableCell>
@@ -539,7 +589,22 @@ export default function PaymentPlansTable({
                         {/* Expanded Row Content */}
                         {expandedRows.has(plan.id) && (
                           <TableRow>
-                            <TableCell colSpan={11} className="bg-gray-50 p-6">
+                            <TableCell colSpan={13} className="bg-gray-50 p-6">
+                              {/* NEW: Third-Party Payment Information Banner */}
+                              {isThirdParty && (
+                                <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                                  <div className="flex items-start">
+                                    <Users className="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
+                                    <div>
+                                      <h4 className="font-semibold text-blue-900 mb-1">Third-Party Payment Plan</h4>
+                                      <p className="text-sm text-blue-700">
+                                        This payment plan is being paid by {plan.payerContactName || `Contact #${plan.payerContactId}`} on behalf of {plan.pledgeContactName || `Contact #${plan.contactId}`}.
+                                      </p>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
                               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 {/* Column 1: Schedule */}
                                 <div className="space-y-3">
@@ -580,7 +645,6 @@ export default function PaymentPlansTable({
                                       <span className="text-gray-600">Total Planned (USD):</span>
                                       <span className="font-medium">${formatCurrency(convertToUSD(plan.totalPlannedAmount || "0", plan.exchangeRate) || "0", "USD").amount}</span>
                                     </div>
-                                    {/* FIXED: Use calculated installment amount */}
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">Installment Amount:</span>
                                       <span className="font-medium">
@@ -602,6 +666,27 @@ export default function PaymentPlansTable({
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">Additional Details</h4>
                                   <div className="space-y-2 text-sm">
+                                    {/* NEW: Third-Party Payment Info */}
+                                    {isThirdParty && (
+                                      <>
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-600">Payment Type:</span>
+                                          <span className="font-medium text-blue-600">Third-Party</span>
+                                        </div>
+                                        {plan.payerContactName && (
+                                          <div className="flex justify-between">
+                                            <span className="text-gray-600">Payer:</span>
+                                            <span className="font-medium">{plan.payerContactName}</span>
+                                          </div>
+                                        )}
+                                        {plan.pledgeContactName && (
+                                          <div className="flex justify-between">
+                                            <span className="text-gray-600">Beneficiary:</span>
+                                            <span className="font-medium">{plan.pledgeContactName}</span>
+                                          </div>
+                                        )}
+                                      </>
+                                    )}
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">Distribution Type:</span>
                                       <span className="font-medium capitalize">{plan.distributionType || "fixed"}</span>

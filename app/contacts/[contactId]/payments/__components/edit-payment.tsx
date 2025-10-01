@@ -533,25 +533,27 @@ export default function EditPaymentDialog({
   const [multiContactAllocations, setMultiContactAllocations] = useState<MultiContactAllocation[]>([]);
 
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
-  const [selectedTagIds, setSelectedTagIds] = useState<number[]>([]);
-
+  const [selectedTagIds, setSelectedTagIds] = useState<number[]>(() => {
+    return payment.tagIds || [];
+  });
   const handleTagToggle = (tagId: number) => {
-    const currentTagIds = form.getValues('tagIds') || [];
+    const currentTagIds = form.getValues("tagIds") || [];
     const newTagIds = currentTagIds.includes(tagId)
       ? currentTagIds.filter(id => id !== tagId)
       : [...currentTagIds, tagId];
 
-    form.setValue('tagIds', newTagIds, { shouldValidate: true });
-    setSelectedTagIds(newTagIds);
+    form.setValue("tagIds", newTagIds);
+    setSelectedTagIds(newTagIds); // Keep local state in sync
   };
 
   const handleTagRemove = (tagId: number) => {
-    const currentTagIds = form.getValues('tagIds') || [];
+    const currentTagIds = form.getValues("tagIds") || [];
     const newTagIds = currentTagIds.filter(id => id !== tagId);
 
-    form.setValue('tagIds', newTagIds, { shouldValidate: true });
-    setSelectedTagIds(newTagIds);
+    form.setValue("tagIds", newTagIds);
+    setSelectedTagIds(newTagIds); // Keep local state in sync
   };
+
 
   // Check if this payment is already a third-party or multi-contact payment
   const isExistingThirdPartyPayment = payment.isThirdPartyPayment || false;
@@ -627,7 +629,7 @@ export default function EditPaymentDialog({
     },
     enabled: showMultiContactSection,
   });
-  
+
 
   const form = useForm<EditPaymentFormData>({
     resolver: zodResolver(editPaymentSchema),
@@ -718,15 +720,10 @@ export default function EditPaymentDialog({
   const watchedThirdPartyContactId = form.watch("thirdPartyContactId");
   const watchedPledgeId = form.watch("pledgeId");
 
-  useEffect(() => {
-    if (watchedTagIds && Array.isArray(watchedTagIds)) {
-      setSelectedTagIds(watchedTagIds);
-    }
-  }, [watchedTagIds]);
-
   const selectedTags = availableTags.filter(tag =>
-    (watchedTagIds?.includes(tag.id) || selectedTagIds.includes(tag.id))
+    (watchedTagIds || []).includes(tag.id)
   );
+
   // Get pledges for the current contact or third-party contact
   const targetContactId = selectedThirdPartyContact?.id || contactId;
   const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
@@ -1676,6 +1673,7 @@ export default function EditPaymentDialog({
       isSplitPayment: isSplitPayment,
       isThirdPartyPayment: isExistingThirdPartyPayment,
       thirdPartyContactId: existingThirdPartyContactId,
+      tagIds: payment.tagIds || [],
       payerContactId: payment.payerContactId || null,
       isMultiContactPayment: isExistingMultiContactPayment,
       multiContactAllocations: [],
@@ -1690,6 +1688,7 @@ export default function EditPaymentDialog({
     setContactSearch("");
     setShowMultiContactSection(isExistingMultiContactPayment);
     setMultiContactAllocations([]);
+    setSelectedTagIds(payment.tagIds || []);
 
     // Reset allocations
     const initialAllocations = isSplitPayment && payment.allocations

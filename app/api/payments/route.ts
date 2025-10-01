@@ -1078,23 +1078,17 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Updated GET method with enhanced multi-currency support
 export async function GET(request: NextRequest) {
   try {
-    const { searchParams } = new URL(request.url);
+    const searchParams = new URL(request.url).searchParams;
     const params = Object.fromEntries(searchParams.entries());
-
     const parsedParams = querySchema.safeParse(params);
 
     if (!parsedParams.success) {
-      throw new AppError(
-        "Invalid query parameters",
-        400,
-        parsedParams.error.issues.map(issue => ({
-          field: issue.path.join("."),
-          message: issue.message,
-        }))
-      );
+      throw new AppError("Invalid query parameters", 400, parsedParams.error.issues.map(issue => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      })));
     }
 
     const {
@@ -1121,41 +1115,30 @@ export async function GET(request: NextRequest) {
       if (showPaymentsMade === true && showPaymentsReceived === false) {
         conditions.push(eq(payment.payerContactId, contactId));
       } else if (showPaymentsReceived === true && showPaymentsMade === false) {
-        conditions.push(
-          sql`(
-            (${payment.pledgeId} IN (SELECT id FROM ${pledge} WHERE contact_id = ${contactId}) 
-             AND (${payment.isThirdPartyPayment} = false OR ${payment.isThirdPartyPayment} IS NULL))
-            OR 
-            ${payment.id} IN (
-              SELECT pa.payment_id FROM ${paymentAllocations} pa
-              JOIN ${pledge} p ON pa.pledge_id = p.id
-              WHERE p.contact_id = ${contactId}
-            )
-          )`
-        );
+        conditions.push(sql`(
+          payment.pledge_id IN (SELECT id FROM pledge WHERE contact_id = ${contactId}) 
+          AND (payment.is_third_party_payment = false OR payment.is_third_party_payment IS NULL)
+        ) OR payment.id IN (
+          SELECT pa.payment_id FROM payment_allocations pa 
+          JOIN pledge p ON pa.pledge_id = p.id 
+          WHERE p.contact_id = ${contactId}
+        )`);
       } else {
-        conditions.push(
-          sql`(
-            ${payment.payerContactId} = ${contactId} OR
-            (${payment.pledgeId} IN (SELECT id FROM ${pledge} WHERE contact_id = ${contactId}) 
-             AND (${payment.isThirdPartyPayment} = false OR ${payment.isThirdPartyPayment} IS NULL))
-            OR 
-            ${payment.id} IN (
-              SELECT pa.payment_id FROM ${paymentAllocations} pa
-              JOIN ${pledge} p ON pa.pledge_id = p.id
-              WHERE p.contact_id = ${contactId}
-            )
-          )`
-        );
+        conditions.push(sql`(
+          payment.payer_contact_id = ${contactId} OR (
+            payment.pledge_id IN (SELECT id FROM pledge WHERE contact_id = ${contactId}) 
+            AND (payment.is_third_party_payment = false OR payment.is_third_party_payment IS NULL)
+          ) OR payment.id IN (
+            SELECT pa.payment_id FROM payment_allocations pa 
+            JOIN pledge p ON pa.pledge_id = p.id 
+            WHERE p.contact_id = ${contactId}
+          )
+        )`);
       }
     }
 
     if (pledgeId) {
-      conditions.push(
-        sql`(${payment.pledgeId} = ${pledgeId} OR ${payment.id} IN (
-          SELECT payment_id FROM ${paymentAllocations} WHERE pledge_id = ${pledgeId}
-        ))`
-      );
+      conditions.push(sql`payment.pledge_id = ${pledgeId} OR payment.id IN (SELECT payment_id FROM payment_allocations WHERE pledge_id = ${pledgeId})`);
     }
 
     if (solicitorId) {
@@ -1164,18 +1147,20 @@ export async function GET(request: NextRequest) {
 
     if (hasSolicitor !== undefined) {
       if (hasSolicitor) {
-        conditions.push(sql`${payment.solicitorId} IS NOT NULL`);
+        conditions.push(sql`payment.solicitor_id IS NOT NULL`);
       } else {
-        conditions.push(sql`${payment.solicitorId} IS NULL`);
+        conditions.push(sql`payment.solicitor_id IS NULL`);
       }
     }
 
     if (search) {
-      conditions.push(
-        sql`${payment.referenceNumber} ILIKE ${"%" + search + "%"} OR ${payment.checkNumber
-          } ILIKE ${"%" + search + "%"} OR ${payment.notes} ILIKE ${"%" + search + "%"
-          } OR ${payment.receiptNumber} ILIKE ${"%" + search + "%"} OR ${payment.account} ILIKE ${"%" + search + "%"}`
-      );
+      conditions.push(sql`(
+        payment.reference_number ILIKE ${"%" + search + "%"} OR 
+        payment.check_number ILIKE ${"%" + search + "%"} OR 
+        payment.notes ILIKE ${"%" + search + "%"} OR 
+        payment.receipt_number ILIKE ${"%" + search + "%"} OR 
+        payment.account ILIKE ${"%" + search + "%"}
+      )`);
     }
 
     if (paymentMethod) {
@@ -1187,11 +1172,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (startDate) {
-      conditions.push(sql`${payment.paymentDate} >= ${startDate}`);
+      conditions.push(sql`payment.payment_date >= ${startDate}`);
     }
 
     if (endDate) {
-      conditions.push(sql`${payment.paymentDate} <= ${endDate}`);
+      conditions.push(sql`payment.payment_date <= ${endDate}`);
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -1202,7 +1187,6 @@ export async function GET(request: NextRequest) {
         pledgeId: payment.pledgeId,
         amount: payment.amount,
         currency: payment.currency,
-
         // Enhanced multi-currency fields
         amountUsd: payment.amountUsd,
         amountInPledgeCurrency: payment.amountInPledgeCurrency,
@@ -1210,7 +1194,6 @@ export async function GET(request: NextRequest) {
         amountInPlanCurrency: payment.amountInPlanCurrency,
         planCurrencyExchangeRate: payment.planCurrencyExchangeRate,
         exchangeRate: payment.exchangeRate,
-
         paymentDate: payment.paymentDate,
         receivedDate: payment.receivedDate,
         checkDate: payment.checkDate,
@@ -1230,99 +1213,25 @@ export async function GET(request: NextRequest) {
         notes: payment.notes,
         paymentPlanId: payment.paymentPlanId,
         installmentScheduleId: payment.installmentScheduleId,
-
         // Third-party payment fields
         isThirdPartyPayment: payment.isThirdPartyPayment,
         payerContactId: payment.payerContactId,
-
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
-
         // Enhanced pledge information
-        pledgeDescription: sql<string>`(
-          CASE 
-            WHEN ${payment.pledgeId} IS NOT NULL THEN 
-              (SELECT description FROM ${pledge} WHERE id = ${payment.pledgeId})
-            ELSE NULL
-          END
-        )`.as("pledgeDescription"),
-        pledgeOriginalAmount: sql<string>`(
-          CASE 
-            WHEN ${payment.pledgeId} IS NOT NULL THEN 
-              (SELECT original_amount FROM ${pledge} WHERE id = ${payment.pledgeId})
-            ELSE NULL
-          END
-        )`.as("pledgeOriginalAmount"),
-        pledgeOriginalCurrency: sql<string>`(
-          CASE 
-            WHEN ${payment.pledgeId} IS NOT NULL THEN 
-              (SELECT currency FROM ${pledge} WHERE id = ${payment.pledgeId})
-            ELSE NULL
-          END
-        )`.as("pledgeOriginalCurrency"),
-        pledgeExchangeRate: sql<string>`(
-          CASE 
-            WHEN ${payment.pledgeId} IS NOT NULL THEN 
-              (SELECT exchange_rate FROM ${pledge} WHERE id = ${payment.pledgeId})
-            ELSE NULL
-          END
-        )`.as("pledgeExchangeRate"),
-        contactId: sql<number>`(
-          CASE 
-            WHEN ${payment.pledgeId} IS NOT NULL THEN 
-              (SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId})
-            ELSE NULL
-          END
-        )`.as("contactId"),
-
+        pledgeDescription: sql<string>`CASE WHEN ${payment.pledgeId} IS NOT NULL THEN (SELECT description FROM ${pledge} WHERE id = ${payment.pledgeId}) ELSE NULL END`.as("pledgeDescription"),
+        pledgeOriginalAmount: sql<string>`CASE WHEN ${payment.pledgeId} IS NOT NULL THEN (SELECT original_amount FROM ${pledge} WHERE id = ${payment.pledgeId}) ELSE NULL END`.as("pledgeOriginalAmount"),
+        pledgeOriginalCurrency: sql<string>`CASE WHEN ${payment.pledgeId} IS NOT NULL THEN (SELECT currency FROM ${pledge} WHERE id = ${payment.pledgeId}) ELSE NULL END`.as("pledgeOriginalCurrency"),
+        pledgeExchangeRate: sql<string>`CASE WHEN ${payment.pledgeId} IS NOT NULL THEN (SELECT exchange_rate FROM ${pledge} WHERE id = ${payment.pledgeId}) ELSE NULL END`.as("pledgeExchangeRate"),
+        contactId: sql<number>`CASE WHEN ${payment.pledgeId} IS NOT NULL THEN (SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId}) ELSE NULL END`.as("contactId"),
         // Contact information
-        pledgeOwnerName: sql<string>`(
-          CASE 
-            WHEN ${payment.pledgeId} IS NOT NULL THEN 
-              (SELECT CONCAT(c.first_name, ' ', c.last_name)
-               FROM ${pledge} p
-               JOIN ${contact} c ON p.contact_id = c.id
-               WHERE p.id = ${payment.pledgeId})
-            ELSE NULL
-          END
-        )`.as("pledgeOwnerName"),
-
-        payerContactName: sql<string>`(
-          CASE 
-            WHEN ${payment.payerContactId} IS NOT NULL THEN 
-              (SELECT CONCAT(c.first_name, ' ', c.last_name)
-               FROM ${contact} c 
-               WHERE c.id = ${payment.payerContactId})
-            ELSE NULL
-          END
-        )`.as("payerContactName"),
-
-        solicitorName: sql<string>`(
-          CASE 
-            WHEN ${payment.solicitorId} IS NOT NULL THEN 
-              (SELECT CONCAT(c.first_name, ' ', c.last_name)
-               FROM ${solicitor} s
-               JOIN ${contact} c ON s.contact_id = c.id
-               WHERE s.id = ${payment.solicitorId})
-            ELSE NULL
-          END
-        )`.as("solicitorName"),
-
+        pledgeOwnerName: sql<string>`CASE WHEN ${payment.pledgeId} IS NOT NULL THEN (SELECT CONCAT(c.first_name, ' ', c.last_name) FROM ${pledge} p JOIN ${contact} c ON p.contact_id = c.id WHERE p.id = ${payment.pledgeId}) ELSE NULL END`.as("pledgeOwnerName"),
+        payerContactName: sql<string>`CASE WHEN ${payment.payerContactId} IS NOT NULL THEN (SELECT CONCAT(c.first_name, ' ', c.last_name) FROM ${contact} c WHERE c.id = ${payment.payerContactId}) ELSE NULL END`.as("payerContactName"),
+        solicitorName: sql<string>`CASE WHEN ${payment.solicitorId} IS NOT NULL THEN (SELECT CONCAT(c.first_name, ' ', c.last_name) FROM ${solicitor} s JOIN ${contact} c ON s.contact_id = c.id WHERE s.id = ${payment.solicitorId}) ELSE NULL END`.as("solicitorName"),
         // Payment plan currency info
-        paymentPlanCurrency: sql<string>`(
-          CASE 
-            WHEN ${payment.paymentPlanId} IS NOT NULL THEN 
-              (SELECT currency FROM ${paymentPlan} WHERE id = ${payment.paymentPlanId})
-            ELSE NULL
-          END
-        )`.as("paymentPlanCurrency"),
-
-        isSplitPayment: sql<boolean>`(
-          SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
-        )`.as("isSplitPayment"),
-        allocationCount: sql<number>`(
-          SELECT COUNT(*) FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
-        )`.as("allocationCount"),
+        paymentPlanCurrency: sql<string>`CASE WHEN ${payment.paymentPlanId} IS NOT NULL THEN (SELECT currency FROM ${paymentPlan} WHERE id = ${payment.paymentPlanId}) ELSE NULL END`.as("paymentPlanCurrency"),
+        isSplitPayment: sql<boolean>`(SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id})`.as("isSplitPayment"),
+        allocationCount: sql<number>`(SELECT COUNT(*) FROM ${paymentAllocations} WHERE payment_id = ${payment.id})`.as("allocationCount"),
       })
       .from(payment)
       .leftJoin(pledge, eq(payment.pledgeId, pledge.id))
@@ -1344,9 +1253,36 @@ export async function GET(request: NextRequest) {
       countQuery.execute(),
     ]);
 
-    // Enhanced allocation fetching with multi-currency support
-    const paymentsWithAllocations = await Promise.all(
-      payments.map(async (p) => {
+    console.log('=== PAYMENTS LIST API - FETCHING TAGS ===');
+    console.log('Total payments found:', payments.length);
+
+    // *** ENHANCED ALLOCATION AND TAG FETCHING WITH MULTI-CURRENCY SUPPORT ***
+    const paymentsWithTagsAndAllocations = await Promise.all(
+      payments.map(async (p: any) => {
+        console.log(`=== Fetching tags for payment ${p.id} ===`);
+
+        // *** FETCH PAYMENT TAGS ***
+        const paymentTagsResult = await db
+          .select({
+            tagId: paymentTags.tagId,
+            tagName: tag.name,
+          })
+          .from(paymentTags)
+          .innerJoin(tag, and(
+            eq(paymentTags.tagId, tag.id),
+            eq(tag.isActive, true),
+            eq(tag.showOnPayment, true)
+          ))
+          .where(eq(paymentTags.paymentId, p.id));
+
+        console.log(`Payment ${p.id} tags result:`, paymentTagsResult);
+
+        const tagIds = paymentTagsResult.map(pt => pt.tagId);
+        const tags = paymentTagsResult.map(pt => ({ id: pt.tagId, name: pt.tagName }));
+
+        console.log(`Payment ${p.id} - tagIds:`, tagIds, 'tags:', tags);
+
+        // Handle allocations if this is a split payment
         if (p.isSplitPayment) {
           const allocations = await db
             .select({
@@ -1355,37 +1291,35 @@ export async function GET(request: NextRequest) {
               installmentScheduleId: paymentAllocations.installmentScheduleId,
               allocatedAmount: paymentAllocations.allocatedAmount,
               currency: paymentAllocations.currency,
-
               // Enhanced multi-currency allocation fields
               allocatedAmountUsd: paymentAllocations.allocatedAmountUsd,
               allocatedAmountInPledgeCurrency: paymentAllocations.allocatedAmountInPledgeCurrency,
-
               receiptNumber: paymentAllocations.receiptNumber,
               receiptType: paymentAllocations.receiptType,
               receiptIssued: paymentAllocations.receiptIssued,
               notes: paymentAllocations.notes,
               payerContactId: paymentAllocations.payerContactId,
-
-              pledgeDescription: sql<string>`(
-                SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
-              )`.as("pledgeDescription"),
-              pledgeOwnerName: sql<string>`(
-                SELECT CONCAT(c.first_name, ' ', c.last_name)
-                FROM ${pledge} p
-                JOIN ${contact} c ON p.contact_id = c.id
-                WHERE p.id = ${paymentAllocations.pledgeId}
-              )`.as("pledgeOwnerName"),
-              pledgeCurrency: sql<string>`(
-                SELECT currency FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
-              )`.as("pledgeCurrency"),
+              pledgeDescription: sql<string>`(SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId})`.as("pledgeDescription"),
+              pledgeOwnerName: sql<string>`(SELECT CONCAT(c.first_name, ' ', c.last_name) FROM ${pledge} p JOIN ${contact} c ON p.contact_id = c.id WHERE p.id = ${paymentAllocations.pledgeId})`.as("pledgeOwnerName"),
+              pledgeCurrency: sql<string>`(SELECT currency FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId})`.as("pledgeCurrency"),
             })
             .from(paymentAllocations)
             .leftJoin(pledge, eq(paymentAllocations.pledgeId, pledge.id))
             .where(eq(paymentAllocations.paymentId, p.id));
 
-          return { ...p, allocations };
+          return {
+            ...p,
+            tagIds, // *** INCLUDE TAG IDS ***
+            tags,   // *** INCLUDE TAGS ***
+            allocations
+          };
         }
-        return p;
+
+        return {
+          ...p,
+          tagIds, // *** INCLUDE TAG IDS FOR NON-SPLIT PAYMENTS ***
+          tags    // *** INCLUDE TAGS FOR NON-SPLIT PAYMENTS ***
+        };
       })
     );
 
@@ -1393,7 +1327,7 @@ export async function GET(request: NextRequest) {
     const totalPages = Math.ceil(totalCount / limit);
 
     const response = {
-      payments: paymentsWithAllocations,
+      payments: paymentsWithTagsAndAllocations,
       pagination: {
         page,
         limit,
@@ -1410,13 +1344,18 @@ export async function GET(request: NextRequest) {
         "X-Total-Count": response.pagination.totalCount.toString(),
       },
     });
+
   } catch (err: unknown) {
     if (err instanceof AppError) {
       return NextResponse.json(
-        { error: err.message, ...(err.details ? { details: err.details } : {}) },
+        {
+          error: err.message,
+          ...(err.details ? { details: err.details } : {}),
+        },
         { status: err.statusCode }
       );
     }
+
     return NextResponse.json(
       {
         error: "Failed to fetch payments",
@@ -1427,3 +1366,4 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+

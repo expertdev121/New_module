@@ -98,6 +98,7 @@ function displayDate_DDMMMYYYY(dateString: string | null | undefined): string {
 // Define the expected Payment type for EditPaymentDialog
 interface EditPayment extends Omit<ApiPayment, "allocations"> {
   contactId?: number;
+   tagIds?: number[];
   allocations: EditAllocation[];
 }
 
@@ -140,6 +141,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     return {
       ...apiPayment,
       contactId: contactId,
+      tagIds: apiPayment.tagIds || [],
       allocations:
         apiPayment.allocations?.map((allocation) => ({
           ...allocation,
@@ -276,10 +278,10 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     // For split payments with multiple contacts, we need different logic
     if (payment.isSplitPayment && payment.allocations) {
       // Check if any allocation belongs to current contact
-      const currentContactAllocation = payment.allocations.find(allocation => 
+      const currentContactAllocation = payment.allocations.find(allocation =>
         allocation.pledge?.contactId === contactId
       );
-      
+
       if (currentContactAllocation) {
         // Current contact is a beneficiary (payee) - show "Paid By"
         return (
@@ -1068,7 +1070,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                             <div className="flex items-center gap-2">
                                               <ArrowRight className="h-4 w-4 text-blue-600" />
                                               <span className="font-medium text-blue-800">
-                                                {contactId === payment.payerContactId 
+                                                {contactId === payment.payerContactId
                                                   ? `You paid for ${uniqueContacts.size} people's pledges`
                                                   : `${payment.payerContactName || "Unknown"} paid for ${uniqueContacts.size} people's pledges`
                                                 }

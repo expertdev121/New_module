@@ -1,10 +1,10 @@
 import { db } from "@/lib/db";
-import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule, solicitor, bonusCalculation, contact, exchangeRate, currencyEnum } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule, solicitor, bonusCalculation, contact, exchangeRate, currencyEnum, tag, paymentTags } from "@/lib/db/schema";
+import type { NewPaymentAllocation, NewPaymentTag } from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
 import { eq, desc, or, ilike, and, SQL, sql, inArray } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { NewPaymentAllocation } from "@/lib/db/schema";
 
 class AppError extends Error {
   statusCode: number;
@@ -66,6 +66,7 @@ const multiContactAllocationSchema = z.object({
 const updatePaymentSchema = z.object({
   paymentId: z.number().positive("Payment ID is required and must be positive"),
   amount: z.number().positive("Amount must be positive").optional(),
+  tagIds: z.array(z.number().positive()).optional().default([]),
   currency: z.enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"]).optional(),
   amountUsd: z.number().positive("Amount in USD must be positive").optional(),
   amountInPledgeCurrency: z.number().positive("Amount in pledge currency must be positive").optional(),
@@ -73,12 +74,12 @@ const updatePaymentSchema = z.object({
   exchangeRate: z.number().positive("Exchange rate must be positive").optional(),
   pledgeCurrencyExchangeRate: z.number().positive("Pledge currency exchange rate must be positive").optional(),
   planCurrencyExchangeRate: z.number().positive("Plan currency exchange rate must be positive").optional(),
-  
+
   // Date fields
   paymentDate: z.string().min(1, "Payment date is required").optional(),
   receivedDate: z.string().optional().nullable(),
   checkDate: z.string().optional().nullable(),
-  
+
   // Payment method and details
   paymentMethod: z.enum([
     "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
@@ -87,27 +88,27 @@ const updatePaymentSchema = z.object({
   ]).optional(),
   methodDetail: z.string().optional().nullable(),
   paymentStatus: PaymentStatusEnum.optional(),
-  
+
   // Account and reference fields
   account: z.string().optional().nullable(),
   referenceNumber: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),
-  
+
   // Receipt fields
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(["invoice", "confirmation", "receipt", "other"]).optional().nullable(),
   receiptIssued: z.boolean().optional(),
-  
+
   // Solicitor and bonus fields
   solicitorId: z.number().positive("Solicitor ID must be positive").optional().nullable(),
   bonusPercentage: z.number().min(0).max(100).optional().nullable(),
   bonusAmount: z.number().min(0).optional().nullable(),
   bonusRuleId: z.number().positive("Bonus rule ID must be positive").optional().nullable(),
-  
+
   // Notes and relationship
   notes: z.string().optional().nullable(),
   relationshipId: z.number().positive("Relationship ID must be positive").optional().nullable(),
-  
+
   // Core payment associations
   pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
@@ -264,6 +265,48 @@ async function validateMultiContactAllocations(
     isValid: errors.length === 0,
     errors
   };
+}
+async function validateAndUpdatePaymentTags(paymentId: number, tagIds: number[]): Promise<void> {
+  // Delete existing payment tags
+  await db.delete(paymentTags).where(eq(paymentTags.paymentId, paymentId));
+
+  if (!tagIds || tagIds.length === 0) return;
+
+  // Validate that all tag IDs exist and are active for payments
+  const validTags = await db
+    .select({ id: tag.id, name: tag.name })
+    .from(tag)
+    .where(
+      and(
+        inArray(tag.id, tagIds),
+        eq(tag.isActive, true),
+        eq(tag.showOnPayment, true)
+      )
+    );
+
+  if (validTags.length !== tagIds.length) {
+    const validTagIds = validTags.map(t => t.id);
+    const invalidTagIds = tagIds.filter(id => !validTagIds.includes(id));
+    throw new AppError(
+      `Invalid or inactive tag IDs: ${invalidTagIds.join(', ')}`,
+      400,
+      { invalidTagIds, validTagIds }
+    );
+  }
+
+  // Create new payment tag associations
+  const paymentTagsToInsert: NewPaymentTag[] = tagIds.map(tagId => ({
+    paymentId,
+    tagId,
+    createdAt: new Date(),
+  }));
+
+  try {
+    await db.insert(paymentTags).values(paymentTagsToInsert);
+  } catch (error) {
+    console.error('Error creating payment tags:', error);
+    throw new AppError('Failed to associate tags with payment', 500);
+  }
 }
 
 async function validateCurrencyConsistency(
@@ -800,16 +843,16 @@ export async function PATCH(
 
     // UPDATED buildUpdateData function to handle ALL fields from the schema
     const buildUpdateData = async (data: typeof validatedData) => {
-      const { 
-        paymentId, 
-        allocations, 
-        isSplitPayment, 
-        autoAdjustAllocations, 
-        redistributionMethod, 
-        multiContactAllocations, 
-        isMultiContactPayment, 
-        thirdPartyContactId, 
-        ...dataToUpdate 
+      const {
+        paymentId,
+        allocations,
+        isSplitPayment,
+        autoAdjustAllocations,
+        redistributionMethod,
+        multiContactAllocations,
+        isMultiContactPayment,
+        thirdPartyContactId,
+        ...dataToUpdate
       } = data;
 
       const baseUpdateData: Record<string, string | number | boolean | null | undefined | Date> = {
@@ -1706,7 +1749,9 @@ export async function PATCH(
 
       multiContactAllocations = Array.from(contactAllocationsMap.values());
     }
-
+    if (validatedData.tagIds !== undefined) {
+      await validateAndUpdatePaymentTags(paymentId, validatedData.tagIds);
+    }
     return NextResponse.json({
       message: `${finalIsMultiContact ? "Multi-contact payment" : finalIsSplit ? "Split payment" : "Payment"} updated successfully`,
       payment: {
@@ -1732,24 +1777,17 @@ export async function PATCH(
     }
     return ErrorHandler.handle(err);
   }
-} 
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+}
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const pledgeId = parseInt(id, 10);
 
     if (isNaN(pledgeId) || pledgeId <= 0) {
-      return NextResponse.json(
-        { error: "Invalid pledge ID" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid pledge ID" }, { status: 400 });
     }
 
-    const { searchParams } = new URL(request.url);
+    const searchParams = new URL(request.url).searchParams;
     const queryParams = QueryParamsSchema.parse({
       pledgeId,
       page: parseInt(searchParams.get("page") || "1", 10),
@@ -1767,10 +1805,8 @@ export async function GET(
         paymentPlanId: payment.paymentPlanId,
         installmentScheduleId: payment.installmentScheduleId,
         relationshipId: payment.relationshipId,
-
         payerContactId: payment.payerContactId,
         isThirdPartyPayment: payment.isThirdPartyPayment,
-
         amount: payment.amount,
         currency: payment.currency,
         amountUsd: payment.amountUsd,
@@ -1795,51 +1831,32 @@ export async function GET(
         notes: payment.notes,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
-
+        // Pledge information
         pledgeExchangeRate: pledge.exchangeRate,
         pledgeDescription: pledge.description,
         contactId: pledge.contactId,
-
-        thirdPartyContactName: sql<string>`(
-          SELECT CONCAT(first_name, ' ', last_name) 
-          FROM ${contact} 
-          WHERE id = ${payment.payerContactId}
-        )`.as("thirdPartyContactName"),
-
-        payerContactName: sql<string>`(
-          SELECT CONCAT(first_name, ' ', last_name) 
-          FROM ${contact} 
-          WHERE id = (
-            SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId}
-          )
-        )`.as("payerContactName"),
-
-        isSplitPayment: sql<boolean>`(
-          SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
-        )`.as("isSplitPayment"),
-        allocationCount: sql<number>`(
-          SELECT COUNT(*) FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
-        )`.as("allocationCount"),
-        solicitorName: sql<string>`(
-          SELECT CONCAT(first_name, ' ', last_name) 
-          FROM ${contact} c
-          INNER JOIN ${solicitor} s ON c.id = s.contact_id
-          WHERE s.id = ${payment.solicitorId}
-        )`.as("solicitorName"),
+        // Calculated fields
+        thirdPartyContactName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} WHERE id = ${payment.payerContactId}`.as("thirdPartyContactName"),
+        payerContactName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} WHERE id = (SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId})`.as("payerContactName"),
+        isSplitPayment: sql<boolean>`SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}`.as("isSplitPayment"),
+        allocationCount: sql<number>`SELECT COUNT(*) FROM ${paymentAllocations} WHERE payment_id = ${payment.id}`.as("allocationCount"),
+        solicitorName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} c INNER JOIN ${solicitor} s ON c.id = s.contact_id WHERE s.id = ${payment.solicitorId}`.as("solicitorName"),
       })
       .from(payment)
       .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
       .leftJoin(solicitor, eq(payment.solicitorId, solicitor.id))
       .where(eq(payment.pledgeId, pledgeId))
-      .$dynamic();
+      .$dynamic(); // Fix: Use $dynamic() instead of .dynamic()
 
-    const conditions: SQL<unknown>[] = [];
+    // Apply filters
+    const conditions = [] as SQL<unknown>[];
+
     if (paymentStatus) {
       conditions.push(eq(payment.paymentStatus, paymentStatus));
     }
 
     if (search) {
-      const searchConditions: SQL<unknown>[] = [];
+      const searchConditions = [] as SQL<unknown>[];
       searchConditions.push(ilike(sql`COALESCE(${payment.notes}, '')`, `%${search}%`));
       searchConditions.push(ilike(sql`COALESCE(${payment.referenceNumber}, '')`, `%${search}%`));
       searchConditions.push(ilike(sql`COALESCE(${payment.checkNumber}, '')`, `%${search}%`));
@@ -1851,18 +1868,44 @@ export async function GET(
       query = query.where(and(...conditions));
     }
 
+    // Pagination
     const offset = (page - 1) * limit;
     query = query.limit(limit).offset(offset).orderBy(desc(payment.createdAt));
 
     const paymentsResult = await query;
 
-    const paymentsWithAllocations = await Promise.all(
-      paymentsResult.map(async (paymentItem) => {
+    // Enhanced allocation AND TAG fetching with multi-currency support
+    const paymentsWithTagsAndAllocations = await Promise.all(
+      paymentsResult.map(async (paymentItem: any) => { // Fix: Add type annotation
         const enhancedPayment = {
           ...paymentItem,
           thirdPartyContactId: paymentItem.isThirdPartyPayment ? paymentItem.payerContactId : null,
         };
 
+        // *** FETCH PAYMENT TAGS ***
+        console.log(`=== Fetching tags for payment ${paymentItem.id} ===`);
+
+        const paymentTagsResult = await db
+          .select({
+            tagId: paymentTags.tagId,
+            tagName: tag.name,
+          })
+          .from(paymentTags)
+          .innerJoin(tag, and(
+            eq(paymentTags.tagId, tag.id),
+            eq(tag.isActive, true),
+            eq(tag.showOnPayment, true)
+          ))
+          .where(eq(paymentTags.paymentId, paymentItem.id));
+
+        console.log(`Payment ${paymentItem.id} tags result:`, paymentTagsResult);
+
+        const tagIds = paymentTagsResult.map(pt => pt.tagId);
+        const tags = paymentTagsResult.map(pt => ({ id: pt.tagId, name: pt.tagName }));
+
+        console.log(`Payment ${paymentItem.id} - tagIds:`, tagIds, 'tags:', tags);
+
+        // Handle allocations if this is a split payment
         if (paymentItem.isSplitPayment) {
           const allocationsRaw = await db
             .select({
@@ -1877,27 +1920,18 @@ export async function GET(
               receiptType: paymentAllocations.receiptType,
               receiptIssued: paymentAllocations.receiptIssued,
               payerContactId: paymentAllocations.payerContactId,
-              pledgeDescription: sql<string>`(
-                SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
-              )`.as("pledgeDescription"),
-              contactId: sql<number>`(
-                SELECT contact_id FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
-              )`.as("contactId"),
-              contactName: sql<string>`(
-                SELECT CONCAT(first_name, ' ', last_name) 
-                FROM ${contact} c
-                INNER JOIN ${pledge} p ON c.id = p.contact_id
-                WHERE p.id = ${paymentAllocations.pledgeId}
-              )`.as("contactName"),
+              // Related pledge and contact info
+              pledgeDescription: sql<string>`SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}`.as("pledgeDescription"),
+              contactId: sql<number>`SELECT contact_id FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}`.as("contactId"),
+              contactName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} c INNER JOIN ${pledge} p ON c.id = p.contact_id WHERE p.id = ${paymentAllocations.pledgeId}`.as("contactName"),
             })
             .from(paymentAllocations)
             .leftJoin(pledge, eq(paymentAllocations.pledgeId, pledge.id))
             .where(eq(paymentAllocations.paymentId, paymentItem.id));
 
-          const allocations = allocationsRaw.map((alloc) => ({
+          const allocations = allocationsRaw.map(alloc => ({
             ...alloc,
-            allocatedAmount:
-              typeof alloc.allocatedAmount === "string" ? parseFloat(alloc.allocatedAmount) : alloc.allocatedAmount,
+            allocatedAmount: typeof alloc.allocatedAmount === "string" ? parseFloat(alloc.allocatedAmount) : alloc.allocatedAmount,
           }));
 
           // Determine if this is a multi-contact payment
@@ -1907,11 +1941,9 @@ export async function GET(
           let multiContactAllocations = null;
           if (isMultiContactPayment) {
             const contactAllocationsMap = new Map();
-
             for (const alloc of allocations) {
               const contactId = alloc.contactId;
               const contactName = alloc.contactName;
-
               if (!contactAllocationsMap.has(contactId)) {
                 contactAllocationsMap.set(contactId, {
                   contactId,
@@ -1919,7 +1951,6 @@ export async function GET(
                   pledges: []
                 });
               }
-
               contactAllocationsMap.get(contactId).pledges.push({
                 pledgeId: alloc.pledgeId,
                 pledgeDescription: alloc.pledgeDescription || "No description",
@@ -1928,31 +1959,40 @@ export async function GET(
                 allocatedAmount: alloc.allocatedAmount
               });
             }
-
             multiContactAllocations = Array.from(contactAllocationsMap.values());
           }
 
           return {
             ...enhancedPayment,
+            tagIds, // *** INCLUDE TAG IDS ***
+            tags,   // *** INCLUDE TAGS ***
             allocations,
             isMultiContactPayment,
             multiContactAllocations
           };
         }
-        return { ...enhancedPayment, isMultiContactPayment: false };
+
+        return {
+          ...enhancedPayment,
+          tagIds, // *** INCLUDE TAG IDS FOR NON-SPLIT PAYMENTS ***
+          tags,   // *** INCLUDE TAGS FOR NON-SPLIT PAYMENTS ***
+          isMultiContactPayment: false
+        };
       })
     );
 
     return NextResponse.json(
-      { payments: paymentsWithAllocations },
-      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+      { payments: paymentsWithTagsAndAllocations },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300"
+        }
+      }
     );
+
   } catch (error) {
     console.error(error);
-    return NextResponse.json(
-      { error: "Failed to fetch payments" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch payments" }, { status: 500 });
   }
 }
 
