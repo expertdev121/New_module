@@ -94,7 +94,6 @@ import { usePledgesQuery } from "@/lib/query/usePledgeData";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
 import { useQuery } from "@tanstack/react-query";
 
-
 // Contact type definition
 interface Contact {
   id: number;
@@ -886,9 +885,21 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
 
   const contactId = useContactId();
 
-  const pledgeDataId = isEditMode ? selectedPledgeId || existingPlanData?.paymentPlan?.pledgeId : selectedPledgeId;
+  // Fixed pledge ID logic for edit mode
+  const pledgeDataId = useMemo(() => {
+    if (isEditMode) {
+      // In edit mode, prioritize the existing plan's pledge ID
+      return existingPlanData?.paymentPlan?.pledgeId || selectedPledgeId;
+    }
+    return selectedPledgeId;
+  }, [isEditMode, existingPlanData?.paymentPlan?.pledgeId, selectedPledgeId]);
+
+  // Only fetch pledge details when we have a valid ID
   const { data: pledgeData, isLoading: isLoadingPledge } =
-    usePledgeDetailsQuery(pledgeDataId as number);
+    usePledgeDetailsQuery(
+      pledgeDataId as number,
+      { enabled: !!pledgeDataId && pledgeDataId > 0 }
+    );
 
   const createPaymentPlanMutation = useCreatePaymentPlanMutation();
   const updatePaymentPlanMutation = useUpdatePaymentPlanMutation();
@@ -896,15 +907,15 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const deleteMutation = useDeletePaymentPlanMutation();
 
   const existingPlan = existingPlanData?.paymentPlan;
-    const pledgeOwnerContactId = isEditMode && existingPlan
-    ? (existingPlan as any).contactId  // Pledge owner from the plan
-    : selectedThirdPartyContact?.id || contactId;
-
-  const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery(
-    { page: 1, limit: 100, contactId: pledgeOwnerContactId ?? undefined },
-    { enabled: !!pledgeOwnerContactId }
-  );
-
+  const pledgeOwnerContactId = useMemo(() => {
+    if (isEditMode && existingPlan) {
+      return (existingPlan as any).contactId; // Pledge owner from the plan
+    }
+    if (pledgeData?.contact) {
+      return pledgeData.contact.id;
+    }
+    return contactId; // Fallback to current user
+  }, [isEditMode, existingPlan, pledgeData?.contact, contactId]);
 
   // Third-party handlers
   const handleThirdPartyToggle = (checked: boolean) => {
@@ -923,23 +934,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     setContactSearch("");
   };
 
+  // Initialize selected pledge ID earlier and more reliably
   useEffect(() => {
-    if (isEditMode && existingPlan && !selectedPledgeId) {
-      setSelectedPledgeId(existingPlan.pledgeId);
+    if (isEditMode && existingPlanData?.paymentPlan?.pledgeId && !selectedPledgeId) {
+      setSelectedPledgeId(existingPlanData.paymentPlan.pledgeId);
     }
-  }, [existingPlan, isEditMode, selectedPledgeId]);
+  }, [existingPlanData?.paymentPlan?.pledgeId, isEditMode, selectedPledgeId]);
 
-  useEffect(() => {
-    if (
-      !isEditMode &&
-      !initialPledgeId &&
-      !selectedPledgeId &&
-      pledgesData?.pledges?.length
-    ) {
-      const firstPledge = pledgesData.pledges[0];
-      setSelectedPledgeId(firstPledge.id);
-    }
-  }, [pledgesData, isEditMode, initialPledgeId, selectedPledgeId]);
 
   // Get pledge data based on selected pledge in edit mode
   const effectivePledgeAmount =
@@ -966,15 +967,6 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
 
   const defaultAmount = effectiveRemainingBalance || effectivePledgeAmount;
 
-  const getDefaultPledgeId = () => {
-    if (selectedPledgeId) return selectedPledgeId;
-    if (initialPledgeId) return initialPledgeId;
-    if (isEditMode && existingPlan) return existingPlan.pledgeId;
-    if (!isEditMode && pledgesData?.pledges?.length) {
-      return pledgesData.pledges[0].id;
-    }
-    return 0;
-  };
 
   // Calculate USD amounts for multi-currency support
   function calculateUsdAmounts(amount: number, currency: string) {
@@ -984,6 +976,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     const rate = parseFloat(exchangeRates[currency] || "1");
     return { usdAmount: amount / rate, exchangeRate: rate };
   }
+
+  const getDefaultPledgeId = () => {
+    if (selectedPledgeId) return selectedPledgeId;
+    if (initialPledgeId) return initialPledgeId;
+    if (isEditMode && existingPlan) return existingPlan.pledgeId;
+    return 0;
+  };
 
   const form = useForm({
     resolver: zodResolver(paymentPlanSchema),
@@ -1253,49 +1252,57 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
         methodDetail: existingPlan.methodDetail || "",
         // Third-party fields from API response
         isThirdPartyPayment: (existingPlan as any).isThirdPartyPayment || false,
-        thirdPartyContactId: (existingPlan as any).payerContactId || null,
+        thirdPartyContactId: null, // Will be set when pledge data loads
       };
 
       form.reset(planData);
 
       // Set third-party contact if exists
-      if ((existingPlan as any).isThirdPartyPayment && (existingPlan as any).payerContactId) {
+      if ((existingPlan as any).isThirdPartyPayment && pledgeData?.contact) {
+        // The pledge owner is the beneficiary in a third-party payment
         setSelectedThirdPartyContact({
-          id: (existingPlan as any).payerContactId,
-          firstName: (existingPlan as any).payerContactName?.split(' ')[0] || '',
-          lastName: (existingPlan as any).payerContactName?.split(' ').slice(1).join(' ') || '',
-          fullName: (existingPlan as any).payerContactName || '',
+          id: pledgeData.contact.id,
+          firstName: pledgeData.contact.firstName || '',
+          lastName: pledgeData.contact.lastName || '',
+          fullName: pledgeData.contact.fullName || `${pledgeData.contact.firstName} ${pledgeData.contact.lastName}`.trim(),
         });
+        form.setValue("thirdPartyContactId", pledgeData.contact.id);
       }
 
       previousCurrencyRef.current = ensureCurrency(existingPlan.currency);
       previousTotalAmountRef.current = Number.parseFloat(existingPlan.totalPlannedAmount?.toString() || "0");
       isFormInitializedRef.current = true;
     }
-  }, [existingPlan, isEditMode, form]);
+  }, [existingPlan, isEditMode, form, pledgeData?.contact]);
 
-  // Handle pledge selection
+  useEffect(() => {
+    if (isEditMode && existingPlan && (existingPlan as any).isThirdPartyPayment && pledgeData?.contact) {
+      // Always set the third-party contact when dialog opens with existing third-party plan
+      setSelectedThirdPartyContact({
+        id: pledgeData.contact.id,
+        firstName: pledgeData.contact.firstName,
+        lastName: pledgeData.contact.lastName,
+        fullName: pledgeData.contact.fullName || `${pledgeData.contact.firstName} ${pledgeData.contact.lastName}`.trim(),
+      })
+
+      // Update form values
+      form.setValue('isThirdPartyPayment', true)
+      form.setValue('thirdPartyContactId', pledgeData.contact.id)
+    }
+  }, [existingPlan, isEditMode, pledgeData?.contact, form, open]) // Add 'open' to dependencies
+
+
   useEffect(() => {
     if (selectedPledgeId) {
-      form.setValue("pledgeId", selectedPledgeId);
+      form.setValue('pledgeId', selectedPledgeId);
 
-      // If in edit mode and pledge selector is enabled, update form with new pledge data
-      if (isEditMode && enablePledgeSelectorInEdit && pledgeData?.pledge) {
-        const newDefaultAmount = pledgeData.pledge.remainingBalance || pledgeData.pledge.originalAmount;
-        const safeCurrency = ensureCurrency(pledgeData.pledge.currency);
-        form.setValue("totalPlannedAmount", newDefaultAmount);
-        form.setValue("currency", safeCurrency);
-
-        // Update USD amounts
-        const { usdAmount, exchangeRate } = calculateUsdAmounts(newDefaultAmount, safeCurrency);
-        form.setValue("totalPlannedAmountUsd", usdAmount);
-        form.setValue("exchangeRate", exchangeRate);
-
-        previousCurrencyRef.current = safeCurrency;
-        previousTotalAmountRef.current = newDefaultAmount;
+      // In edit mode, ensure the correct pledge is pre-selected
+      if (isEditMode && existingPlan && !selectedPledgeId) {
+        setSelectedPledgeId(existingPlan.pledgeId);
       }
     }
-  }, [selectedPledgeId, form, isEditMode, enablePledgeSelectorInEdit, pledgeData]);
+  }, [selectedPledgeId, form, isEditMode, existingPlan]);
+
 
   // Initialize form for create mode
   useEffect(() => {
@@ -1561,6 +1568,36 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     watchedIsThirdParty ? contactSearch : undefined
   );
 
+  const contactIdForPledges = useMemo(() => {
+    if (watchedIsThirdParty) {
+      // For third-party payments, load pledges for the selected third-party contact
+      return selectedThirdPartyContact?.id;
+    } else {
+      // For regular payments, use the pledge owner contact ID
+      return pledgeOwnerContactId;
+    }
+  }, [watchedIsThirdParty, selectedThirdPartyContact?.id, pledgeOwnerContactId]);
+  const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery({
+    page: 1,
+    limit: 100,
+    contactId: contactIdForPledges ?? undefined,
+  }, {
+    enabled: !!contactIdForPledges || (watchedIsThirdParty && !selectedThirdPartyContact)
+  });
+
+
+  useEffect(() => {
+    if (
+      !isEditMode &&
+      !initialPledgeId &&
+      !selectedPledgeId &&
+      pledgesData?.pledges?.length
+    ) {
+      const firstPledge = pledgesData.pledges[0];
+      setSelectedPledgeId(firstPledge.id);
+    }
+  }, [pledgesData, isEditMode, initialPledgeId, selectedPledgeId]);
+
   // Contact options for dropdown
   const contactOptions = useMemo(() => {
     if (!contactsData?.contacts) return [];
@@ -1574,7 +1611,6 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       fullName: contact.fullName || `${contact.firstName} ${contact.lastName}`.trim(),
     }));
   }, [contactsData?.contacts]);
-
 
   const onSubmit = async (data: PaymentPlanFormData) => {
     try {
@@ -1720,30 +1756,38 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   }, [existingPlan, isEditMode]);
 
   const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-
+    setOpen(newOpen)
     if (!newOpen) {
-      setIsEditing(mode === "create");
-      setManualInstallment(false);
-      setShowPreview(false);
-      setInstallmentsModified(false);
-      setSubmitError("");
-      setContactSearch("");
-      setSelectedThirdPartyContact(null);
-      isFormInitializedRef.current = false;
-      previousCurrencyRef.current = undefined;
-      previousTotalAmountRef.current = undefined;
+      setIsEditing(mode === 'create')
+      setManualInstallment(false)
+      setShowPreview(false)
+      setInstallmentsModified(false)
+      setSubmitError('')
+      setContactSearch('')
+
+      // Only reset third-party contact if not in edit mode or if it's not a third-party payment
+      if (!isEditMode || !(existingPlan as any)?.isThirdPartyPayment) {
+        setSelectedThirdPartyContact(null)
+      }
+
+      // Don't reset form initialization flag in edit mode
+      if (!isEditMode) {
+        isFormInitializedRef.current = false
+      }
+
+      previousCurrencyRef.current = undefined
+      previousTotalAmountRef.current = undefined
 
       // Reset dropdown states
-      setPaymentMethodOpen(false);
-      setMethodDetailOpen(false);
-      setPledgeSelectorOpen(false);
-
-      onClose?.();
+      setPaymentMethodOpen(false)
+      setMethodDetailOpen(false)
+      setPledgeSelectorOpen(false)
+      onClose?.()
     } else {
-      setIsEditing(true);
+      setIsEditing(true)
     }
-  };
+  }
+
 
   const handlePauseResume = (action: "pause" | "resume") => {
     if (existingPlan) {
@@ -1822,7 +1866,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   // Determine if pledge selector should be shown
   const shouldShowPledgeSelector = (!isEditMode && showPledgeSelector) || (isEditMode && enablePledgeSelectorInEdit);
 
-  if (isEditMode && isLoadingPlan) {
+  if (isEditMode && (isLoadingPlan || (!existingPlanData && !pledgeDataId))) {
     return (
       <div className="flex items-center justify-center p-4">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -1844,30 +1888,58 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
               "Loading pledge details..."
             ) : (
               <div>
-                {watchedIsThirdParty && selectedThirdPartyContact ? (
-                  <div>
-                    Creating payment plan for <strong>{selectedThirdPartyContact.fullName}</strong>
-                    <span className="block mt-1 text-sm text-muted-foreground">
-                      This payment plan will appear in your account but apply to their pledge
-                    </span>
-                  </div>
-                ) : (
-                  <div>
-                    {isEditMode ? "Update the payment plan" : "Set up a"} payment
-                    plan for pledge: {effectivePledgeDescription}
-                    {effectiveRemainingBalance > 0 && (
-                      <span className="block mt-1 text-sm text-muted-foreground">
-                        Remaining Balance: {effectivePledgeCurrency}{" "}
-                        {effectiveRemainingBalance.toLocaleString()}
-                      </span>
-                    )}
-                    {(pledgeData?.contact || existingPlan) && (
-                      <span className="block mt-1 text-sm text-muted-foreground">
-                        Contact: {pledgeData?.contact?.fullName || existingPlan?.pledgeContact || "Loading..."}
-                      </span>
-                    )}
-                  </div>
-                )}
+                {(() => {
+                  // Determine if this is a third-party payment plan (either new or existing)
+                  const isThirdPartyPlan = watchedIsThirdParty || (isEditMode && existingPlan && (existingPlan as any).isThirdPartyPayment);
+
+                  if (isThirdPartyPlan) {
+                    // Third-party payment plan
+                    const beneficiaryContact = isEditMode && existingPlan
+                      ? (existingPlan as any).pledgeContactName || (existingPlan as any).pledgeContact
+                      : selectedThirdPartyContact?.fullName || "Loading...";
+
+                    const payerContact = isEditMode && existingPlan
+                      ? (existingPlan as any).payerContactName
+                      : contactId ? "You" : "Loading...";
+
+                    return (
+                      <div>
+                        {isEditMode ? "Update third-party payment plan" : "Create third-party payment plan"}
+                        <span className="block mt-1 text-sm text-muted-foreground">
+                          {payerContact} will pay for {beneficiaryContact}&apos;s pledge
+                        </span>
+                        <span className="block mt-1 text-sm text-muted-foreground">
+                          Pledge: {effectivePledgeDescription}
+                        </span>
+                        {effectiveRemainingBalance > 0 && (
+                          <span className="block mt-1 text-sm text-muted-foreground">
+                            Remaining Balance: {effectivePledgeCurrency}{" "}
+                            {effectiveRemainingBalance.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  } else {
+                    // Regular payment plan
+                    return (
+                      <div>
+                        {isEditMode ? "Update the payment plan" : "Set up a"} payment
+                        plan for pledge: {effectivePledgeDescription}
+                        {effectiveRemainingBalance > 0 && (
+                          <span className="block mt-1 text-sm text-muted-foreground">
+                            Remaining Balance: {effectivePledgeCurrency}{" "}
+                            {effectiveRemainingBalance.toLocaleString()}
+                          </span>
+                        )}
+                        {(pledgeData?.contact || existingPlan) && (
+                          <span className="block mt-1 text-sm text-muted-foreground">
+                            Contact: {pledgeData?.contact?.fullName || existingPlan?.pledgeContact || "Loading..."}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
+                })()}
                 <div className="mt-2">
                   <ExchangeRateDisplay
                     currency={effectivePledgeCurrency}
@@ -1943,7 +2015,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                           htmlFor="isThirdPartyPayment"
                           className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                         >
-                          Third-Party Payment (Pay for someone else's pledge)
+                          Third-Party Payment (Pay for someone else&apos;s pledge)
                         </label>
                       </div>
 
@@ -1994,7 +2066,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                     Selected Contact: {selectedThirdPartyContact.fullName}
                                   </div>
                                   <div className="text-sm text-blue-700">
-                                    Payment plan will be created for this contact's pledge
+                                    Payment plan will be created for this contact&apos;s pledge
                                   </div>
                                 </div>
                                 <Button
@@ -2026,7 +2098,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                       </CardTitle>
                       <CardDescription>
                         {watchedIsThirdParty && selectedThirdPartyContact ? (
-                          <>Choose a pledge from {selectedThirdPartyContact.fullName}'s account</>
+                          <>Choose a pledge from {selectedThirdPartyContact.fullName}&apos;s account</>
                         ) : isEditMode ? (
                           "Change the pledge for this payment plan"
                         ) : (
