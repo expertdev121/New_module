@@ -26,6 +26,48 @@ const QueryParamsSchema = z.object({
   paymentStatus: PaymentStatusEnum.optional(),
 });
 
+interface PaymentItem {
+  id: number;
+  pledgeId: number | null;
+  paymentPlanId: number | null;
+  installmentScheduleId: number | null;
+  relationshipId: number | null;
+  payerContactId: number | null;
+  isThirdPartyPayment: boolean | null;
+  amount: string;
+  currency: string;
+  amountUsd: string | null;
+  amountInPledgeCurrency: string | null;
+  exchangeRate: string | null;
+  paymentDate: string;
+  receivedDate: string | null;
+  paymentMethod: string;
+  methodDetail: string | null;
+  paymentStatus: string;
+  referenceNumber: string | null;
+  checkNumber: string | null;
+  checkDate: string | null;
+  account: string | null;
+  receiptNumber: string | null;
+  receiptType: string | null;
+  receiptIssued: boolean;
+  solicitorId: number | null;
+  bonusPercentage: string | null;
+  bonusAmount: string | null;
+  bonusRuleId: number | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  pledgeExchangeRate: string | null;
+  pledgeDescription: string| null;
+  contactId: number;
+  thirdPartyContactName: string | null;
+  payerContactName: string | null;
+  isSplitPayment: boolean;
+  allocationCount: number;
+  solicitorName: string | null;
+}
+
 // Allocation schemas
 const allocationUpdateSchema = z.object({
   id: z.number().optional(),
@@ -1876,7 +1918,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
     // Enhanced allocation AND TAG fetching with multi-currency support
     const paymentsWithTagsAndAllocations = await Promise.all(
-      paymentsResult.map(async (paymentItem: any) => { // Fix: Add type annotation
+      paymentsResult.map(async (paymentItem: PaymentItem) => {
         const enhancedPayment = {
           ...paymentItem,
           thirdPartyContactId: paymentItem.isThirdPartyPayment ? paymentItem.payerContactId : null,

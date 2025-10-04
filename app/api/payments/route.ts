@@ -39,6 +39,53 @@ const paymentStatusValues = [
   "pending", "completed", "failed", "cancelled", "refunded", "processing", "expected"
 ] as const;
 
+interface PaymentWithDetails {
+  id: number;
+  pledgeId: number | null;
+  amount: string;
+  currency: string;
+  amountUsd: string | null;
+  amountInPledgeCurrency: string | null;
+  pledgeCurrencyExchangeRate: string | null;
+  amountInPlanCurrency: string | null;
+  planCurrencyExchangeRate: string | null;
+  exchangeRate: string| null;
+  paymentDate: string;
+  receivedDate: string | null;
+  checkDate: string | null;
+  account: string | null;
+  paymentMethod: string;
+  methodDetail: string | null;
+  paymentStatus: string;
+  referenceNumber: string | null;
+  checkNumber: string | null;
+  receiptNumber: string | null;
+  receiptType: string | null;
+  receiptIssued: boolean;
+  solicitorId: number | null;
+  bonusPercentage: string | null;
+  bonusAmount: string | null;
+  bonusRuleId: number | null;
+  notes: string | null;
+  paymentPlanId: number | null;
+  installmentScheduleId: number | null;
+  isThirdPartyPayment: boolean | null;
+  payerContactId: number | null;
+  createdAt: Date;
+  updatedAt: Date;
+  pledgeDescription: string | null;
+  pledgeOriginalAmount: string | null;
+  pledgeOriginalCurrency: string | null;
+  pledgeExchangeRate: string | null;
+  contactId: number | null;
+  pledgeOwnerName: string | null;
+  payerContactName: string | null;
+  solicitorName: string | null;
+  paymentPlanCurrency: string | null;
+  isSplitPayment: boolean;
+  allocationCount: number;
+}
+
 const querySchema = z.object({
   pledgeId: z.preprocess((val) => parseInt(String(val), 10), z.number().positive()).optional(),
   contactId: z.preprocess((val) => parseInt(String(val), 10), z.number().positive()).optional(),
@@ -1258,7 +1305,7 @@ export async function GET(request: NextRequest) {
 
     // *** ENHANCED ALLOCATION AND TAG FETCHING WITH MULTI-CURRENCY SUPPORT ***
     const paymentsWithTagsAndAllocations = await Promise.all(
-      payments.map(async (p: any) => {
+      payments.map(async (p: PaymentWithDetails) => {
         console.log(`=== Fetching tags for payment ${p.id} ===`);
 
         // *** FETCH PAYMENT TAGS ***
