@@ -380,6 +380,7 @@ export type NewCategory = typeof category.$inferInsert;
 export const categoryItem = pgTable("category_item", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  occId: integer("occ_id"),
   categoryId: integer("category_id")
     .notNull()
     .references(() => category.id, { onDelete: "cascade" }),
@@ -389,6 +390,22 @@ export const categoryItem = pgTable("category_item", {
 
 export type CategoryItem = typeof categoryItem.$inferSelect;
 export type NewCategoryItem = typeof categoryItem.$inferInsert;
+
+export const categoryGroup = pgTable("category_group", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  categoryId: integer("category_id")
+    .notNull()
+    .references(() => category.id, { onDelete: "cascade" }),
+  categoryItemId: integer("category_item_id")
+    .notNull()
+    .references(() => categoryItem.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type CategoryGroup = typeof categoryGroup.$inferSelect;
+export type NewCategoryGroup = typeof categoryGroup.$inferInsert;
 
 export const tag = pgTable("tag", {
   id: serial("id").primaryKey(),
@@ -996,16 +1013,29 @@ export const relationshipsRelations = relations(relationships, ({ one, many }) =
   paymentPlans: many(paymentPlan),
 }));
 
+export const categoryGroupRelations = relations(categoryGroup, ({ one }) => ({
+  category: one(category, {
+    fields: [categoryGroup.categoryId],
+    references: [category.id],
+  }),
+  categoryItem: one(categoryItem, {
+    fields: [categoryGroup.categoryItemId],
+    references: [categoryItem.id],
+  }),
+}));
+
 export const categoryRelations = relations(category, ({ many }) => ({
   pledges: many(pledge),
   categoryItems: many(categoryItem),
+  categoryGroups: many(categoryGroup),
 }));
 
-export const categoryItemRelations = relations(categoryItem, ({ one }) => ({
+export const categoryItemRelations = relations(categoryItem, ({ one, many }) => ({
   category: one(category, {
     fields: [categoryItem.categoryId],
     references: [category.id],
   }),
+  categoryGroups: many(categoryGroup),
 }));
 
 export const tagRelations = relations(tag, ({ many }) => ({
