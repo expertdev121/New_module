@@ -50,6 +50,29 @@ const PlanStatusEnum = z.enum([
 
 type PlanStatusType = z.infer<typeof PlanStatusEnum>;
 
+// *************************
+// ***** NAME FORMATTER ****
+// *************************
+function formatNameLastFirst(fullName: string | null | undefined): string {
+  if (!fullName || fullName.trim() === "") return "-";
+  
+  const nameParts = fullName.trim().split(/\s+/);
+  
+  // If only one name part, return as is
+  if (nameParts.length === 1) return nameParts[0];
+  
+  // If two parts: "First Last" -> "Last First"
+  if (nameParts.length === 2) {
+    return `${nameParts[1]} ${nameParts[0]}`;
+  }
+  
+  // If three or more parts: "First Middle Last" -> "Last First Middle"
+  // Assumes last word is the last name
+  const lastName = nameParts[nameParts.length - 1];
+  const otherNames = nameParts.slice(0, -1).join(" ");
+  return `${lastName} ${otherNames}`;
+}
+
 interface PaymentPlansTableProps {
   contactId?: number;
 }
@@ -109,6 +132,23 @@ export default function PaymentPlansTable({
 
   const { data, isLoading, error, refetch } = usePaymentPlansQuery(queryParams);
   const deletePaymentPlanMutation = useDeletePaymentPlanMutation();
+
+  // Filter out third-party payment plans for beneficiaries
+  const filteredPaymentPlans = React.useMemo(() => {
+    if (!data?.paymentPlans) return [];
+    
+    return data.paymentPlans.filter((plan: any) => {
+      const isThirdParty = plan.isThirdPartyPayment || false;
+      const isCurrentContactBeneficiary = contactId && plan.contactId === contactId;
+      
+      // Hide third-party payment plans from beneficiaries
+      if (isThirdParty && isCurrentContactBeneficiary) {
+        return false;
+      }
+      
+      return true;
+    });
+  }, [data?.paymentPlans, contactId]);
 
   const toggleRowExpansion = (planId: number) => {
     const newExpanded = new Set(expandedRows);
@@ -407,14 +447,14 @@ export default function PaymentPlansTable({
                       ))}
                     </TableRow>
                   ))
-                ) : data?.paymentPlans.length === 0 ? (
+                ) : filteredPaymentPlans.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={13} className="text-center py-8 text-gray-500">
                       No payment plans found
                     </TableCell>
                   </TableRow>
                 ) : (
-                  data?.paymentPlans.map((plan: any) => {
+                  filteredPaymentPlans.map((plan: any) => {
                     const pledgeCurrency = plan.currency;
                     const planCurrency = plan.currency;
                     const pledgeOriginalAmount = plan.totalPlannedAmount;
@@ -503,8 +543,8 @@ export default function PaymentPlansTable({
                                         Paid For
                                       </Badge>
                                       {plan.pledgeContactName && (
-                                        <span className="text-xs text-gray-600 max-w-20 truncate" title={plan.pledgeContactName}>
-                                          {plan.pledgeContactName}
+                                        <span className="text-xs text-gray-600 max-w-20 truncate" title={formatNameLastFirst(plan.pledgeContactName)}>
+                                          {formatNameLastFirst(plan.pledgeContactName)}
                                         </span>
                                       )}
                                     </div>
@@ -518,8 +558,8 @@ export default function PaymentPlansTable({
                                         Paid By
                                       </Badge>
                                       {plan.payerContactName && (
-                                        <span className="text-xs text-gray-600 max-w-20 truncate" title={plan.payerContactName}>
-                                          {plan.payerContactName}
+                                        <span className="text-xs text-gray-600 max-w-20 truncate" title={formatNameLastFirst(plan.payerContactName)}>
+                                          {formatNameLastFirst(plan.payerContactName)}
                                         </span>
                                       )}
                                     </div>
@@ -598,7 +638,7 @@ export default function PaymentPlansTable({
                                     <div>
                                       <h4 className="font-semibold text-blue-900 mb-1">Third-Party Payment Plan</h4>
                                       <p className="text-sm text-blue-700">
-                                        This payment plan is being paid by {plan.payerContactName || `Contact #${plan.payerContactId}`} on behalf of {plan.pledgeContactName || `Contact #${plan.contactId}`}.
+                                        This payment plan is being paid by {formatNameLastFirst(plan.payerContactName) || `Contact #${plan.payerContactId}`} on behalf of {formatNameLastFirst(plan.pledgeContactName) || `Contact #${plan.contactId}`}.
                                       </p>
                                     </div>
                                   </div>
@@ -676,13 +716,13 @@ export default function PaymentPlansTable({
                                         {plan.payerContactName && (
                                           <div className="flex justify-between">
                                             <span className="text-gray-600">Payer:</span>
-                                            <span className="font-medium">{plan.payerContactName}</span>
+                                            <span className="font-medium">{formatNameLastFirst(plan.payerContactName)}</span>
                                           </div>
                                         )}
                                         {plan.pledgeContactName && (
                                           <div className="flex justify-between">
                                             <span className="text-gray-600">Beneficiary:</span>
-                                            <span className="font-medium">{plan.pledgeContactName}</span>
+                                            <span className="font-medium">{formatNameLastFirst(plan.pledgeContactName)}</span>
                                           </div>
                                         )}
                                       </>
@@ -780,12 +820,12 @@ export default function PaymentPlansTable({
           </div>
 
           {/* Pagination */}
-          {data && data.paymentPlans.length > 0 && (
+          {filteredPaymentPlans && filteredPaymentPlans.length > 0 && (
             <div className="flex items-center justify-between mt-6">
               <div className="text-sm text-gray-600">
                 Showing {(currentPage - 1) * currentLimit + 1} to{" "}
-                {Math.min(currentPage * currentLimit, data.paymentPlans.length)}{" "}
-                of {data.paymentPlans.length} payment plans
+                {Math.min(currentPage * currentLimit, filteredPaymentPlans.length)}{" "}
+                of {filteredPaymentPlans.length} payment plans
               </div>
               <div className="flex items-center gap-2">
                 <Button
@@ -803,7 +843,7 @@ export default function PaymentPlansTable({
                   variant="outline"
                   size="sm"
                   onClick={() => setPage(currentPage + 1)}
-                  disabled={data.paymentPlans.length < currentLimit}
+                  disabled={filteredPaymentPlans.length < currentLimit}
                 >
                   Next
                 </Button>

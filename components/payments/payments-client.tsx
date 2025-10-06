@@ -76,6 +76,29 @@ const PaymentStatusEnum = z.enum([
 type PaymentStatusType = z.infer<typeof PaymentStatusEnum>;
 
 // *************************
+// ***** NAME FORMATTER ****
+// *************************
+function formatNameLastFirst(fullName: string | null | undefined): string {
+  if (!fullName || fullName.trim() === "") return "-";
+  
+  const nameParts = fullName.trim().split(/\s+/);
+  
+  // If only one name part, return as is
+  if (nameParts.length === 1) return nameParts[0];
+  
+  // If two parts: "First Last" -> "Last First"
+  if (nameParts.length === 2) {
+    return `${nameParts[1]} ${nameParts[0]}`;
+  }
+  
+  // If three or more parts: "First Middle Last" -> "Last First Middle"
+  // Assumes last word is the last name
+  const lastName = nameParts[nameParts.length - 1];
+  const otherNames = nameParts.slice(0, -1).join(" ");
+  return `${lastName} ${otherNames}`;
+}
+
+// *************************
 // ***** DATE FORMATTER ****
 // *************************
 function displayDate_DDMMMYYYY(dateString: string | null | undefined): string {
@@ -291,8 +314,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
               Paid By
             </Badge>
             {payment.payerContactName && (
-              <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.payerContactName}>
-                {payment.payerContactName}
+              <span className="text-xs text-gray-600 max-w-20 truncate" title={formatNameLastFirst(payment.payerContactName)}>
+                {formatNameLastFirst(payment.payerContactName)}
               </span>
             )}
           </div>
@@ -300,14 +323,15 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
       } else if (isCurrentContactPayer) {
         // Current contact is the payer - show "Paid For"
         const beneficiaries = [...new Set(payment.allocations.map(a => a.pledgeOwnerName).filter(Boolean))];
+        const formattedBeneficiaries = beneficiaries.map(name => formatNameLastFirst(name));
         return (
           <div className="flex flex-col items-center gap-1">
             <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 text-xs">
               <Users className="h-3 w-3 mr-1" />
               Paid For
             </Badge>
-            <span className="text-xs text-gray-600 max-w-20 truncate" title={beneficiaries.join(", ")}>
-              {beneficiaries.length > 1 ? `${beneficiaries.length} people` : beneficiaries[0]}
+            <span className="text-xs text-gray-600 max-w-20 truncate" title={formattedBeneficiaries.join(", ")}>
+              {formattedBeneficiaries.length > 1 ? `${formattedBeneficiaries.length} people` : formattedBeneficiaries[0]}
             </span>
           </div>
         );
@@ -323,8 +347,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
               Paid For
             </Badge>
             {payment.pledgeOwnerName && (
-              <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.pledgeOwnerName}>
-                {payment.pledgeOwnerName}
+              <span className="text-xs text-gray-600 max-w-20 truncate" title={formatNameLastFirst(payment.pledgeOwnerName)}>
+                {formatNameLastFirst(payment.pledgeOwnerName)}
               </span>
             )}
           </div>
@@ -338,8 +362,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
               Paid By
             </Badge>
             {payment.payerContactName && (
-              <span className="text-xs text-gray-600 max-w-20 truncate" title={payment.payerContactName}>
-                {payment.payerContactName}
+              <span className="text-xs text-gray-600 max-w-20 truncate" title={formatNameLastFirst(payment.payerContactName)}>
+                {formatNameLastFirst(payment.payerContactName)}
               </span>
             )}
           </div>
@@ -348,6 +372,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
     }
 
     // Fallback for unknown perspective - show generic third party
+    const payerFormatted = formatNameLastFirst(payment.payerContactName);
+    const ownerFormatted = formatNameLastFirst(payment.pledgeOwnerName);
     return (
       <div className="flex flex-col items-center gap-1">
         <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 text-xs">
@@ -355,8 +381,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
           Third Party
         </Badge>
         {payment.payerContactName && payment.pledgeOwnerName && (
-          <span className="text-xs text-gray-600 max-w-20 truncate" title={`${payment.payerContactName} → ${payment.pledgeOwnerName}`}>
-            {payment.payerContactName.split(' ')[0]} → {payment.pledgeOwnerName.split(' ')[0]}
+          <span className="text-xs text-gray-600 max-w-20 truncate" title={`${payerFormatted} → ${ownerFormatted}`}>
+            {payerFormatted.split(' ')[0]} → {ownerFormatted.split(' ')[0]}
           </span>
         )}
       </div>
@@ -869,14 +895,14 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                               {contactId === payment.payerContactId ? "You Paid For:" : "Paid By:"}
                                             </span>
                                             <span className="text-orange-800">
-                                              {contactId === payment.payerContactId ? payment.pledgeOwnerName : payment.payerContactName}
+                                              {contactId === payment.payerContactId ? formatNameLastFirst(payment.pledgeOwnerName) : formatNameLastFirst(payment.payerContactName)}
                                             </span>
                                           </div>
                                         )}
                                         {payment.pledgeOwnerName && !payment.isSplitPayment && contactId === payment.pledgeOwnerId && (
                                           <div className="flex items-center gap-2">
                                             <span className="text-orange-700 font-medium">Paid By:</span>
-                                            <span className="text-orange-800">{payment.payerContactName}</span>
+                                            <span className="text-orange-800">{formatNameLastFirst(payment.payerContactName)}</span>
                                           </div>
                                         )}
                                       </div>
@@ -938,7 +964,6 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                 </div>
                               </div>
 
-                              {/* Rest of the expanded content remains the same */}
                               {/* Column 2: Receipt/Method Information */}
                               <div className="space-y-3">
                                 <h4 className="font-semibold text-gray-900">
@@ -1003,7 +1028,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                       Solicitor:
                                     </span>
                                     <span className="font-medium">
-                                      {payment.solicitorName || "N/A"}
+                                      {formatNameLastFirst(payment.solicitorName)}
                                     </span>
                                   </div>
                                   <div className="flex justify-between">
@@ -1072,7 +1097,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                               <span className="font-medium text-blue-800">
                                                 {contactId === payment.payerContactId
                                                   ? `You paid for ${uniqueContacts.size} people's pledges`
-                                                  : `${payment.payerContactName || "Unknown"} paid for ${uniqueContacts.size} people's pledges`
+                                                  : `${formatNameLastFirst(payment.payerContactName)} paid for ${uniqueContacts.size} people's pledges`
                                                 }
                                               </span>
                                             </div>
@@ -1108,7 +1133,7 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                                     <span className="text-gray-500">
                                                       {contactId === payment.payerContactId ? "Paid For:" : "Owner:"}
                                                     </span>
-                                                    <span className="font-medium text-gray-700">{allocation.pledgeOwnerName}</span>
+                                                    <span className="font-medium text-gray-700">{formatNameLastFirst(allocation.pledgeOwnerName)}</span>
                                                   </div>
                                                 )}
                                                 {allocation.installmentScheduleId && (
@@ -1286,8 +1311,8 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
                                           <br />
                                           <br />
                                           <strong className="text-blue-600">Note:</strong> This is a third-party payment
-                                          {payment.payerContactName && ` made by ${payment.payerContactName}`}
-                                          {payment.pledgeOwnerName && !payment.isSplitPayment && ` for ${payment.pledgeOwnerName}`}.
+                                          {payment.payerContactName && ` made by ${formatNameLastFirst(payment.payerContactName)}`}
+                                          {payment.pledgeOwnerName && !payment.isSplitPayment && ` for ${formatNameLastFirst(payment.pledgeOwnerName)}`}.
                                         </>
                                       )}
                                       <br />
