@@ -58,6 +58,8 @@ export interface Payment {
   paymentStatus: string;
   referenceNumber: string | null;
   checkNumber: string | null;
+  tagIds?: number[];
+  tags?: Array<{ id: number; name: string }>;
   receiptNumber: string | null;
   receiptType: string | null;
   receiptIssued: boolean;
@@ -82,7 +84,7 @@ export interface Payment {
   pledgeOwnerId?: number | null;
   payerContactName?: string | null;
   pledgeOwnerName?: string | null;
-  
+
 }
 
 export interface PaymentAllocation {

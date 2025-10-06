@@ -1,10 +1,10 @@
 import { db } from "@/lib/db";
-import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule, solicitor, bonusCalculation, contact, exchangeRate, currencyEnum } from "@/lib/db/schema";
+import { payment, pledge, paymentAllocations, paymentPlan, installmentSchedule, solicitor, bonusCalculation, contact, exchangeRate, currencyEnum, tag, paymentTags } from "@/lib/db/schema";
+import type { NewPaymentAllocation, NewPaymentTag } from "@/lib/db/schema";
 import { ErrorHandler } from "@/lib/error-handler";
 import { eq, desc, or, ilike, and, SQL, sql, inArray } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import type { NewPaymentAllocation } from "@/lib/db/schema";
 
 class AppError extends Error {
   statusCode: number;
@@ -25,6 +25,48 @@ const QueryParamsSchema = z.object({
   search: z.string().optional(),
   paymentStatus: PaymentStatusEnum.optional(),
 });
+
+interface PaymentItem {
+  id: number;
+  pledgeId: number | null;
+  paymentPlanId: number | null;
+  installmentScheduleId: number | null;
+  relationshipId: number | null;
+  payerContactId: number | null;
+  isThirdPartyPayment: boolean | null;
+  amount: string;
+  currency: string;
+  amountUsd: string | null;
+  amountInPledgeCurrency: string | null;
+  exchangeRate: string | null;
+  paymentDate: string;
+  receivedDate: string | null;
+  paymentMethod: string;
+  methodDetail: string | null;
+  paymentStatus: string;
+  referenceNumber: string | null;
+  checkNumber: string | null;
+  checkDate: string | null;
+  account: string | null;
+  receiptNumber: string | null;
+  receiptType: string | null;
+  receiptIssued: boolean;
+  solicitorId: number | null;
+  bonusPercentage: string | null;
+  bonusAmount: string | null;
+  bonusRuleId: number | null;
+  notes: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  pledgeExchangeRate: string | null;
+  pledgeDescription: string| null;
+  contactId: number;
+  thirdPartyContactName: string | null;
+  payerContactName: string | null;
+  isSplitPayment: boolean;
+  allocationCount: number;
+  solicitorName: string | null;
+}
 
 // Allocation schemas
 const allocationUpdateSchema = z.object({
@@ -62,48 +104,72 @@ const multiContactAllocationSchema = z.object({
   pledges: z.array(multiContactPledgeSchema)
 });
 
-// The main payment update schema
+// The main payment update schema - EXPANDED to include ALL fields
 const updatePaymentSchema = z.object({
   paymentId: z.number().positive("Payment ID is required and must be positive"),
   amount: z.number().positive("Amount must be positive").optional(),
+  tagIds: z.array(z.number().positive()).optional().default([]),
   currency: z.enum(["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"]).optional(),
   amountUsd: z.number().positive("Amount in USD must be positive").optional(),
   amountInPledgeCurrency: z.number().positive("Amount in pledge currency must be positive").optional(),
+  amountInPlanCurrency: z.number().positive("Amount in plan currency must be positive").optional(),
   exchangeRate: z.number().positive("Exchange rate must be positive").optional(),
+  pledgeCurrencyExchangeRate: z.number().positive("Pledge currency exchange rate must be positive").optional(),
+  planCurrencyExchangeRate: z.number().positive("Plan currency exchange rate must be positive").optional(),
+
+  // Date fields
   paymentDate: z.string().min(1, "Payment date is required").optional(),
   receivedDate: z.string().optional().nullable(),
+  checkDate: z.string().optional().nullable(),
+
+  // Payment method and details
   paymentMethod: z.enum([
     "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
+    "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
     "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
   ]).optional(),
   methodDetail: z.string().optional().nullable(),
   paymentStatus: PaymentStatusEnum.optional(),
+
+  // Account and reference fields
   account: z.string().optional().nullable(),
-  checkDate: z.string().optional().nullable(),
+  referenceNumber: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),
+
+  // Receipt fields
   receiptNumber: z.string().optional().nullable(),
   receiptType: z.enum(["invoice", "confirmation", "receipt", "other"]).optional().nullable(),
   receiptIssued: z.boolean().optional(),
+
+  // Solicitor and bonus fields
   solicitorId: z.number().positive("Solicitor ID must be positive").optional().nullable(),
   bonusPercentage: z.number().min(0).max(100).optional().nullable(),
   bonusAmount: z.number().min(0).optional().nullable(),
   bonusRuleId: z.number().positive("Bonus rule ID must be positive").optional().nullable(),
+
+  // Notes and relationship
   notes: z.string().optional().nullable(),
+  relationshipId: z.number().positive("Relationship ID must be positive").optional().nullable(),
+
+  // Core payment associations
   pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
   paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
   installmentScheduleId: z.number().positive("Installment schedule ID must be positive").optional().nullable(),
 
+  // Third-party payment fields
   isThirdPartyPayment: z.boolean().optional().default(false),
   payerContactId: z.number().positive("Payer contact ID must be positive").optional().nullable(),
   thirdPartyContactId: z.number().positive("Third-party contact ID must be positive").optional().nullable(),
 
+  // Split payment fields
   isSplitPayment: z.boolean().optional(),
   allocations: z.array(allocationUpdateSchema).optional(),
 
+  // Multi-contact payment fields
   isMultiContactPayment: z.boolean().optional().default(false),
   multiContactAllocations: z.array(multiContactAllocationSchema).optional(),
 
+  // Auto-adjustment fields
   autoAdjustAllocations: z.boolean().optional(),
   redistributionMethod: z.enum(["proportional", "equal", "custom"]).optional(),
 })
@@ -241,6 +307,48 @@ async function validateMultiContactAllocations(
     isValid: errors.length === 0,
     errors
   };
+}
+async function validateAndUpdatePaymentTags(paymentId: number, tagIds: number[]): Promise<void> {
+  // Delete existing payment tags
+  await db.delete(paymentTags).where(eq(paymentTags.paymentId, paymentId));
+
+  if (!tagIds || tagIds.length === 0) return;
+
+  // Validate that all tag IDs exist and are active for payments
+  const validTags = await db
+    .select({ id: tag.id, name: tag.name })
+    .from(tag)
+    .where(
+      and(
+        inArray(tag.id, tagIds),
+        eq(tag.isActive, true),
+        eq(tag.showOnPayment, true)
+      )
+    );
+
+  if (validTags.length !== tagIds.length) {
+    const validTagIds = validTags.map(t => t.id);
+    const invalidTagIds = tagIds.filter(id => !validTagIds.includes(id));
+    throw new AppError(
+      `Invalid or inactive tag IDs: ${invalidTagIds.join(', ')}`,
+      400,
+      { invalidTagIds, validTagIds }
+    );
+  }
+
+  // Create new payment tag associations
+  const paymentTagsToInsert: NewPaymentTag[] = tagIds.map(tagId => ({
+    paymentId,
+    tagId,
+    createdAt: new Date(),
+  }));
+
+  try {
+    await db.insert(paymentTags).values(paymentTagsToInsert);
+  } catch (error) {
+    console.error('Error creating payment tags:', error);
+    throw new AppError('Failed to associate tags with payment', 500);
+  }
 }
 
 async function validateCurrencyConsistency(
@@ -775,13 +883,126 @@ export async function PATCH(
 
     existingAllocations.forEach(alloc => pledgesToUpdate.add(alloc.pledgeId));
 
+    // UPDATED buildUpdateData function to handle ALL fields from the schema
     const buildUpdateData = async (data: typeof validatedData) => {
-      const { paymentId, allocations, isSplitPayment, autoAdjustAllocations, redistributionMethod, multiContactAllocations, isMultiContactPayment, thirdPartyContactId, ...dataToUpdate } = data;
+      const {
+        paymentId,
+        allocations,
+        isSplitPayment,
+        autoAdjustAllocations,
+        redistributionMethod,
+        multiContactAllocations,
+        isMultiContactPayment,
+        thirdPartyContactId,
+        ...dataToUpdate
+      } = data;
 
       const baseUpdateData: Record<string, string | number | boolean | null | undefined | Date> = {
-        ...dataToUpdate,
         updatedAt: new Date(),
       };
+
+      // Handle all core payment fields
+      if (dataToUpdate.amount !== undefined) {
+        baseUpdateData.amount = dataToUpdate.amount.toString();
+      }
+      if (dataToUpdate.currency !== undefined) {
+        baseUpdateData.currency = dataToUpdate.currency;
+      }
+      if (dataToUpdate.amountUsd !== undefined) {
+        baseUpdateData.amountUsd = dataToUpdate.amountUsd.toFixed(2);
+      }
+      if (dataToUpdate.amountInPledgeCurrency !== undefined) {
+        baseUpdateData.amountInPledgeCurrency = dataToUpdate.amountInPledgeCurrency.toFixed(2);
+      }
+      if (dataToUpdate.amountInPlanCurrency !== undefined) {
+        baseUpdateData.amountInPlanCurrency = dataToUpdate.amountInPlanCurrency.toFixed(2);
+      }
+      if (dataToUpdate.exchangeRate !== undefined) {
+        baseUpdateData.exchangeRate = dataToUpdate.exchangeRate.toFixed(4);
+      }
+      if (dataToUpdate.pledgeCurrencyExchangeRate !== undefined) {
+        baseUpdateData.pledgeCurrencyExchangeRate = dataToUpdate.pledgeCurrencyExchangeRate.toFixed(4);
+      }
+      if (dataToUpdate.planCurrencyExchangeRate !== undefined) {
+        baseUpdateData.planCurrencyExchangeRate = dataToUpdate.planCurrencyExchangeRate.toFixed(4);
+      }
+
+      // Date fields
+      if (dataToUpdate.paymentDate !== undefined) {
+        baseUpdateData.paymentDate = dataToUpdate.paymentDate;
+      }
+      if (dataToUpdate.receivedDate !== undefined) {
+        baseUpdateData.receivedDate = dataToUpdate.receivedDate;
+      }
+      if (dataToUpdate.checkDate !== undefined) {
+        baseUpdateData.checkDate = dataToUpdate.checkDate;
+      }
+
+      // Payment method and details
+      if (dataToUpdate.paymentMethod !== undefined) {
+        baseUpdateData.paymentMethod = dataToUpdate.paymentMethod;
+      }
+      if (dataToUpdate.methodDetail !== undefined) {
+        baseUpdateData.methodDetail = dataToUpdate.methodDetail;
+      }
+      if (dataToUpdate.paymentStatus !== undefined) {
+        baseUpdateData.paymentStatus = dataToUpdate.paymentStatus;
+      }
+
+      // Account and reference fields
+      if (dataToUpdate.account !== undefined) {
+        baseUpdateData.account = dataToUpdate.account;
+      }
+      if (dataToUpdate.referenceNumber !== undefined) {
+        baseUpdateData.referenceNumber = dataToUpdate.referenceNumber;
+      }
+      if (dataToUpdate.checkNumber !== undefined) {
+        baseUpdateData.checkNumber = dataToUpdate.checkNumber;
+      }
+
+      // Receipt fields
+      if (dataToUpdate.receiptNumber !== undefined) {
+        baseUpdateData.receiptNumber = dataToUpdate.receiptNumber;
+      }
+      if (dataToUpdate.receiptType !== undefined) {
+        baseUpdateData.receiptType = dataToUpdate.receiptType;
+      }
+      if (dataToUpdate.receiptIssued !== undefined) {
+        baseUpdateData.receiptIssued = dataToUpdate.receiptIssued;
+      }
+
+      // Solicitor and bonus fields
+      if (dataToUpdate.solicitorId !== undefined) {
+        baseUpdateData.solicitorId = dataToUpdate.solicitorId;
+      }
+      if (dataToUpdate.bonusPercentage !== undefined) {
+        baseUpdateData.bonusPercentage = dataToUpdate.bonusPercentage?.toString() || null;
+      }
+      if (dataToUpdate.bonusAmount !== undefined) {
+        baseUpdateData.bonusAmount = dataToUpdate.bonusAmount?.toString() || null;
+      }
+      if (dataToUpdate.bonusRuleId !== undefined) {
+        baseUpdateData.bonusRuleId = dataToUpdate.bonusRuleId;
+      }
+
+      // Notes and relationship
+      if (dataToUpdate.notes !== undefined) {
+        baseUpdateData.notes = dataToUpdate.notes;
+      }
+      if (dataToUpdate.relationshipId !== undefined) {
+        baseUpdateData.relationshipId = dataToUpdate.relationshipId;
+      }
+
+      // Core payment associations
+      if (dataToUpdate.pledgeId !== undefined) {
+        baseUpdateData.pledgeId = dataToUpdate.pledgeId;
+      }
+      if (dataToUpdate.paymentPlanId !== undefined) {
+        baseUpdateData.paymentPlanId = dataToUpdate.paymentPlanId;
+      }
+      if (dataToUpdate.installmentScheduleId !== undefined) {
+        baseUpdateData.installmentScheduleId = dataToUpdate.installmentScheduleId;
+      }
 
       // FIXED: Proper third-party payment handling for ALL payment types including multi-contact
       if (data.isThirdPartyPayment !== undefined) {
@@ -808,15 +1029,19 @@ export async function PATCH(
       const newCurrency = data.currency || currentPayment.currency;
       const newAmount = data.amount || parseFloat(currentPayment.amount);
 
+      // Auto-calculate USD conversion if amount or currency changed
       if (data.amount || data.currency) {
-        const usdConversion = await convertCurrency(newAmount, newCurrency, 'USD', exchangeRateDate);
-        baseUpdateData.amountUsd = usdConversion.convertedAmount.toFixed(2);
-        baseUpdateData.exchangeRate = usdConversion.exchangeRate.toFixed(4);
+        if (!dataToUpdate.amountUsd && !dataToUpdate.exchangeRate) {
+          const usdConversion = await convertCurrency(newAmount, newCurrency, 'USD', exchangeRateDate);
+          baseUpdateData.amountUsd = usdConversion.convertedAmount.toFixed(2);
+          baseUpdateData.exchangeRate = usdConversion.exchangeRate.toFixed(4);
+        }
       }
 
+      // Auto-calculate pledge currency conversion if applicable
       if ((data.amount || data.currency) && (data.pledgeId || currentPayment.pledgeId)) {
         const targetPledgeId = data.pledgeId || currentPayment.pledgeId;
-        if (targetPledgeId) {
+        if (targetPledgeId && !dataToUpdate.amountInPledgeCurrency && !dataToUpdate.pledgeCurrencyExchangeRate) {
           const pledgeData = await db
             .select({ currency: pledge.currency })
             .from(pledge)
@@ -832,9 +1057,10 @@ export async function PATCH(
         }
       }
 
+      // Auto-calculate plan currency conversion if applicable
       if ((data.amount || data.currency) && (data.paymentPlanId || currentPayment.paymentPlanId)) {
         const targetPaymentPlanId = data.paymentPlanId || currentPayment.paymentPlanId;
-        if (targetPaymentPlanId) {
+        if (targetPaymentPlanId && !dataToUpdate.amountInPlanCurrency && !dataToUpdate.planCurrencyExchangeRate) {
           const planData = await db
             .select({ currency: paymentPlan.currency })
             .from(paymentPlan)
@@ -849,12 +1075,6 @@ export async function PATCH(
           }
         }
       }
-
-      ["amount", "bonusPercentage", "bonusAmount"].forEach((f) => {
-        if (baseUpdateData[f] !== undefined && baseUpdateData[f] !== null) {
-          baseUpdateData[f] = baseUpdateData[f].toString();
-        }
-      });
 
       return baseUpdateData;
     };
@@ -1419,12 +1639,12 @@ export async function PATCH(
         exchangeRate: payment.exchangeRate,
         paymentDate: payment.paymentDate,
         receivedDate: payment.receivedDate,
+        checkDate: payment.checkDate,
         paymentMethod: payment.paymentMethod,
         methodDetail: payment.methodDetail,
         paymentStatus: payment.paymentStatus,
         referenceNumber: payment.referenceNumber,
         checkNumber: payment.checkNumber,
-        checkDate: payment.checkDate,
         account: payment.account,
         receiptNumber: payment.receiptNumber,
         receiptType: payment.receiptType,
@@ -1571,7 +1791,9 @@ export async function PATCH(
 
       multiContactAllocations = Array.from(contactAllocationsMap.values());
     }
-
+    if (validatedData.tagIds !== undefined) {
+      await validateAndUpdatePaymentTags(paymentId, validatedData.tagIds);
+    }
     return NextResponse.json({
       message: `${finalIsMultiContact ? "Multi-contact payment" : finalIsSplit ? "Split payment" : "Payment"} updated successfully`,
       payment: {
@@ -1598,23 +1820,16 @@ export async function PATCH(
     return ErrorHandler.handle(err);
   }
 }
-
-export async function GET(
-  request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
     const pledgeId = parseInt(id, 10);
 
     if (isNaN(pledgeId) || pledgeId <= 0) {
-      return NextResponse.json(
-        { error: "Invalid pledge ID" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid pledge ID" }, { status: 400 });
     }
 
-    const { searchParams } = new URL(request.url);
+    const searchParams = new URL(request.url).searchParams;
     const queryParams = QueryParamsSchema.parse({
       pledgeId,
       page: parseInt(searchParams.get("page") || "1", 10),
@@ -1632,10 +1847,8 @@ export async function GET(
         paymentPlanId: payment.paymentPlanId,
         installmentScheduleId: payment.installmentScheduleId,
         relationshipId: payment.relationshipId,
-
         payerContactId: payment.payerContactId,
         isThirdPartyPayment: payment.isThirdPartyPayment,
-
         amount: payment.amount,
         currency: payment.currency,
         amountUsd: payment.amountUsd,
@@ -1660,51 +1873,32 @@ export async function GET(
         notes: payment.notes,
         createdAt: payment.createdAt,
         updatedAt: payment.updatedAt,
-
+        // Pledge information
         pledgeExchangeRate: pledge.exchangeRate,
         pledgeDescription: pledge.description,
         contactId: pledge.contactId,
-
-        thirdPartyContactName: sql<string>`(
-          SELECT CONCAT(first_name, ' ', last_name) 
-          FROM ${contact} 
-          WHERE id = ${payment.payerContactId}
-        )`.as("thirdPartyContactName"),
-
-        payerContactName: sql<string>`(
-          SELECT CONCAT(first_name, ' ', last_name) 
-          FROM ${contact} 
-          WHERE id = (
-            SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId}
-          )
-        )`.as("payerContactName"),
-
-        isSplitPayment: sql<boolean>`(
-          SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
-        )`.as("isSplitPayment"),
-        allocationCount: sql<number>`(
-          SELECT COUNT(*) FROM ${paymentAllocations} WHERE payment_id = ${payment.id}
-        )`.as("allocationCount"),
-        solicitorName: sql<string>`(
-          SELECT CONCAT(first_name, ' ', last_name) 
-          FROM ${contact} c
-          INNER JOIN ${solicitor} s ON c.id = s.contact_id
-          WHERE s.id = ${payment.solicitorId}
-        )`.as("solicitorName"),
+        // Calculated fields
+        thirdPartyContactName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} WHERE id = ${payment.payerContactId}`.as("thirdPartyContactName"),
+        payerContactName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} WHERE id = (SELECT contact_id FROM ${pledge} WHERE id = ${payment.pledgeId})`.as("payerContactName"),
+        isSplitPayment: sql<boolean>`SELECT COUNT(*) > 0 FROM ${paymentAllocations} WHERE payment_id = ${payment.id}`.as("isSplitPayment"),
+        allocationCount: sql<number>`SELECT COUNT(*) FROM ${paymentAllocations} WHERE payment_id = ${payment.id}`.as("allocationCount"),
+        solicitorName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} c INNER JOIN ${solicitor} s ON c.id = s.contact_id WHERE s.id = ${payment.solicitorId}`.as("solicitorName"),
       })
       .from(payment)
       .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
       .leftJoin(solicitor, eq(payment.solicitorId, solicitor.id))
       .where(eq(payment.pledgeId, pledgeId))
-      .$dynamic();
+      .$dynamic(); // Fix: Use $dynamic() instead of .dynamic()
 
-    const conditions: SQL<unknown>[] = [];
+    // Apply filters
+    const conditions = [] as SQL<unknown>[];
+
     if (paymentStatus) {
       conditions.push(eq(payment.paymentStatus, paymentStatus));
     }
 
     if (search) {
-      const searchConditions: SQL<unknown>[] = [];
+      const searchConditions = [] as SQL<unknown>[];
       searchConditions.push(ilike(sql`COALESCE(${payment.notes}, '')`, `%${search}%`));
       searchConditions.push(ilike(sql`COALESCE(${payment.referenceNumber}, '')`, `%${search}%`));
       searchConditions.push(ilike(sql`COALESCE(${payment.checkNumber}, '')`, `%${search}%`));
@@ -1716,18 +1910,44 @@ export async function GET(
       query = query.where(and(...conditions));
     }
 
+    // Pagination
     const offset = (page - 1) * limit;
     query = query.limit(limit).offset(offset).orderBy(desc(payment.createdAt));
 
     const paymentsResult = await query;
 
-    const paymentsWithAllocations = await Promise.all(
-      paymentsResult.map(async (paymentItem) => {
+    // Enhanced allocation AND TAG fetching with multi-currency support
+    const paymentsWithTagsAndAllocations = await Promise.all(
+      paymentsResult.map(async (paymentItem: PaymentItem) => {
         const enhancedPayment = {
           ...paymentItem,
           thirdPartyContactId: paymentItem.isThirdPartyPayment ? paymentItem.payerContactId : null,
         };
 
+        // *** FETCH PAYMENT TAGS ***
+        console.log(`=== Fetching tags for payment ${paymentItem.id} ===`);
+
+        const paymentTagsResult = await db
+          .select({
+            tagId: paymentTags.tagId,
+            tagName: tag.name,
+          })
+          .from(paymentTags)
+          .innerJoin(tag, and(
+            eq(paymentTags.tagId, tag.id),
+            eq(tag.isActive, true),
+            eq(tag.showOnPayment, true)
+          ))
+          .where(eq(paymentTags.paymentId, paymentItem.id));
+
+        console.log(`Payment ${paymentItem.id} tags result:`, paymentTagsResult);
+
+        const tagIds = paymentTagsResult.map(pt => pt.tagId);
+        const tags = paymentTagsResult.map(pt => ({ id: pt.tagId, name: pt.tagName }));
+
+        console.log(`Payment ${paymentItem.id} - tagIds:`, tagIds, 'tags:', tags);
+
+        // Handle allocations if this is a split payment
         if (paymentItem.isSplitPayment) {
           const allocationsRaw = await db
             .select({
@@ -1742,27 +1962,18 @@ export async function GET(
               receiptType: paymentAllocations.receiptType,
               receiptIssued: paymentAllocations.receiptIssued,
               payerContactId: paymentAllocations.payerContactId,
-              pledgeDescription: sql<string>`(
-                SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
-              )`.as("pledgeDescription"),
-              contactId: sql<number>`(
-                SELECT contact_id FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}
-              )`.as("contactId"),
-              contactName: sql<string>`(
-                SELECT CONCAT(first_name, ' ', last_name) 
-                FROM ${contact} c
-                INNER JOIN ${pledge} p ON c.id = p.contact_id
-                WHERE p.id = ${paymentAllocations.pledgeId}
-              )`.as("contactName"),
+              // Related pledge and contact info
+              pledgeDescription: sql<string>`SELECT description FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}`.as("pledgeDescription"),
+              contactId: sql<number>`SELECT contact_id FROM ${pledge} WHERE id = ${paymentAllocations.pledgeId}`.as("contactId"),
+              contactName: sql<string>`SELECT CONCAT(first_name, ' ', last_name) FROM ${contact} c INNER JOIN ${pledge} p ON c.id = p.contact_id WHERE p.id = ${paymentAllocations.pledgeId}`.as("contactName"),
             })
             .from(paymentAllocations)
             .leftJoin(pledge, eq(paymentAllocations.pledgeId, pledge.id))
             .where(eq(paymentAllocations.paymentId, paymentItem.id));
 
-          const allocations = allocationsRaw.map((alloc) => ({
+          const allocations = allocationsRaw.map(alloc => ({
             ...alloc,
-            allocatedAmount:
-              typeof alloc.allocatedAmount === "string" ? parseFloat(alloc.allocatedAmount) : alloc.allocatedAmount,
+            allocatedAmount: typeof alloc.allocatedAmount === "string" ? parseFloat(alloc.allocatedAmount) : alloc.allocatedAmount,
           }));
 
           // Determine if this is a multi-contact payment
@@ -1772,11 +1983,9 @@ export async function GET(
           let multiContactAllocations = null;
           if (isMultiContactPayment) {
             const contactAllocationsMap = new Map();
-
             for (const alloc of allocations) {
               const contactId = alloc.contactId;
               const contactName = alloc.contactName;
-
               if (!contactAllocationsMap.has(contactId)) {
                 contactAllocationsMap.set(contactId, {
                   contactId,
@@ -1784,7 +1993,6 @@ export async function GET(
                   pledges: []
                 });
               }
-
               contactAllocationsMap.get(contactId).pledges.push({
                 pledgeId: alloc.pledgeId,
                 pledgeDescription: alloc.pledgeDescription || "No description",
@@ -1793,31 +2001,40 @@ export async function GET(
                 allocatedAmount: alloc.allocatedAmount
               });
             }
-
             multiContactAllocations = Array.from(contactAllocationsMap.values());
           }
 
           return {
             ...enhancedPayment,
+            tagIds, // *** INCLUDE TAG IDS ***
+            tags,   // *** INCLUDE TAGS ***
             allocations,
             isMultiContactPayment,
             multiContactAllocations
           };
         }
-        return { ...enhancedPayment, isMultiContactPayment: false };
+
+        return {
+          ...enhancedPayment,
+          tagIds, // *** INCLUDE TAG IDS FOR NON-SPLIT PAYMENTS ***
+          tags,   // *** INCLUDE TAGS FOR NON-SPLIT PAYMENTS ***
+          isMultiContactPayment: false
+        };
       })
     );
 
     return NextResponse.json(
-      { payments: paymentsWithAllocations },
-      { headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" } }
+      { payments: paymentsWithTagsAndAllocations },
+      {
+        headers: {
+          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300"
+        }
+      }
     );
+
   } catch (error) {
     console.error(error);
-    return NextResponse.json(
-      { error: "Failed to fetch payments" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Failed to fetch payments" }, { status: 500 });
   }
 }
 

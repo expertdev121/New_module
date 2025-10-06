@@ -53,6 +53,31 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCreatePaymentMutation } from "@/lib/query/payments/usePaymentQuery";
 
+// Define interfaces exactly like in edit form
+interface Solicitor {
+  id: number;
+  firstName: string;
+  lastName: string;
+  commissionRate: number;
+  contact?: any;
+}
+
+// Add the useSolicitors hook exactly like in edit form
+const useSolicitors = (params: { search?: string; status?: string } = {}) => {
+  return useQuery({
+    queryKey: ["solicitors", params],
+    queryFn: async () => {
+      const searchParams = new URLSearchParams();
+      if (params.search) searchParams.set("search", params.search);
+      if (params.status) searchParams.set("status", params.status);
+
+      const response = await fetch(`/api/solicitor?${searchParams}`);
+      if (!response.ok) throw new Error("Failed to fetch solicitors");
+      return response.json();
+    },
+  });
+};
+
 // Define literal tuples for enums
 const supportedCurrencies = [
   "USD",
@@ -141,7 +166,7 @@ const methodDetailValues = [
   "montrose",
   "morgan_stanley_gift",
   "ms",
-  "mt", 
+  "mt",
   "ojc",
   "paypal",
   "pelecard",
@@ -161,6 +186,22 @@ const methodDetailValues = [
   "yu",
   "zelle",
 ] as const;
+interface Solicitor {
+  id: number;
+  firstName: string;
+  lastName: string;
+  commissionRate: number;
+  solicitorCode: string;
+  status: string;
+  contact?: any;
+}
+
+interface SolicitorOption {
+  label: string;
+  value: number;
+  commissionRate?: number;
+  contact?: any;
+}
 
 const methodDetailOptions = [
   { value: "achisomoch", label: "Achisomoch" },
@@ -294,13 +335,29 @@ export default function PaymentDialog({
   pledgeDescription = "",
   onPaymentCreated,
 }: PaymentDialogProps) {
+    console.log('=== PAYMENT DIALOG RENDERED ===', { open, pledgeId });
+
   const createPaymentMutation = useCreatePaymentMutation();
 
   const [showSolicitorSection, setShowSolicitorSection] = useState(false);
+  console.log('Show solicitor section:', showSolicitorSection);
+
   const [pledgeExchangeRate, setPledgeExchangeRate] = useState(1);
   const [pledgeUsdAmount, setPledgeUsdAmount] = useState(0);
   const [pledgeExchangeRateToPledgeCurrency, setPledgeExchangeRateToPledgeCurrency] = useState(1);
   const [amountInPledgeCurrency, setAmountInPledgeCurrency] = useState(0);
+
+  // Use the same solicitors fetching pattern as edit form
+  const { data: solicitorsData } = useSolicitors({ status: "active" });
+
+  console.log('=== SOLICITOR DEBUG ===');
+console.log('Solicitors data:', solicitorsData);
+console.log('Is solicitors data loading?');
+console.log('Raw solicitors array:', solicitorsData?.solicitors);
+
+
+  // Debug logging like in edit form
+  console.log('Solicitors data:', solicitorsData);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -356,6 +413,15 @@ export default function PaymentDialog({
     isLoading: isLoadingRates,
     error: ratesError,
   } = useExchangeRates(watchedPaymentDate);
+
+  const solicitorOptions: SolicitorOption[] = solicitorsData?.solicitors?.map((solicitor: Solicitor) => ({
+    label: `${solicitor.firstName} ${solicitor.lastName}`,
+    value: solicitor.id,
+    commissionRate: solicitor.commissionRate,
+    contact: solicitor.contact,
+  })) || [];
+
+console.log('C options after mapping:', solicitorOptions);
 
   // Update exchange rate when currency changes
   useEffect(() => {
@@ -935,17 +1001,25 @@ export default function PaymentDialog({
                     name="solicitorId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Solicitor ID</FormLabel>
-                        <FormControl>
-                          <Input
-                            {...field}
-                            type="number"
-                            value={field.value ?? ""}
-                            onChange={(e) =>
-                              field.onChange(e.target.value ? Number(e.target.value) : null)
-                            }
-                          />
-                        </FormControl>
+                        <FormLabel>Solicitor</FormLabel>
+                        <Select
+                          onValueChange={(value) => field.onChange(value === NO_SELECTION ? null : parseInt(value))}
+                          value={field.value?.toString() ?? NO_SELECTION}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select solicitor..." />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value={NO_SELECTION}>None</SelectItem>
+                            {solicitorOptions.map((solicitor: SolicitorOption) => (
+                              <SelectItem key={solicitor.value} value={solicitor.value.toString()}>
+                                {solicitor.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -1013,6 +1087,27 @@ export default function PaymentDialog({
                 </CardContent>
               </Card>
             )}
+
+            {/* Split Payment Toggle */}
+            {/* <div className="flex items-center space-x-2">
+              <FormField
+                control={form.control}
+                name="isSplitPayment"
+                render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                    <FormControl>
+                      <Switch
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                      />
+                    </FormControl>
+                    <div className="space-y-1 leading-none">
+                      <FormLabel>Split Payment</FormLabel>
+                    </div>
+                  </FormItem>
+                )}
+              />
+            </div> */}
 
             {/* Split Payment Allocations */}
             {watchedIsSplitPayment && (

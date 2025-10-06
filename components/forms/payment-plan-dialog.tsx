@@ -18,6 +18,9 @@ import {
   TrendingUp,
   CalendarIcon,
   RefreshCw,
+  UserPlus,
+  Search,
+  X,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -66,6 +69,7 @@ import {
 
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 import {
@@ -88,10 +92,48 @@ import {
 import useContactId from "@/hooks/use-contact-id";
 import { usePledgesQuery } from "@/lib/query/usePledgeData";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
+import { useQuery } from "@tanstack/react-query";
+
+// Contact type definition
+interface Contact {
+  id: number;
+  firstName: string;
+  lastName: string;
+  displayName?: string | null;
+  fullName?: string;
+}
+
+// Contacts hook - defined inline based on your existing pattern
+const useContacts = (search?: string) => {
+  return useQuery({
+    queryKey: ["contacts", search],
+    queryFn: async (): Promise<{ contacts: Contact[] }> => {
+      if (!search || search.length < 2) return { contacts: [] };
+
+      const response = await fetch(`/api/contacts/search?q=${encodeURIComponent(search)}`);
+      if (!response.ok) {
+        throw new Error("Failed to fetch contacts");
+      }
+
+      const data = await response.json();
+
+      // Transform contacts to ensure fullName is available
+      if (data.contacts) {
+        data.contacts = data.contacts.map((contact: Contact) => ({
+          ...contact,
+          fullName: contact.fullName || contact.displayName || `${contact.firstName} ${contact.lastName}`.trim(),
+        }));
+      }
+
+      return data;
+    },
+    enabled: !!search && search.length >= 2,
+  });
+};
 
 // Supported currencies - matches your schema
 const supportedCurrencies = [
-  "USD", "ILS", "EUR","JPY","GBP", "AUD", "CAD", "ZAR",
+  "USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR",
 ] as const;
 
 // Frequency options - matches your schema
@@ -191,6 +233,14 @@ const methodDetails = [
   { value: "zelle", label: "Zelle" },
 ] as const;
 
+// Type definitions
+interface Contact {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName?: string;
+}
+
 // Type-safe helper functions
 const ensureCurrency = (value: string | undefined): typeof supportedCurrencies[number] => {
   if (value && supportedCurrencies.includes(value as typeof supportedCurrencies[number])) {
@@ -259,17 +309,20 @@ export const paymentPlanSchema = z.object({
   isActive: z.boolean().default(true),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
+  // Third-party payment fields
+  isThirdPartyPayment: z.boolean().optional(),
+  thirdPartyContactId: z.number().optional().nullable(),
   customInstallments: z
     .array(
       z.object({
         installmentDate: z.string().min(1, "Installment date is required"),
         installmentAmount: z.number().positive("Installment amount must be positive"),
         currency: z.enum(supportedCurrencies),
-        installmentAmountUsd: z.number().optional().nullable(), // Allow null
+        installmentAmountUsd: z.number().optional().nullable(),
         status: z.enum(["pending", "paid", "overdue", "cancelled"]).default("pending"),
-        paidDate: z.string().optional().nullable(), // Allow null
-        notes: z.string().optional().nullable(), // Allow null
-        paymentId: z.number().optional().nullable(), // Allow null
+        paidDate: z.string().optional().nullable(),
+        notes: z.string().optional().nullable(),
+        paymentId: z.number().optional().nullable(),
       })
     )
     .optional(),
@@ -331,7 +384,6 @@ const convertAmount = (
 
   // Exchange rates are stored as USD per foreign currency
   // Example: if rate is 3.3462 for ILS, then 1 USD = 3.3462 ILS
-
   // Convert to USD first if not already USD
   let usdAmount = amount;
   if (fromCurrency !== "USD") {
@@ -813,6 +865,10 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const previousTotalAmountRef = useRef<number | undefined>(undefined);
   const isFormInitializedRef = useRef(false);
 
+  // Third-party payment state
+  const [contactSearch, setContactSearch] = useState("");
+  const [selectedThirdPartyContact, setSelectedThirdPartyContact] = useState<Contact | null>(null);
+
   // Dropdown state management variables
   const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
   const [methodDetailOpen, setMethodDetailOpen] = useState(false);
@@ -829,15 +885,21 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
 
   const contactId = useContactId();
 
-  const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery({
-    contactId: contactId as number,
-    page: 1,
-    limit: 100,
-  });
+  // Fixed pledge ID logic for edit mode
+  const pledgeDataId = useMemo(() => {
+    if (isEditMode) {
+      // In edit mode, prioritize the existing plan's pledge ID
+      return existingPlanData?.paymentPlan?.pledgeId || selectedPledgeId;
+    }
+    return selectedPledgeId;
+  }, [isEditMode, existingPlanData?.paymentPlan?.pledgeId, selectedPledgeId]);
 
-  const pledgeDataId = isEditMode ? selectedPledgeId || existingPlanData?.paymentPlan?.pledgeId : selectedPledgeId;
+  // Only fetch pledge details when we have a valid ID
   const { data: pledgeData, isLoading: isLoadingPledge } =
-    usePledgeDetailsQuery(pledgeDataId as number);
+    usePledgeDetailsQuery(
+      pledgeDataId as number,
+      { enabled: !!pledgeDataId && pledgeDataId > 0 }
+    );
 
   const createPaymentPlanMutation = useCreatePaymentPlanMutation();
   const updatePaymentPlanMutation = useUpdatePaymentPlanMutation();
@@ -845,24 +907,40 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const deleteMutation = useDeletePaymentPlanMutation();
 
   const existingPlan = existingPlanData?.paymentPlan;
-
-  useEffect(() => {
-    if (isEditMode && existingPlan && !selectedPledgeId) {
-      setSelectedPledgeId(existingPlan.pledgeId);
+  const pledgeOwnerContactId = useMemo(() => {
+    if (isEditMode && existingPlan) {
+      return (existingPlan as any).contactId; // Pledge owner from the plan
     }
-  }, [existingPlan, isEditMode, selectedPledgeId]);
-
-  useEffect(() => {
-    if (
-      !isEditMode &&
-      !initialPledgeId &&
-      !selectedPledgeId &&
-      pledgesData?.pledges?.length
-    ) {
-      const firstPledge = pledgesData.pledges[0];
-      setSelectedPledgeId(firstPledge.id);
+    if (pledgeData?.contact) {
+      return pledgeData.contact.id;
     }
-  }, [pledgesData, isEditMode, initialPledgeId, selectedPledgeId]);
+    return contactId; // Fallback to current user
+  }, [isEditMode, existingPlan, pledgeData?.contact, contactId]);
+
+  // Third-party handlers
+  const handleThirdPartyToggle = (checked: boolean) => {
+    form.setValue("isThirdPartyPayment", checked);
+
+    if (!checked) {
+      setSelectedThirdPartyContact(null);
+      setContactSearch("");
+      form.setValue("thirdPartyContactId", null);
+    }
+  };
+
+  const handleContactSelect = (contact: any) => {
+    setSelectedThirdPartyContact(contact);
+    form.setValue("thirdPartyContactId", contact.id);
+    setContactSearch("");
+  };
+
+  // Initialize selected pledge ID earlier and more reliably
+  useEffect(() => {
+    if (isEditMode && existingPlanData?.paymentPlan?.pledgeId && !selectedPledgeId) {
+      setSelectedPledgeId(existingPlanData.paymentPlan.pledgeId);
+    }
+  }, [existingPlanData?.paymentPlan?.pledgeId, isEditMode, selectedPledgeId]);
+
 
   // Get pledge data based on selected pledge in edit mode
   const effectivePledgeAmount =
@@ -889,15 +967,6 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
 
   const defaultAmount = effectiveRemainingBalance || effectivePledgeAmount;
 
-  const getDefaultPledgeId = () => {
-    if (selectedPledgeId) return selectedPledgeId;
-    if (initialPledgeId) return initialPledgeId;
-    if (isEditMode && existingPlan) return existingPlan.pledgeId;
-    if (!isEditMode && pledgesData?.pledges?.length) {
-      return pledgesData.pledges[0].id;
-    }
-    return 0;
-  };
 
   // Calculate USD amounts for multi-currency support
   function calculateUsdAmounts(amount: number, currency: string) {
@@ -907,6 +976,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     const rate = parseFloat(exchangeRates[currency] || "1");
     return { usdAmount: amount / rate, exchangeRate: rate };
   }
+
+  const getDefaultPledgeId = () => {
+    if (selectedPledgeId) return selectedPledgeId;
+    if (initialPledgeId) return initialPledgeId;
+    if (isEditMode && existingPlan) return existingPlan.pledgeId;
+    return 0;
+  };
 
   const form = useForm({
     resolver: zodResolver(paymentPlanSchema),
@@ -942,6 +1018,9 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       customInstallments: undefined,
       paymentMethod: undefined,
       methodDetail: "",
+      // Third-party defaults
+      isThirdPartyPayment: false,
+      thirdPartyContactId: null,
     },
   });
 
@@ -1171,37 +1250,59 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
         })) : undefined,
         paymentMethod: ensurePaymentMethod(existingPlan.paymentMethod),
         methodDetail: existingPlan.methodDetail || "",
+        // Third-party fields from API response
+        isThirdPartyPayment: (existingPlan as any).isThirdPartyPayment || false,
+        thirdPartyContactId: null, // Will be set when pledge data loads
       };
 
       form.reset(planData);
+
+      // Set third-party contact if exists
+      if ((existingPlan as any).isThirdPartyPayment && pledgeData?.contact) {
+        // The pledge owner is the beneficiary in a third-party payment
+        setSelectedThirdPartyContact({
+          id: pledgeData.contact.id,
+          firstName: pledgeData.contact.firstName || '',
+          lastName: pledgeData.contact.lastName || '',
+          fullName: pledgeData.contact.fullName || `${pledgeData.contact.firstName} ${pledgeData.contact.lastName}`.trim(),
+        });
+        form.setValue("thirdPartyContactId", pledgeData.contact.id);
+      }
+
       previousCurrencyRef.current = ensureCurrency(existingPlan.currency);
       previousTotalAmountRef.current = Number.parseFloat(existingPlan.totalPlannedAmount?.toString() || "0");
       isFormInitializedRef.current = true;
     }
-  }, [existingPlan, isEditMode, form]);
+  }, [existingPlan, isEditMode, form, pledgeData?.contact]);
 
-  // Handle pledge selection
+  useEffect(() => {
+    if (isEditMode && existingPlan && (existingPlan as any).isThirdPartyPayment && pledgeData?.contact) {
+      // Always set the third-party contact when dialog opens with existing third-party plan
+      setSelectedThirdPartyContact({
+        id: pledgeData.contact.id,
+        firstName: pledgeData.contact.firstName,
+        lastName: pledgeData.contact.lastName,
+        fullName: pledgeData.contact.fullName || `${pledgeData.contact.firstName} ${pledgeData.contact.lastName}`.trim(),
+      })
+
+      // Update form values
+      form.setValue('isThirdPartyPayment', true)
+      form.setValue('thirdPartyContactId', pledgeData.contact.id)
+    }
+  }, [existingPlan, isEditMode, pledgeData?.contact, form, open]) // Add 'open' to dependencies
+
+
   useEffect(() => {
     if (selectedPledgeId) {
-      form.setValue("pledgeId", selectedPledgeId);
+      form.setValue('pledgeId', selectedPledgeId);
 
-      // If in edit mode and pledge selector is enabled, update form with new pledge data
-      if (isEditMode && enablePledgeSelectorInEdit && pledgeData?.pledge) {
-        const newDefaultAmount = pledgeData.pledge.remainingBalance || pledgeData.pledge.originalAmount;
-        const safeCurrency = ensureCurrency(pledgeData.pledge.currency);
-        form.setValue("totalPlannedAmount", newDefaultAmount);
-        form.setValue("currency", safeCurrency);
-
-        // Update USD amounts
-        const { usdAmount, exchangeRate } = calculateUsdAmounts(newDefaultAmount, safeCurrency);
-        form.setValue("totalPlannedAmountUsd", usdAmount);
-        form.setValue("exchangeRate", exchangeRate);
-
-        previousCurrencyRef.current = safeCurrency;
-        previousTotalAmountRef.current = newDefaultAmount;
+      // In edit mode, ensure the correct pledge is pre-selected
+      if (isEditMode && existingPlan && !selectedPledgeId) {
+        setSelectedPledgeId(existingPlan.pledgeId);
       }
     }
-  }, [selectedPledgeId, form, isEditMode, enablePledgeSelectorInEdit, pledgeData]);
+  }, [selectedPledgeId, form, isEditMode, existingPlan]);
+
 
   // Initialize form for create mode
   useEffect(() => {
@@ -1348,6 +1449,8 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     setManualInstallment(false);
     setInstallmentsModified(false);
     setSubmitError("");
+    setContactSearch("");
+    setSelectedThirdPartyContact(null);
     isFormInitializedRef.current = false;
     previousCurrencyRef.current = undefined;
     previousTotalAmountRef.current = undefined;
@@ -1399,6 +1502,8 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
         customInstallments: existingPlan.customInstallments as any || undefined,
         paymentMethod: ensurePaymentMethod(existingPlan.paymentMethod),
         methodDetail: existingPlan.methodDetail || "",
+        isThirdPartyPayment: false,
+        thirdPartyContactId: null,
       };
 
       form.reset(originalPlanData);
@@ -1446,6 +1551,8 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
         customInstallments: undefined,
         paymentMethod: undefined,
         methodDetail: "",
+        isThirdPartyPayment: false,
+        thirdPartyContactId: null,
       });
 
       previousCurrencyRef.current = safeCurrency;
@@ -1455,6 +1562,55 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       }, 100);
     }
   };
+  // Third-party contact search
+  const watchedIsThirdParty = form.watch("isThirdPartyPayment");
+  const { data: contactsData, isLoading: isLoadingContacts } = useContacts(
+    watchedIsThirdParty ? contactSearch : undefined
+  );
+
+  const contactIdForPledges = useMemo(() => {
+    if (watchedIsThirdParty) {
+      // For third-party payments, load pledges for the selected third-party contact
+      return selectedThirdPartyContact?.id;
+    } else {
+      // For regular payments, use the pledge owner contact ID
+      return pledgeOwnerContactId;
+    }
+  }, [watchedIsThirdParty, selectedThirdPartyContact?.id, pledgeOwnerContactId]);
+  const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery({
+    page: 1,
+    limit: 100,
+    contactId: contactIdForPledges ?? undefined,
+  }, {
+    enabled: !!contactIdForPledges || (watchedIsThirdParty && !selectedThirdPartyContact)
+  });
+
+
+  useEffect(() => {
+    if (
+      !isEditMode &&
+      !initialPledgeId &&
+      !selectedPledgeId &&
+      pledgesData?.pledges?.length
+    ) {
+      const firstPledge = pledgesData.pledges[0];
+      setSelectedPledgeId(firstPledge.id);
+    }
+  }, [pledgesData, isEditMode, initialPledgeId, selectedPledgeId]);
+
+  // Contact options for dropdown
+  const contactOptions = useMemo(() => {
+    if (!contactsData?.contacts) return [];
+
+    return contactsData.contacts.map((contact: Contact) => ({
+      label: contact.fullName || `${contact.firstName} ${contact.lastName}`.trim(),
+      value: contact.id,
+      id: contact.id,
+      firstName: contact.firstName,
+      lastName: contact.lastName,
+      fullName: contact.fullName || `${contact.firstName} ${contact.lastName}`.trim(),
+    }));
+  }, [contactsData?.contacts]);
 
   const onSubmit = async (data: PaymentPlanFormData) => {
     try {
@@ -1533,7 +1689,11 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       // Transform custom installments for API (ensure all required fields are present)
       const submissionData = {
         ...finalData,
-          methodDetail: finalData.methodDetail || "",
+        methodDetail: finalData.methodDetail || "",
+        // Third-party payment handling
+        isThirdPartyPayment: finalData.isThirdPartyPayment || false,
+        thirdPartyContactId: selectedThirdPartyContact?.id || null,
+        payerContactId: finalData.isThirdPartyPayment ? contactId : undefined,
         customInstallments: finalData.customInstallments?.map(inst => ({
           installmentDate: inst.installmentDate,
           installmentAmount: inst.installmentAmount,
@@ -1596,28 +1756,38 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   }, [existingPlan, isEditMode]);
 
   const handleOpenChange = (newOpen: boolean) => {
-    setOpen(newOpen);
-
+    setOpen(newOpen)
     if (!newOpen) {
-      setIsEditing(mode === "create");
-      setManualInstallment(false);
-      setShowPreview(false);
-      setInstallmentsModified(false);
-      setSubmitError("");
-      isFormInitializedRef.current = false;
-      previousCurrencyRef.current = undefined;
-      previousTotalAmountRef.current = undefined;
+      setIsEditing(mode === 'create')
+      setManualInstallment(false)
+      setShowPreview(false)
+      setInstallmentsModified(false)
+      setSubmitError('')
+      setContactSearch('')
+
+      // Only reset third-party contact if not in edit mode or if it's not a third-party payment
+      if (!isEditMode || !(existingPlan as any)?.isThirdPartyPayment) {
+        setSelectedThirdPartyContact(null)
+      }
+
+      // Don't reset form initialization flag in edit mode
+      if (!isEditMode) {
+        isFormInitializedRef.current = false
+      }
+
+      previousCurrencyRef.current = undefined
+      previousTotalAmountRef.current = undefined
 
       // Reset dropdown states
-      setPaymentMethodOpen(false);
-      setMethodDetailOpen(false);
-      setPledgeSelectorOpen(false);
-
-      onClose?.();
+      setPaymentMethodOpen(false)
+      setMethodDetailOpen(false)
+      setPledgeSelectorOpen(false)
+      onClose?.()
     } else {
-      setIsEditing(true);
+      setIsEditing(true)
     }
-  };
+  }
+
 
   const handlePauseResume = (action: "pause" | "resume") => {
     if (existingPlan) {
@@ -1666,8 +1836,8 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
     }
   };
 
-   const pledgeOptions =
-       pledgesData?.pledges?.map((pledge) => ({
+  const pledgeOptions =
+    pledgesData?.pledges?.map((pledge) => ({
       label: `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency
         } ${Number.parseFloat(pledge.unscheduledAmount || pledge.balance.toString()).toLocaleString()})`,
       value: pledge.id,
@@ -1696,7 +1866,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   // Determine if pledge selector should be shown
   const shouldShowPledgeSelector = (!isEditMode && showPledgeSelector) || (isEditMode && enablePledgeSelectorInEdit);
 
-  if (isEditMode && isLoadingPlan) {
+  if (isEditMode && (isLoadingPlan || (!existingPlanData && !pledgeDataId))) {
     return (
       <div className="flex items-center justify-center p-4">
         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
@@ -1718,19 +1888,58 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
               "Loading pledge details..."
             ) : (
               <div>
-                {isEditMode ? "Update the payment plan" : "Set up a"} payment
-                plan for pledge: {effectivePledgeDescription}
-                {effectiveRemainingBalance > 0 && (
-                  <span className="block mt-1 text-sm text-muted-foreground">
-                    Remaining Balance: {effectivePledgeCurrency}{" "}
-                    {effectiveRemainingBalance.toLocaleString()}
-                  </span>
-                )}
-                {(pledgeData?.contact || existingPlan) && (
-                  <span className="block mt-1 text-sm text-muted-foreground">
-                    Contact: {pledgeData?.contact?.fullName || existingPlan?.pledgeContact || "Loading..."}
-                  </span>
-                )}
+                {(() => {
+                  // Determine if this is a third-party payment plan (either new or existing)
+                  const isThirdPartyPlan = watchedIsThirdParty || (isEditMode && existingPlan && (existingPlan as any).isThirdPartyPayment);
+
+                  if (isThirdPartyPlan) {
+                    // Third-party payment plan
+                    const beneficiaryContact = isEditMode && existingPlan
+                      ? (existingPlan as any).pledgeContactName || (existingPlan as any).pledgeContact
+                      : selectedThirdPartyContact?.fullName || "Loading...";
+
+                    const payerContact = isEditMode && existingPlan
+                      ? (existingPlan as any).payerContactName
+                      : contactId ? "You" : "Loading...";
+
+                    return (
+                      <div>
+                        {isEditMode ? "Update third-party payment plan" : "Create third-party payment plan"}
+                        <span className="block mt-1 text-sm text-muted-foreground">
+                          {payerContact} will pay for {beneficiaryContact}&apos;s pledge
+                        </span>
+                        <span className="block mt-1 text-sm text-muted-foreground">
+                          Pledge: {effectivePledgeDescription}
+                        </span>
+                        {effectiveRemainingBalance > 0 && (
+                          <span className="block mt-1 text-sm text-muted-foreground">
+                            Remaining Balance: {effectivePledgeCurrency}{" "}
+                            {effectiveRemainingBalance.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  } else {
+                    // Regular payment plan
+                    return (
+                      <div>
+                        {isEditMode ? "Update the payment plan" : "Set up a"} payment
+                        plan for pledge: {effectivePledgeDescription}
+                        {effectiveRemainingBalance > 0 && (
+                          <span className="block mt-1 text-sm text-muted-foreground">
+                            Remaining Balance: {effectivePledgeCurrency}{" "}
+                            {effectiveRemainingBalance.toLocaleString()}
+                          </span>
+                        )}
+                        {(pledgeData?.contact || existingPlan) && (
+                          <span className="block mt-1 text-sm text-muted-foreground">
+                            Contact: {pledgeData?.contact?.fullName || existingPlan?.pledgeContact || "Loading..."}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  }
+                })()}
                 <div className="mt-2">
                   <ExchangeRateDisplay
                     currency={effectivePledgeCurrency}
@@ -1785,6 +1994,101 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
           <>
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+                {/* Third-Party Payment Section */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <UserPlus className="h-5 w-5" />
+                      Payment Type
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-4">
+                      {/* Third-Party Toggle */}
+                      <div className="flex items-center space-x-2">
+                        <Switch
+                          id="isThirdPartyPayment"
+                          checked={watchedIsThirdParty}
+                          onCheckedChange={handleThirdPartyToggle}
+                        />
+                        <label
+                          htmlFor="isThirdPartyPayment"
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                          Third-Party Payment (Pay for someone else&apos;s pledge)
+                        </label>
+                      </div>
+
+                      {/* Contact Search Section */}
+                      {watchedIsThirdParty && (
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <label className="text-sm font-medium">Search for Contact</label>
+                            <div className="relative">
+                              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                              <Input
+                                placeholder="Type to search contacts..."
+                                value={contactSearch}
+                                onChange={(e) => setContactSearch(e.target.value)}
+                                className="pl-10"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Contact Search Results */}
+                          {contactSearch.length >= 2 && (
+                            <div className="border rounded-md max-h-40 overflow-y-auto">
+                              {isLoadingContacts ? (
+                                <div className="p-3 text-center text-gray-500">Loading contacts...</div>
+                              ) : contactOptions.length > 0 ? (
+                                contactOptions.map((contact, index) => (
+                                  <button
+                                    key={`contact-${contact.value}-${index}`}
+                                    type="button"
+                                    className="w-full p-3 text-left hover:bg-gray-50 border-b last:border-b-0"
+                                    onClick={() => handleContactSelect(contact)}
+                                  >
+                                    <div className="font-medium">{contact.label}</div>
+                                  </button>
+                                ))
+                              ) : (
+                                <div className="p-3 text-center text-gray-500">No contacts found</div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Selected Contact Display */}
+                          {selectedThirdPartyContact && (
+                            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                              <div className="flex items-center justify-between">
+                                <div>
+                                  <div className="font-medium text-blue-900">
+                                    Selected Contact: {selectedThirdPartyContact.fullName}
+                                  </div>
+                                  <div className="text-sm text-blue-700">
+                                    Payment plan will be created for this contact&apos;s pledge
+                                  </div>
+                                </div>
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedThirdPartyContact(null);
+                                    form.setValue("thirdPartyContactId", null);
+                                  }}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
                 {/* Pledge Selection Card */}
                 {shouldShowPledgeSelector && (
                   <Card>
@@ -1793,9 +2097,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                         Pledge Selection
                       </CardTitle>
                       <CardDescription>
-                        {isEditMode
-                          ? "Change the pledge for this payment plan"
-                          : "Choose the pledge for this payment plan"}
+                        {watchedIsThirdParty && selectedThirdPartyContact ? (
+                          <>Choose a pledge from {selectedThirdPartyContact.fullName}&apos;s account</>
+                        ) : isEditMode ? (
+                          "Change the pledge for this payment plan"
+                        ) : (
+                          "Choose the pledge for this payment plan"
+                        )}
                         <br />
                       </CardDescription>
                     </CardHeader>
@@ -2278,14 +2586,8 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                             {...field}
                                             onChange={(e) => {
                                               const value = e.target.value;
-                                              if (value) {
-                                                const parts = value.split("-");
-                                                if (parts[0] && parts[0].length > 4) {
-                                                  return;
-                                                }
-                                              }
-                                              field.onChange(e);
-                                              if (isEditMode && form.watch("distributionType") === "fixed") {
+                                              field.onChange(value);
+                                              if (isEditMode) {
                                                 setInstallmentsModified(true);
                                               }
                                             }}
@@ -2295,6 +2597,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                       </FormItem>
                                     )}
                                   />
+
                                   <FormField
                                     control={form.control}
                                     name={`customInstallments.${index}.installmentAmount`}
@@ -2304,216 +2607,249 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                         <FormControl>
                                           <Input
                                             type="number"
-                                            min="0.01"
                                             step="0.01"
                                             {...field}
                                             value={field.value || ""}
                                             onChange={(e) => {
-                                              const value = Number(e.target.value);
-                                              field.onChange(value);
+                                              const value = e.target.value;
+                                              const numValue = value ? Number.parseFloat(value) : 0;
+                                              field.onChange(numValue);
 
-                                              // Update USD amount for this installment
-                                              const currency = ensureCurrency(form.watch("currency"));
-                                              const { usdAmount } = calculateUsdAmounts(value, currency);
+                                              // Update USD amount
+                                              const safeCurrency = ensureCurrency(watchedCurrency);
+                                              const { usdAmount } = calculateUsdAmounts(numValue, safeCurrency);
+                                              form.setValue(`customInstallments.${index}.installmentAmountUsd`, usdAmount);
 
-                                              const currentInstallments = form.getValues("customInstallments");
-                                              if (currentInstallments && currentInstallments[index]) {
-                                                const updatedInstallments = [...currentInstallments];
-                                                updatedInstallments[index] = {
-                                                  ...updatedInstallments[index],
-                                                  installmentAmount: value,
-                                                  installmentAmountUsd: usdAmount,
-                                                };
-                                                form.setValue("customInstallments", updatedInstallments);
-                                              }
-
-                                              if (isEditMode && form.watch("distributionType") === "fixed") {
+                                              if (isEditMode) {
                                                 setInstallmentsModified(true);
                                               }
                                             }}
                                           />
                                         </FormControl>
                                         <FormMessage className="text-sm text-red-600 mt-1" />
-                                        {installment.installmentAmountUsd && watchedCurrency !== "USD" && (
-                                          <p className="text-xs text-muted-foreground mt-1">
-                                            USD: ${installment.installmentAmountUsd.toLocaleString()}
-                                          </p>
-                                        )}
                                       </FormItem>
                                     )}
                                   />
-                                  <div className="flex items-end gap-2">
+
+                                  <div className="flex items-end space-x-2">
                                     <FormField
                                       control={form.control}
                                       name={`customInstallments.${index}.notes`}
                                       render={({ field }) => (
                                         <FormItem className="flex-1">
-                                          <FormLabel>Notes</FormLabel>
+                                          <FormLabel>Notes (Optional)</FormLabel>
                                           <FormControl>
-                                            <Input {...field} value={field.value || ""} />
+                                            <Input
+                                              {...field}
+                                              value={field.value || ""}
+                                              placeholder="Optional notes"
+                                              onChange={(e) => {
+                                                field.onChange(e.target.value);
+                                                if (isEditMode) {
+                                                  setInstallmentsModified(true);
+                                                }
+                                              }}
+                                            />
                                           </FormControl>
                                           <FormMessage className="text-sm text-red-600 mt-1" />
                                         </FormItem>
                                       )}
                                     />
+
                                     <Button
                                       type="button"
                                       variant="outline"
                                       size="sm"
                                       onClick={() => {
                                         const currentInstallments = form.getValues("customInstallments") || [];
-                                        form.setValue(
-                                          "customInstallments",
-                                          currentInstallments.filter((_, i) => i !== index)
-                                        );
-                                        if (isEditMode && form.watch("distributionType") === "fixed") {
+                                        const newInstallments = currentInstallments.filter((_, i) => i !== index);
+                                        form.setValue("customInstallments", newInstallments);
+
+                                        if (isEditMode) {
                                           setInstallmentsModified(true);
                                         }
                                       }}
+                                      disabled={(form.watch("customInstallments")?.length || 0) <= 1}
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </Button>
                                   </div>
-
-                                  {/* Show paid status for existing installments */}
-                                  {isEditMode && installment.status === "paid" && (
-                                    <div className="col-span-3 text-sm text-green-600 bg-green-50 p-2 rounded">
-                                      ✓ Paid on {installment.paidDate} - Amount: {form.watch("currency")} {installment.installmentAmount}
-                                    </div>
-                                  )}
                                 </div>
                               </CardContent>
                             </Card>
                           ))}
 
-                          {/* Add Installment button */}
-                          <div className="flex justify-center">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                const currentInstallments = form.getValues("customInstallments") || [];
-                                const currency = ensureCurrency(form.getValues("currency"));
-                                const newInstallment = {
-                                  installmentDate: form.getValues("startDate") || new Date().toISOString().split("T")[0],
-                                  installmentAmount: 0,
-                                  currency: currency,
-                                  installmentAmountUsd: currency === "USD" ? 0 : null,
-                                  status: "pending" as const,
-                                  paidDate: undefined,
-                                  notes: undefined,
-                                  paymentId: undefined,
-                                };
-                                form.setValue("customInstallments", [...currentInstallments, newInstallment]);
-                                if (isEditMode && form.watch("distributionType") === "fixed") {
-                                  setInstallmentsModified(true);
-                                }
-                              }}
-                            >
-                              Add Installment
-                            </Button>
-                          </div>
+                          {/* Add installment button */}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => {
+                              const currentInstallments = form.getValues("customInstallments") || [];
+                              const lastDate = currentInstallments.length > 0
+                                ? currentInstallments[currentInstallments.length - 1].installmentDate
+                                : form.getValues("startDate");
+
+                              const nextDate = new Date(lastDate);
+                              const frequency = form.getValues("frequency");
+
+                              switch (frequency) {
+                                case "weekly":
+                                  nextDate.setDate(nextDate.getDate() + 7);
+                                  break;
+                                case "monthly":
+                                  nextDate.setMonth(nextDate.getMonth() + 1);
+                                  break;
+                                case "quarterly":
+                                  nextDate.setMonth(nextDate.getMonth() + 3);
+                                  break;
+                                case "biannual":
+                                  nextDate.setMonth(nextDate.getMonth() + 6);
+                                  break;
+                                case "annual":
+                                  nextDate.setFullYear(nextDate.getFullYear() + 1);
+                                  break;
+                                default:
+                                  nextDate.setMonth(nextDate.getMonth() + 1);
+                              }
+
+                              const defaultAmount = form.getValues("installmentAmount") ||
+                                roundToPrecision(form.getValues("totalPlannedAmount") / 12, 2);
+                              const safeCurrency = ensureCurrency(watchedCurrency);
+                              const { usdAmount } = calculateUsdAmounts(defaultAmount, safeCurrency);
+
+                              const newInstallment = {
+                                installmentDate: nextDate.toISOString().split("T")[0],
+                                installmentAmount: defaultAmount,
+                                currency: safeCurrency,
+                                installmentAmountUsd: usdAmount,
+                                status: "pending" as const,
+                                paidDate: undefined,
+                                notes: undefined,
+                                paymentId: undefined,
+                              };
+
+                              form.setValue("customInstallments", [...currentInstallments, newInstallment]);
+
+                              if (isEditMode) {
+                                setInstallmentsModified(true);
+                              }
+                            }}
+                            className="w-full"
+                          >
+                            Add Installment
+                          </Button>
                         </CardContent>
                       </Card>
                     )}
 
                     {/* Fixed distribution settings */}
-                    {form.watch("distributionType") !== "custom" && !(isEditMode && form.watch("customInstallments")) && (
-                      <Card>
-                        <CardContent className="pt-6 space-y-4">
-                          <div className="flex items-center space-x-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant={manualInstallment ? "default" : "outline"}
-                              onClick={toggleManualInstallment}
-                              className="shrink-0"
-                            >
-                              <Calculator className="w-4 h-4 mr-2" />
-                              {manualInstallment ? "Auto Calculate" : "Manual Entry"}
-                            </Button>
-                            <p className="text-sm text-blue-700">
-                              {manualInstallment
-                                ? "Enter both installment amount and number of installments manually"
-                                : "Installment amount will be calculated automatically from total amount ÷ number of installments"}
-                            </p>
-                          </div>
+                    {form.watch("distributionType") === "fixed" && !isEditMode && (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <FormField
+                            control={form.control}
+                            name="numberOfInstallments"
+                            render={({ field }) => (
+                              <FormItem>
+                                <FormLabel>Number of Installments *</FormLabel>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    min="1"
+                                    {...field}
+                                    value={field.value || ""}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      const numValue = value ? Number.parseInt(value, 10) : 0;
+                                      field.onChange(numValue);
+                                    }}
+                                    disabled={!isEditing || manualInstallment}
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-sm text-red-600 mt-1" />
+                              </FormItem>
+                            )}
+                          />
 
-                          <div className="grid grid-cols-2 gap-4">
-                            <FormField
-                              control={form.control}
-                              name="numberOfInstallments"
-                              render={({ field }) => (
-                                <FormItem>
-                                  <FormLabel>Number of Installments *</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      min="1"
-                                      {...field}
-                                      value={field.value || ""}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        field.onChange(value ? Number.parseInt(value) : 1);
-                                      }}
-                                    />
-                                  </FormControl>
-                                  <FormMessage className="text-sm text-red-600 mt-1" />
-                                </FormItem>
-                              )}
-                            />
-
-                            <FormField
-                              control={form.control}
-                              name="installmentAmount"
-                              render={({ field }) => (
-                                <FormItem>
+                          <FormField
+                            control={form.control}
+                            name="installmentAmount"
+                            render={({ field }) => (
+                              <FormItem>
+                                <div className="flex items-center justify-between">
                                   <FormLabel>Installment Amount *</FormLabel>
-                                  <FormControl>
-                                    <Input
-                                      type="number"
-                                      step="0.01"
-                                      {...field}
-                                      value={field.value || ""}
-                                      onChange={(e) => {
-                                        const value = e.target.value;
-                                        const numValue = value ? Number.parseFloat(value) : 0;
-                                        field.onChange(numValue);
-                                        // Update USD amount
-                                        const { usdAmount } = calculateUsdAmounts(numValue, ensureCurrency(watchedCurrency));
-                                        form.setValue("installmentAmountUsd", usdAmount);
-                                      }}
-                                      readOnly={!manualInstallment}
-                                      className={!manualInstallment ? "bg-gray-50" : ""}
-                                    />
-                                  </FormControl>
-                                  <FormMessage className="text-sm text-red-600 mt-1" />
-                                  {!manualInstallment && (
-                                    <p className="text-xs text-muted-foreground">
-                                      Calculated automatically
-                                    </p>
-                                  )}
-                                  {form.watch("installmentAmountUsd") && watchedCurrency !== "USD" && (
-                                    <p className="text-xs text-muted-foreground mt-1">
-                                      USD Equivalent: ${form.watch("installmentAmountUsd")?.toLocaleString()}
-                                    </p>
-                                  )}
-                                </FormItem>
-                              )}
-                            />
-                          </div>
-                        </CardContent>
-                      </Card>
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={toggleManualInstallment}
+                                    className="h-auto p-1 text-xs"
+                                  >
+                                    <Calculator className="w-3 h-3 mr-1" />
+                                    {manualInstallment ? "Auto" : "Manual"}
+                                  </Button>
+                                </div>
+                                <FormControl>
+                                  <Input
+                                    type="number"
+                                    step="0.01"
+                                    {...field}
+                                    value={field.value || ""}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      const numValue = value ? Number.parseFloat(value) : 0;
+                                      field.onChange(numValue);
+
+                                      // Update USD amount
+                                      const safeCurrency = ensureCurrency(watchedCurrency);
+                                      const { usdAmount } = calculateUsdAmounts(numValue, safeCurrency);
+                                      form.setValue("installmentAmountUsd", usdAmount);
+                                    }}
+                                    disabled={!isEditing || !manualInstallment}
+                                  />
+                                </FormControl>
+                                <FormMessage className="text-sm text-red-600 mt-1" />
+                                {form.watch("installmentAmountUsd") && watchedCurrency !== "USD" && (
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    USD Equivalent: ${form.watch("installmentAmountUsd")?.toLocaleString()}
+                                  </p>
+                                )}
+                              </FormItem>
+                            )}
+                          />
+                        </div>
+
+                        {/* Calculation summary for fixed plans */}
+                        {watchedTotalPlannedAmount > 0 && watchedNumberOfInstallments > 0 && (
+                          <Card className="border-green-200 bg-green-50">
+                            <CardContent className="p-3">
+                              <div className="text-sm text-green-800">
+                                <div className="font-medium">Payment Summary:</div>
+                                <div>
+                                  {watchedNumberOfInstallments} payments of {watchedCurrency} {watchedInstallmentAmount?.toLocaleString()} each
+                                </div>
+                                <div>
+                                  Total: {watchedCurrency} {(watchedInstallmentAmount * watchedNumberOfInstallments).toLocaleString()}
+                                </div>
+                                {Math.abs((watchedInstallmentAmount * watchedNumberOfInstallments) - watchedTotalPlannedAmount) > 0.01 && (
+                                  <div className="text-amber-700 mt-1">
+                                    ⚠️ Difference: {watchedCurrency} {Math.abs((watchedInstallmentAmount * watchedNumberOfInstallments) - watchedTotalPlannedAmount).toLocaleString()}
+                                  </div>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
                     )}
                   </CardContent>
                 </Card>
 
-                {/* Schedule and Dates Card */}
+                {/* Schedule Card */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Schedule & Dates</CardTitle>
-                    <CardDescription>Payment timing and schedule information</CardDescription>
+                    <CardTitle className="text-lg">Schedule Details</CardTitle>
+                    <CardDescription>When payments will be made</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
@@ -2524,16 +2860,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                           <FormItem>
                             <FormLabel>Start Date *</FormLabel>
                             <FormControl>
-                              <Input type="date" {...field} value={field.value || ""} onChange={(e) => {
-                                const value = e.target.value;
-                                if (value) {
-                                  const parts = value.split("-");
-                                  if (parts[0] && parts[0].length > 4) {
-                                    return;
-                                  }
-                                }
-                                field.onChange(value);
-                              }} />
+                              <Input type="date" {...field} disabled={!isEditing} />
                             </FormControl>
                             <FormMessage className="text-sm text-red-600 mt-1" />
                           </FormItem>
@@ -2545,14 +2872,14 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                         name="endDate"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>End Date (Estimated)</FormLabel>
+                            <FormLabel>End Date</FormLabel>
                             <FormControl>
                               <Input
                                 type="date"
                                 {...field}
                                 value={field.value || ""}
+                                disabled={!isEditing}
                                 readOnly
-                                className="bg-gray-50"
                               />
                             </FormControl>
                             <FormMessage className="text-sm text-red-600 mt-1" />
@@ -2561,71 +2888,23 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                       />
                     </div>
 
-                    <FormField
-                      control={form.control}
-                      name="nextPaymentDate"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Next Payment Date</FormLabel>
-                          <FormControl>
-                            <Input
-                              type="date"
-                              {...field}
-                              value={field.value || ""}
-                              readOnly
-                              className="bg-gray-50"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-sm text-red-600 mt-1" />
-                        </FormItem>
-                      )}
-                    />
-
-                    <FormField
-                      control={form.control}
-                      name="autoRenew"
-                      render={({ field }) => (
-                        <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                          <FormControl>
-                            <Checkbox
-                              checked={field.value || false}
-                              onCheckedChange={field.onChange}
-                            />
-                          </FormControl>
-                          <div className="space-y-1 leading-none">
-                            <FormLabel>Auto Renew</FormLabel>
-                            <p className="text-sm text-muted-foreground">
-                              Automatically create a new plan when this one completes
-                            </p>
-                          </div>
-                        </FormItem>
-                      )}
-                    />
-
-                    {/* Currency Priority field for multi-currency support */}
-                    {isEditMode && (
+                    {watchedFrequency !== "one_time" && (
                       <FormField
                         control={form.control}
-                        name="currencyPriority"
+                        name="nextPaymentDate"
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel>Currency Priority</FormLabel>
+                            <FormLabel>Next Payment Date</FormLabel>
                             <FormControl>
                               <Input
-                                type="number"
-                                min="1"
+                                type="date"
                                 {...field}
-                                value={field.value || 1}
-                                onChange={(e) => {
-                                  const value = e.target.value;
-                                  field.onChange(value ? Number.parseInt(value) : 1);
-                                }}
+                                value={field.value || ""}
+                                disabled={!isEditing}
+                                readOnly
                               />
                             </FormControl>
                             <FormMessage className="text-sm text-red-600 mt-1" />
-                            <p className="text-xs text-muted-foreground">
-                              Priority for this currency when multiple payment plans exist for the same pledge
-                            </p>
                           </FormItem>
                         )}
                       />
@@ -2633,25 +2912,45 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                   </CardContent>
                 </Card>
 
-                {/* Notes Card */}
+                {/* Options Card */}
                 <Card>
                   <CardHeader>
-                    <CardTitle className="text-lg">Notes</CardTitle>
-                    <CardDescription>Additional information about this payment plan</CardDescription>
+                    <CardTitle className="text-lg">Additional Options</CardTitle>
+                    <CardDescription>Additional settings and notes</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    <div className="flex items-center space-x-2">
+                      <FormField
+                        control={form.control}
+                        name="autoRenew"
+                        render={({ field }) => (
+                          <FormItem className="flex flex-row items-center space-x-3 space-y-0">
+                            <FormControl>
+                              <Checkbox
+                                checked={field.value}
+                                onCheckedChange={field.onChange}
+                              />
+                            </FormControl>
+                            <div className="space-y-1 leading-none">
+                              <FormLabel>Auto-renew plan when completed</FormLabel>
+                            </div>
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+
                     <FormField
                       control={form.control}
                       name="notes"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Notes</FormLabel>
+                          <FormLabel>Public Notes</FormLabel>
                           <FormControl>
                             <Textarea
                               {...field}
                               value={field.value || ""}
-                              placeholder="Public notes about this payment plan"
-                              rows={2}
+                              placeholder="Notes visible to all users"
+                              disabled={!isEditing}
                             />
                           </FormControl>
                           <FormMessage className="text-sm text-red-600 mt-1" />
@@ -2669,114 +2968,14 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                             <Textarea
                               {...field}
                               value={field.value || ""}
-                              placeholder="Internal notes (not visible to customer)"
-                              rows={2}
+                              placeholder="Internal notes for admin use only"
+                              disabled={!isEditing}
                             />
                           </FormControl>
                           <FormMessage className="text-sm text-red-600 mt-1" />
                         </FormItem>
                       )}
                     />
-                  </CardContent>
-                </Card>
-
-                {/* Summary Card */}
-                <Card className="border-blue-200 bg-blue-50">
-                  <CardHeader>
-                    <CardTitle className="text-blue-900">Payment Plan Summary</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-2 text-sm text-blue-800">
-                      <div>
-                        Total Amount: {form.watch("currency")}{" "}
-                        {form.watch("totalPlannedAmount")?.toLocaleString() || 0}
-                      </div>
-                      {form.watch("totalPlannedAmountUsd") && watchedCurrency !== "USD" && (
-                        <div>
-                          USD Equivalent: ${form.watch("totalPlannedAmountUsd")?.toLocaleString()}
-                        </div>
-                      )}
-                      <div>
-                        Installments: {
-                          form.watch("distributionType") === "custom" || (isEditMode && form.watch("customInstallments"))
-                            ? form.watch("customInstallments")?.length || 0
-                            : form.watch("numberOfInstallments") || 0
-                        }
-                      </div>
-                      {(form.watch("distributionType") !== "custom" && !(isEditMode && form.watch("customInstallments"))) && (
-                        <div>
-                          Per Payment: {form.watch("currency")}{" "}
-                          {form.watch("installmentAmount")?.toLocaleString() || 0}
-                        </div>
-                      )}
-                      <div>
-                        Frequency:{" "}
-                        {
-                          frequencies.find((f) => f.value === form.watch("frequency"))
-                            ?.label || "Not selected"
-                        }
-                      </div>
-                      <div>
-                        Distribution: {
-                          (form.watch("distributionType") === "custom" || (isEditMode && form.watch("customInstallments")))
-                            ? "Custom Schedule"
-                            : "Fixed Amount"
-                        }
-                      </div>
-                      {isEditMode && (
-                        <div className="col-span-2 pt-2 border-t border-blue-200">
-                          Plan Status:{" "}
-                          <span className="capitalize">
-                            {form.watch("planStatus") || "active"}
-                          </span>
-                        </div>
-                      )}
-                      {form.watch("exchangeRate") && watchedCurrency !== "USD" && (
-                        <div className="col-span-2 pt-2 border-t border-blue-200">
-                          <div className="text-xs text-blue-600">
-                            Exchange Rate: 1 {watchedCurrency} = {form.watch("exchangeRate")?.toFixed(4)} USD
-                          </div>
-                        </div>
-                      )}
-                      {manualInstallment &&
-                        (form.watch("distributionType") !== "custom" && !(isEditMode && form.watch("customInstallments"))) &&
-                        watchedInstallmentAmount &&
-                        watchedTotalPlannedAmount && (
-                          <div className="col-span-2 pt-2 border-t border-blue-200 text-xs">
-                            <div className="flex justify-between">
-                              <span>
-                                Manual Total ({form.watch("numberOfInstallments")} ×{" "}
-                                {form.watch("currency")}{" "}
-                                {form.watch("installmentAmount")}):
-                              </span>
-                              <span className="font-medium">
-                                {form.watch("currency")}{" "}
-                                {roundToPrecision(
-                                  (form.watch("numberOfInstallments") || 0) *
-                                  (form.watch("installmentAmount") || 0), 2
-                                ).toLocaleString()}
-                              </span>
-                            </div>
-                            {Math.abs(
-                              (form.watch("numberOfInstallments") || 0) *
-                              (form.watch("installmentAmount") || 0) -
-                              (form.watch("totalPlannedAmount") || 0)
-                            ) > 0.01 && (
-                                <div className="flex justify-between text-amber-700 mt-1">
-                                  <span>Difference from planned total:</span>
-                                  <span className="font-medium">
-                                    {form.watch("currency")}{" "}
-                                    {roundToPrecision(Math.abs(
-                                      (form.watch("numberOfInstallments") || 0) *
-                                      (form.watch("installmentAmount") || 0) -
-                                      (form.watch("totalPlannedAmount") || 0)
-                                    ), 2).toLocaleString()}
-                                  </span>
-                                </div>
-                              )}
-                          </div>
-                        )}
-                    </div>
                   </CardContent>
                 </Card>
 
@@ -2792,13 +2991,59 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                   </Card>
                 )}
 
+                {/* Edit Mode: Management Actions */}
+                {!isEditing && isEditMode && (
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-lg">Plan Management</CardTitle>
+                      <CardDescription>Actions to manage this payment plan</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setIsEditing(true)}
+                          size="sm"
+                        >
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit Plan
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handlePauseResume(existingPlan?.planStatus === 'paused' ? 'resume' : 'pause')}
+                          disabled={pauseResumeMutation.isPending}
+                          size="sm"
+                        >
+                          {existingPlan?.planStatus === 'paused' ? 'Resume' : 'Pause'} Plan
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          onClick={handleDelete}
+                          disabled={deleteMutation.isPending}
+                          size="sm"
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete Plan
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {isEditing && (
                   <div className="flex justify-end space-x-2 pt-4 border-t">
                     <Button
                       type="button"
                       variant="outline"
                       onClick={() => {
-                        handleOpenChange(false);
+                        if (isEditMode) {
+                          resetForm();
+                        } else {
+                          handleOpenChange(false);
+                        }
                       }}
                       disabled={
                         createPaymentPlanMutation.isPending ||
@@ -2815,8 +3060,9 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                         isLoadingPledge ||
                         (!isEditMode && !selectedPledgeId) ||
                         (shouldShowPledgeSelector && isLoadingPledges) ||
-                        // Add validation check
-                        !form.watch("paymentMethod")                       }
+                        !form.watch("paymentMethod") ||
+                        (watchedIsThirdParty && !selectedThirdPartyContact)
+                      }
                       className="text-white"
                     >
                       {createPaymentPlanMutation.isPending ||

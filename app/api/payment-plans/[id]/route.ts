@@ -8,6 +8,7 @@ import {
   relationships,
   currencyConversionLog,
   exchangeRate,
+  contact,
   type PaymentPlan,
   type NewCurrencyConversionLog
 } from "@/lib/db/schema";
@@ -77,6 +78,12 @@ const updatePaymentPlanSchema = z.object({
   planStatus: PlanStatusEnum.optional(),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
+  paymentMethod: z.enum([
+    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
+    "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
+    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
+  ]).optional(),
+  methodDetail: z.string().optional(),
   customInstallments: z
     .array(
       z.object({
@@ -91,6 +98,10 @@ const updatePaymentPlanSchema = z.object({
       })
     )
     .optional(),
+  // Third-party payment fields
+  isThirdPartyPayment: z.boolean().optional(),
+  thirdPartyContactId: z.number().positive().optional().nullable(),
+  payerContactId: z.number().positive().optional().nullable(),
 }).refine((data) => {
   if (data.distributionType === "fixed") {
     return (
@@ -105,6 +116,15 @@ const updatePaymentPlanSchema = z.object({
   message:
     "For 'fixed' distribution type, installmentAmount and numberOfInstallments are required. For 'custom' distribution type, customInstallments array is required.",
   path: ["distributionType"],
+}).refine((data) => {
+  // If it's a third-party payment, thirdPartyContactId must be provided
+  if (data.isThirdPartyPayment) {
+    return data.thirdPartyContactId !== null && data.thirdPartyContactId !== undefined;
+  }
+  return true;
+}, {
+  message: "Third-party contact ID is required when isThirdPartyPayment is true.",
+  path: ["thirdPartyContactId"]
 });
 
 type UpdatePaymentPlanRequest = z.infer<typeof updatePaymentPlanSchema>;
@@ -123,7 +143,7 @@ async function getExchangeRate(
 
   try {
     const targetDate = conversionDate || new Date().toISOString().split('T')[0];
-    
+
     // Try to get exact date first
     let rateQuery = await db
       .select({ rate: exchangeRate.rate })
@@ -358,6 +378,28 @@ export async function GET(
         pledgeDescription: sql<string>`(SELECT ${pledge.description} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeDescription"),
         pledgeExchangeRate: sql<string>`(SELECT ${pledge.exchangeRate} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeExchangeRate"),
         pledgeContact: sql<string>`(SELECT CONCAT(c.first_name, ' ', c.last_name) FROM ${pledge} p JOIN contact c ON p.contact_id = c.id WHERE p.id = ${paymentPlan.pledgeId})`.as("pledgeContact"),
+
+        // Third-party payment information
+        isThirdPartyPayment: sql<boolean>`(
+          SELECT COALESCE(bool_or(is_third_party_payment), false)
+          FROM payment
+          WHERE payment_plan_id = payment_plan.id
+        )`.as("isThirdPartyPayment"),
+        payerContactId: sql<number | null>`(
+          SELECT payer_contact_id
+          FROM payment
+          WHERE payment_plan_id = payment_plan.id
+            AND payer_contact_id IS NOT NULL
+          LIMIT 1
+        )`.as("payerContactId"),
+        payerContactName: sql<string | null>`(
+          SELECT CONCAT(c.first_name, ' ', c.last_name)
+          FROM payment p
+          INNER JOIN contact c ON c.id = p.payer_contact_id
+          WHERE p.payment_plan_id = payment_plan.id
+            AND p.payer_contact_id IS NOT NULL
+          LIMIT 1
+        )`.as("payerContactName"),
       })
       .from(paymentPlan)
       .where(eq(paymentPlan.id, paymentPlanId))
@@ -470,13 +512,36 @@ export async function PATCH(
       );
     }
 
-    // If pledgeId is provided, validate pledge exists
+    // Validate third-party contact if provided
+    if (validatedData.thirdPartyContactId !== undefined && validatedData.thirdPartyContactId !== null) {
+      const thirdPartyContactExists = await db
+        .select()
+        .from(contact)
+        .where(eq(contact.id, validatedData.thirdPartyContactId))
+        .limit(1);
+
+      if (!thirdPartyContactExists.length) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "thirdPartyContactId",
+              message: "Third-party contact not found with provided ID",
+            }],
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // If pledgeId is provided, validate pledge exists and ownership for third-party
     if (validatedData.pledgeId !== undefined) {
       const pledgeExists = await db
         .select({
           id: pledge.id,
           currency: pledge.currency,
           exchangeRate: pledge.exchangeRate,
+          contactId: pledge.contactId,
         })
         .from(pledge)
         .where(eq(pledge.id, validatedData.pledgeId))
@@ -493,6 +558,22 @@ export async function PATCH(
           },
           { status: 400 }
         );
+      }
+
+      // Verify pledge ownership for third-party payments
+      if (validatedData.isThirdPartyPayment && validatedData.thirdPartyContactId) {
+        if (pledgeExists[0].contactId !== validatedData.thirdPartyContactId) {
+          return NextResponse.json(
+            {
+              error: "Validation failed",
+              details: [{
+                field: "pledgeId",
+                message: "Selected pledge does not belong to the specified third-party contact",
+              }],
+            },
+            { status: 400 }
+          );
+        }
       }
     }
 
@@ -859,10 +940,26 @@ export async function PATCH(
       .where(eq(paymentPlan.id, planId))
       .returning();
 
-    // Update related pending payments with comprehensive multi-currency support
+    // Determine if third-party payment status changed
+    const isUpdatingThirdPartyStatus = validatedData.isThirdPartyPayment !== undefined ||
+      validatedData.thirdPartyContactId !== undefined ||
+      validatedData.payerContactId !== undefined;
+
+    // Get current third-party status from existing payments
+    const [currentThirdPartyStatus] = await db
+      .select({
+        isThirdPartyPayment: payment.isThirdPartyPayment,
+        payerContactId: payment.payerContactId,
+      })
+      .from(payment)
+      .where(eq(payment.paymentPlanId, planId))
+      .limit(1);
+
+    // Update related pending payments with comprehensive multi-currency support and third-party fields
     if (validatedData.distributionType !== undefined ||
       validatedData.installmentAmount !== undefined ||
-      validatedData.currency !== undefined) {
+      validatedData.currency !== undefined ||
+      isUpdatingThirdPartyStatus) {
 
       // Get all pending payments for this plan
       const pendingPayments = await db
@@ -875,12 +972,19 @@ export async function PATCH(
           )
         );
 
-      // Update pending payments with new currency conversions
+      // Determine the third-party configuration to apply
+      const isThirdPartyPayment = validatedData.isThirdPartyPayment ??
+        (currentThirdPartyStatus?.isThirdPartyPayment || false);
+      const thirdPartyContactId = validatedData.thirdPartyContactId ?? null;
+      const payerContactId = validatedData.payerContactId ??
+        (currentThirdPartyStatus?.payerContactId || null);
+
+      // Update pending payments with new currency conversions and third-party fields
       for (const pendingPayment of pendingPayments) {
         const paymentAmount = parseFloat(pendingPayment.amount.toString());
         const paymentCurrency = pendingPayment.currency;
         const planCurrency = validatedData.currency || existingPlan.currency;
-        
+
         const conversions = await calculateMultiCurrencyConversions(
           paymentAmount,
           paymentCurrency,
@@ -890,7 +994,7 @@ export async function PATCH(
           pendingPayment.paymentDate
         );
 
-        const paymentUpdates = {
+        const paymentUpdates: any = {
           amountUsd: safeNumericString(conversions.amountUsd),
           exchangeRate: safeNumericString(conversions.usdExchangeRate),
           amountInPledgeCurrency: safeNumericString(conversions.amountInPledgeCurrency),
@@ -898,6 +1002,20 @@ export async function PATCH(
           amountInPlanCurrency: safeNumericString(conversions.amountInPlanCurrency),
           planCurrencyExchangeRate: safeNumericString(conversions.planCurrencyExchangeRate),
         };
+
+        // Update third-party payment fields if they changed
+        if (isUpdatingThirdPartyStatus) {
+          paymentUpdates.isThirdPartyPayment = isThirdPartyPayment;
+          paymentUpdates.payerContactId = isThirdPartyPayment ? payerContactId : null;
+        }
+
+        // Update payment method if provided
+        if (validatedData.paymentMethod !== undefined) {
+          paymentUpdates.paymentMethod = validatedData.paymentMethod;
+        }
+        if (validatedData.methodDetail !== undefined) {
+          paymentUpdates.methodDetail = validatedData.methodDetail;
+        }
 
         await db
           .update(payment)
@@ -946,6 +1064,7 @@ export async function PATCH(
     return NextResponse.json({
       message: "Payment plan updated successfully",
       paymentPlan: updatedPlan,
+      thirdPartyPaymentUpdated: isUpdatingThirdPartyStatus,
     });
   } catch (error) {
     console.error("Error updating payment plan:", error);

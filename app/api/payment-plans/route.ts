@@ -9,6 +9,7 @@ import {
   relationships,
   currencyConversionLog,
   exchangeRate,
+  contact,
   PaymentPlan,
   NewPaymentPlan,
   NewPayment,
@@ -30,7 +31,7 @@ const installmentSchema = z.object({
   paymentId: z.number().optional().nullable(),
 });
 
-// Updated schema with proper nullable handling
+// Updated schema with third-party payment support
 const paymentPlanSchema = z.object({
   pledgeId: z.number().positive(),
   relationshipId: z.number().positive().optional(),
@@ -67,6 +68,10 @@ const paymentPlanSchema = z.object({
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
   customInstallments: z.array(installmentSchema).optional(),
+  // Third-party payment fields
+  isThirdPartyPayment: z.boolean().default(false),
+  thirdPartyContactId: z.number().positive().optional().nullable(),
+  payerContactId: z.number().positive().optional(), // The contact ID making the payment (from session/auth)
 }).refine((data) => {
   if (data.distributionType === "fixed") {
     return data.installmentAmount !== undefined && data.numberOfInstallments !== undefined;
@@ -78,6 +83,15 @@ const paymentPlanSchema = z.object({
 }, {
   message: "For 'fixed' distribution type, installmentAmount and numberOfInstallments are required. For 'custom' distribution type, customInstallments array is required.",
   path: ["distributionType"]
+}).refine((data) => {
+  // If it's a third-party payment, thirdPartyContactId must be provided
+  if (data.isThirdPartyPayment) {
+    return data.thirdPartyContactId !== null && data.thirdPartyContactId !== undefined;
+  }
+  return true;
+}, {
+  message: "Third-party contact ID is required when isThirdPartyPayment is true.",
+  path: ["thirdPartyContactId"]
 });
 
 /**
@@ -330,7 +344,7 @@ function validatePaymentData(payment: NewPayment): string[] {
 }
 
 /**
- * Enhanced helper function to create scheduled payment with proper multi-currency handling
+ * Enhanced helper function to create scheduled payment with proper multi-currency handling and third-party support
  */
 async function createScheduledPayment(
   installmentRecord: any,
@@ -341,7 +355,10 @@ async function createScheduledPayment(
   planCurrency: string,
   installmentAmount: number,
   installmentAmountUsd?: number | null,
-  customNotes?: string | null
+  customNotes?: string | null,
+  isThirdParty: boolean = false,
+  payerContactId?: number | null,
+  thirdPartyContactId?: number | null
 ): Promise<NewPayment> {
 
   const paymentCurrency = installmentRecord.currency || validatedData.currency;
@@ -367,8 +384,10 @@ async function createScheduledPayment(
     paymentPlanId,
     installmentScheduleId: installmentRecord.id,
     relationshipId: validatedData.relationshipId || null,
-    payerContactId: null,
-    isThirdPartyPayment: false,
+
+    // Third-party payment fields
+    payerContactId: isThirdParty ? payerContactId || null : null,
+    isThirdPartyPayment: isThirdParty,
 
     // Core payment amount and currency
     amount: safeNumericString(installmentAmount)!,
@@ -440,7 +459,7 @@ async function logCurrencyConversion(
 }
 
 /**
- * Handles POST requests to create a new payment plan.
+ * Handles POST requests to create a new payment plan with third-party payment support.
  */
 export async function POST(request: NextRequest) {
   let createdPaymentPlan: PaymentPlan | null = null;
@@ -451,6 +470,28 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const validatedData = paymentPlanSchema.parse(body);
+
+    // Validate third-party contact exists if this is a third-party payment
+    if (validatedData.isThirdPartyPayment && validatedData.thirdPartyContactId) {
+      const thirdPartyContactExists = await db
+        .select()
+        .from(contact)
+        .where(eq(contact.id, validatedData.thirdPartyContactId))
+        .limit(1);
+
+      if (!thirdPartyContactExists.length) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "thirdPartyContactId",
+              message: "Third-party contact not found with provided ID",
+            }],
+          },
+          { status: 400 }
+        );
+      }
+    }
 
     // Validate relationship if provided
     if (validatedData.relationshipId !== undefined) {
@@ -567,6 +608,7 @@ export async function POST(request: NextRequest) {
         id: pledge.id,
         exchangeRate: pledge.exchangeRate,
         currency: pledge.currency,
+        contactId: pledge.contactId,
       })
       .from(pledge)
       .where(eq(pledge.id, validatedData.pledgeId))
@@ -574,6 +616,22 @@ export async function POST(request: NextRequest) {
 
     if (currentPledge.length === 0) {
       return NextResponse.json({ error: "Pledge not found" }, { status: 404 });
+    }
+
+    // For third-party payments, verify that the pledge belongs to the third-party contact
+    if (validatedData.isThirdPartyPayment && validatedData.thirdPartyContactId) {
+      if (currentPledge[0].contactId !== validatedData.thirdPartyContactId) {
+        return NextResponse.json(
+          {
+            error: "Validation failed",
+            details: [{
+              field: "pledgeId",
+              message: "Selected pledge does not belong to the specified third-party contact",
+            }],
+          },
+          { status: 400 }
+        );
+      }
     }
 
     // Parse exchange rate safely from string to number
@@ -677,6 +735,11 @@ export async function POST(request: NextRequest) {
     createdPaymentPlan = paymentPlanResult[0];
     paymentPlanIdToDelete = createdPaymentPlan.id;
 
+    // Determine payment configuration for third-party vs regular payments
+    const isThirdPartyPayment = validatedData.isThirdPartyPayment;
+    const payerContactId = validatedData.payerContactId; // Contact making the payment
+    const thirdPartyContactId = validatedData.thirdPartyContactId; // Contact whose pledge this is for
+
     // Handle installment schedules and scheduled payments based on distribution type
     if (validatedData.distributionType === "custom" && validatedData.customInstallments) {
       // Custom distribution - insert custom installment schedules and payments
@@ -711,7 +774,7 @@ export async function POST(request: NextRequest) {
       const installmentResults = await db.insert(installmentSchedule).values(installmentsToInsert).returning();
       createdInstallmentIds = installmentResults.map(inst => inst.id);
 
-      // Create scheduled payments for each custom installment
+      // Create scheduled payments for each custom installment (all as third-party if specified)
       const scheduledPayments: NewPayment[] = [];
       for (let i = 0; i < installmentResults.length; i++) {
         const installmentRecord = installmentResults[i];
@@ -726,7 +789,10 @@ export async function POST(request: NextRequest) {
           validatedData.currency, // plan currency
           customInstallment.installmentAmount,
           safeConvert(customInstallment.installmentAmountUsd),
-          customInstallment.notes
+          customInstallment.notes,
+          isThirdPartyPayment,
+          payerContactId,
+          thirdPartyContactId
         );
 
         // Validate payment data before adding
@@ -806,7 +872,7 @@ export async function POST(request: NextRequest) {
       const installmentResults = await db.insert(installmentSchedule).values(installmentsToInsert).returning();
       createdInstallmentIds = installmentResults.map(inst => inst.id);
 
-      // Create scheduled payments for each fixed installment
+      // Create scheduled payments for each fixed installment (all as third-party if specified)
       const scheduledPayments: NewPayment[] = [];
       for (const installmentRecord of installmentResults) {
         const scheduledPayment = await createScheduledPayment(
@@ -817,7 +883,11 @@ export async function POST(request: NextRequest) {
           pledgeCurrency,
           validatedData.currency, // plan currency
           parseFloat(finalInstallmentAmount),
-          installmentAmountUsd ? parseFloat(installmentAmountUsd) : null
+          installmentAmountUsd ? parseFloat(installmentAmountUsd) : null,
+          null,
+          isThirdPartyPayment,
+          payerContactId,
+          thirdPartyContactId
         );
 
         // Validate payment data before adding
@@ -876,11 +946,18 @@ export async function POST(request: NextRequest) {
     }
 
     // All operations successful
+    const successMessage = isThirdPartyPayment
+      ? "Third-party payment plan created successfully with scheduled payments"
+      : "Payment plan created successfully with scheduled payments";
+
     return NextResponse.json(
       {
-        message: "Payment plan created successfully with scheduled payments",
+        message: successMessage,
         paymentPlan: createdPaymentPlan,
         scheduledPaymentsCount: createdPaymentIds.length,
+        isThirdPartyPayment,
+        thirdPartyContactId,
+        payerContactId,
       },
       { status: 201 }
     );
@@ -981,7 +1058,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// GET Endpoint
+// GET Endpoint (unchanged from original)
 const querySchema = z.object({
   pledgeId: z.coerce.number().positive().optional(),
   contactId: z.coerce.number().positive().optional(),
@@ -1045,9 +1122,18 @@ export async function GET(request: NextRequest) {
 
     if (contactId) {
       conditions.push(
-        sql`${paymentPlan.pledgeId} IN (SELECT id FROM ${pledge} WHERE contact_id = ${contactId})`
+        sql`(
+      ${paymentPlan.pledgeId} IN (SELECT id FROM ${pledge} WHERE contact_id = ${contactId})
+      OR
+      ${paymentPlan.id} IN (
+        SELECT DISTINCT payment_plan_id 
+        FROM payment 
+        WHERE payer_contact_id = ${contactId} 
+        AND is_third_party_payment = true
+      )
+    )`
       );
-    }
+    }  
 
     if (planStatus) {
       conditions.push(eq(paymentPlan.planStatus, planStatus));
@@ -1095,14 +1181,49 @@ export async function GET(request: NextRequest) {
         updatedAt: paymentPlan.updatedAt,
         exchangeRate: paymentPlan.exchangeRate,
         pledgeDescription: sql<string>`(
-          SELECT description FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-        )`.as("pledgeDescription"),
+      SELECT description FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+    )`.as("pledgeDescription"),
         pledgeOriginalAmount: sql<string>`(
-          SELECT original_amount FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-        )`.as("pledgeOriginalAmount"),
+      SELECT original_amount FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+    )`.as("pledgeOriginalAmount"),
         contactId: sql<number>`(
-          SELECT contact_id FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
-        )`.as("contactId"),
+      SELECT contact_id FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
+    )`.as("contactId"),
+
+        // NEW: Third-party payment information
+        // Check if any payment in this plan is a third-party payment
+        isThirdPartyPayment: sql<boolean>`(
+      SELECT COALESCE(bool_or(is_third_party_payment), false)
+      FROM payment
+      WHERE payment_plan_id = payment_plan.id
+    )`.as("isThirdPartyPayment"),
+
+        // Get the payer contact ID (from the first payment in the plan)
+        payerContactId: sql<number | null>`(
+      SELECT payer_contact_id
+      FROM payment
+      WHERE payment_plan_id = payment_plan.id
+        AND payer_contact_id IS NOT NULL
+      LIMIT 1
+    )`.as("payerContactId"),
+
+        // Get the payer contact name
+        payerContactName: sql<string | null>`(
+      SELECT CONCAT(c.first_name, ' ', c.last_name)
+      FROM payment p
+      INNER JOIN contact c ON c.id = p.payer_contact_id
+      WHERE p.payment_plan_id = payment_plan.id
+        AND p.payer_contact_id IS NOT NULL
+      LIMIT 1
+    )`.as("payerContactName"),
+
+        // Get the pledge contact name (beneficiary)
+        pledgeContactName: sql<string | null>`(
+      SELECT CONCAT(c.first_name, ' ', c.last_name)
+      FROM pledge pl
+      INNER JOIN contact c ON c.id = pl.contact_id
+      WHERE pl.id = payment_plan.pledge_id
+    )`.as("pledgeContactName"),
       })
       .from(paymentPlan)
       .where(whereClause)
