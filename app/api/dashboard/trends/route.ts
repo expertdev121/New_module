@@ -7,14 +7,104 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "6m";
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
 
-    const now = new Date();
     const labels = [];
     const pledgesData = [];
     const paymentsData = [];
 
-    if (period === "1m") {
+    if (startDate && endDate) {
+      // Custom date range - determine granularity based on range length
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const rangeInDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+
+      if (rangeInDays <= 60) {
+        // Less than 2 months - show daily data
+        const days = [];
+        const current = new Date(start);
+
+        while (current <= end) {
+          days.push(new Date(current));
+          current.setDate(current.getDate() + 1);
+        }
+
+        for (const day of days) {
+          const dayStart = new Date(day);
+          const dayEnd = new Date(day);
+          dayEnd.setDate(dayEnd.getDate() + 1);
+          const startDateStr = dayStart.toISOString().split('T')[0];
+          const endDateStr = dayEnd.toISOString().split('T')[0];
+          const dayLabel = dayStart.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+          labels.push(dayLabel);
+
+          // Pledges for this day
+          const pledgeResult = await db
+            .select({ total: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)` })
+            .from(pledge)
+            .where(and(
+              gte(pledge.pledgeDate, startDateStr),
+              lt(pledge.pledgeDate, endDateStr)
+            ));
+
+          // Payments for this day
+          const paymentResult = await db
+            .select({ total: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)` })
+            .from(payment)
+            .where(and(
+              eq(payment.paymentStatus, "completed"),
+              gte(payment.paymentDate, startDateStr),
+              lt(payment.paymentDate, endDateStr)
+            ));
+
+          pledgesData.push(pledgeResult[0]?.total || 0);
+          paymentsData.push(paymentResult[0]?.total || 0);
+        }
+      } else {
+        // 2 months or more - show monthly data
+        const months = [];
+
+        // Generate monthly intervals
+        const current = new Date(start.getFullYear(), start.getMonth(), 1);
+        while (current < end) {
+          months.push(new Date(current));
+          current.setMonth(current.getMonth() + 1);
+        }
+
+        for (const monthStart of months) {
+          const monthEnd = new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 1);
+          const startDateStr = monthStart.toISOString().split('T')[0];
+          const endDateStr = monthEnd.toISOString().split('T')[0];
+          const monthName = monthStart.toLocaleString('en-US', { month: 'short', year: 'numeric' });
+          labels.push(monthName);
+
+          // Pledges for this month
+          const pledgeResult = await db
+            .select({ total: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)` })
+            .from(pledge)
+            .where(and(
+              gte(pledge.pledgeDate, startDateStr),
+              lt(pledge.pledgeDate, endDateStr)
+            ));
+
+          // Payments for this month
+          const paymentResult = await db
+            .select({ total: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)` })
+            .from(payment)
+            .where(and(
+              eq(payment.paymentStatus, "completed"),
+              gte(payment.paymentDate, startDateStr),
+              lt(payment.paymentDate, endDateStr)
+            ));
+
+          pledgesData.push(pledgeResult[0]?.total || 0);
+          paymentsData.push(paymentResult[0]?.total || 0);
+        }
+      }
+    } else if (period === "1m") {
       // Show last 4 weeks
+      const now = new Date();
       for (let i = 3; i >= 0; i--) {
         const startDate = new Date(now.getTime() - (i + 1) * 7 * 24 * 60 * 60 * 1000);
         const endDate = new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000);
@@ -47,6 +137,7 @@ export async function GET(request: NextRequest) {
       }
     } else if (period === "all") {
       // Show yearly data for all time
+      const now = new Date();
       const currentYear = now.getFullYear();
       // Show last 5 years for "all"
       for (let i = 4; i >= 0; i--) {
@@ -81,6 +172,7 @@ export async function GET(request: NextRequest) {
       }
     } else {
       // Show monthly data
+      const now = new Date();
       const months = period === "3m" ? 3 : period === "6m" ? 6 : period === "1y" ? 12 : 24;
 
       for (let i = months - 1; i >= 0; i--) {

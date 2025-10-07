@@ -52,11 +52,18 @@ export interface RecentActivity {
   method: string;
 }
 
-export const useDashboardOverview = (timeRange?: string) => {
+export const useDashboardOverview = (timeRange?: string, startDate?: string, endDate?: string) => {
   return useQuery<OverviewData, Error>({
-    queryKey: ["dashboard", "overview", timeRange],
+    queryKey: ["dashboard", "overview", timeRange, startDate, endDate],
     queryFn: async () => {
-      const response = await fetch(`/api/dashboard/overview?period=${timeRange || "1m"}`);
+      const params = new URLSearchParams();
+      if (timeRange === "custom" && startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      } else {
+        params.append("period", timeRange || "1m");
+      }
+      const response = await fetch(`/api/dashboard/overview?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch overview: ${response.statusText}`);
       }
@@ -67,11 +74,18 @@ export const useDashboardOverview = (timeRange?: string) => {
   });
 };
 
-export const useDashboardTrends = (timeRange?: string) => {
+export const useDashboardTrends = (timeRange?: string, startDate?: string, endDate?: string) => {
   return useQuery<TrendsData, Error>({
-    queryKey: ["dashboard", "trends", timeRange],
+    queryKey: ["dashboard", "trends", timeRange, startDate, endDate],
     queryFn: async () => {
-      const response = await fetch(`/api/dashboard/trends?period=${timeRange || "6m"}`);
+      const params = new URLSearchParams();
+      if (timeRange === "custom" && startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      } else {
+        params.append("period", timeRange || "6m");
+      }
+      const response = await fetch(`/api/dashboard/trends?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch trends: ${response.statusText}`);
       }

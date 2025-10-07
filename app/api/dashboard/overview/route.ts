@@ -7,40 +7,65 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "1m"; // Default to 1 month
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
 
-    // Calculate period in days
-    const periodDays = period === "1m" ? 30 : period === "3m" ? 90 : period === "6m" ? 180 : period === "1y" ? 365 : 730; // all = 2 years
+    let contactsGrowthPercentage = 0;
+    let totalContacts = 0;
 
-    // Total contacts
-    const totalContactsResult = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(contact);
-    const totalContacts = totalContactsResult[0]?.count || 0;
+    if (startDate && endDate) {
+      // For custom dates, calculate total contacts and growth within the date range
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
 
-    // Contacts growth percentage (current period vs previous period)
-    const now = new Date();
-    const currentPeriodStart = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
-    const previousPeriodStart = new Date(now.getTime() - 2 * periodDays * 24 * 60 * 60 * 1000);
-    const previousPeriodEnd = currentPeriodStart;
+      // Total contacts within the date range
+      const totalContactsResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(contact)
+        .where(and(
+          gte(contact.createdAt, start),
+          lt(contact.createdAt, end)
+        ));
+      totalContacts = totalContactsResult[0]?.count || 0;
 
-    const currentPeriodContactsResult = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(contact)
-      .where(gte(contact.createdAt, currentPeriodStart));
-    const currentPeriodContacts = currentPeriodContactsResult[0]?.count || 0;
+      // For custom dates, we can't easily calculate growth percentage, so set to 0
+      contactsGrowthPercentage = 0;
+    } else {
+      // Calculate period in days
+      const periodDays = period === "1m" ? 30 : period === "3m" ? 90 : period === "6m" ? 180 : period === "1y" ? 365 : 730; // all = 2 years
 
-    const previousPeriodContactsResult = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(contact)
-      .where(and(
-        gte(contact.createdAt, previousPeriodStart),
-        lt(contact.createdAt, previousPeriodEnd)
-      ));
-    const previousPeriodContacts = previousPeriodContactsResult[0]?.count || 0;
+      // Total contacts
+      const totalContactsResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(contact);
+      totalContacts = totalContactsResult[0]?.count || 0;
 
-    const contactsGrowthPercentage = previousPeriodContacts > 0
-      ? ((currentPeriodContacts - previousPeriodContacts) / previousPeriodContacts) * 100
-      : 0;
+      // Contacts growth percentage (current period vs previous period)
+      const now = new Date();
+      const currentPeriodStart = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
+      const previousPeriodStart = new Date(now.getTime() - 2 * periodDays * 24 * 60 * 60 * 1000);
+      const previousPeriodEnd = currentPeriodStart;
+
+      const currentPeriodContactsResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(contact)
+        .where(gte(contact.createdAt, currentPeriodStart));
+      const currentPeriodContacts = currentPeriodContactsResult[0]?.count || 0;
+
+      const previousPeriodContactsResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(contact)
+        .where(and(
+          gte(contact.createdAt, previousPeriodStart),
+          lt(contact.createdAt, previousPeriodEnd)
+        ));
+      const previousPeriodContacts = previousPeriodContactsResult[0]?.count || 0;
+
+      contactsGrowthPercentage = previousPeriodContacts > 0
+        ? ((currentPeriodContacts - previousPeriodContacts) / previousPeriodContacts) * 100
+        : 0;
+    }
 
     // Total pledges and amount
     const pledgesResult = await db

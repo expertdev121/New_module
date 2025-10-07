@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Download, TrendingUp, Users, DollarSign, Calendar, CreditCard, FileText, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import {
   Chart as ChartJS,
@@ -64,10 +66,21 @@ export default function DashboardPage() {
   const [timeRange, setTimeRange] = useState("6m");
   const [selectedContact, setSelectedContact] = useState("all");
   const [loading, setLoading] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
+  const [isCustomRange, setIsCustomRange] = useState(false);
 
   // Data queries
-  const { data: overviewData, isLoading: overviewLoading } = useDashboardOverview(timeRange);
-  const { data: trendsData, isLoading: trendsLoading } = useDashboardTrends(timeRange);
+  const { data: overviewData, isLoading: overviewLoading } = useDashboardOverview(
+    timeRange,
+    timeRange === "custom" ? customStartDate : undefined,
+    timeRange === "custom" ? customEndDate : undefined
+  );
+  const { data: trendsData, isLoading: trendsLoading } = useDashboardTrends(
+    timeRange,
+    timeRange === "custom" ? customStartDate : undefined,
+    timeRange === "custom" ? customEndDate : undefined
+  );
   const { data: paymentMethodData, isLoading: paymentMethodsLoading } = useDashboardPaymentMethods();
   const { data: pledgeStatusData, isLoading: pledgeStatusLoading } = useDashboardPledgeStatus();
   const { data: topDonors = [], isLoading: topDonorsLoading } = useDashboardTopDonors();
@@ -288,8 +301,17 @@ export default function DashboardPage() {
               <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
               <p className="text-gray-500 mt-1">Welcome back, {session.user.email}</p>
             </div>
-            <div className="flex gap-3">
-              <Select value={timeRange} onValueChange={setTimeRange}>
+            <div className="flex gap-3 items-center">
+              <Select value={timeRange} onValueChange={(value) => {
+                if (value === "custom") {
+                  setIsCustomRange(true);
+                } else {
+                  setIsCustomRange(false);
+                  setCustomStartDate("");
+                  setCustomEndDate("");
+                }
+                setTimeRange(value);
+              }}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="Select period" />
                 </SelectTrigger>
@@ -299,8 +321,33 @@ export default function DashboardPage() {
                   <SelectItem value="6m">Last 6 Months</SelectItem>
                   <SelectItem value="1y">Last Year</SelectItem>
                   <SelectItem value="all">All Time</SelectItem>
+                  <SelectItem value="custom">Custom Range</SelectItem>
                 </SelectContent>
               </Select>
+              {timeRange === "custom" && (
+                <div className="flex gap-2 items-center">
+                  <div className="flex flex-col">
+                    <Label htmlFor="start-date" className="text-xs text-gray-600">Start Date</Label>
+                    <Input
+                      id="start-date"
+                      type="date"
+                      value={customStartDate}
+                      onChange={(e) => setCustomStartDate(e.target.value)}
+                      className="w-32 h-8"
+                    />
+                  </div>
+                  <div className="flex flex-col">
+                    <Label htmlFor="end-date" className="text-xs text-gray-600">End Date</Label>
+                    <Input
+                      id="end-date"
+                      type="date"
+                      value={customEndDate}
+                      onChange={(e) => setCustomEndDate(e.target.value)}
+                      className="w-32 h-8"
+                    />
+                  </div>
+                </div>
+              )}
               <Button variant="outline" onClick={() => exportData("csv")} disabled={loading}>
                 <Download className="w-4 h-4 mr-2" />
                 CSV
@@ -381,7 +428,9 @@ export default function DashboardPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Pledges vs Payments Trend</CardTitle>
-                    <CardDescription>Monthly comparison over time</CardDescription>
+                    <CardDescription>
+                      {timeRange === "custom" ? "Daily/Monthly comparison over time" : "Monthly comparison over time"}
+                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="h-[300px]">
