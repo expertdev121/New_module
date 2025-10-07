@@ -5,29 +5,36 @@ import { contact, pledge, payment, paymentPlan, installmentSchedule } from "@/li
 
 export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url);
+    const period = searchParams.get("period") || "1m"; // Default to 1 month
+
+    // Calculate period in days
+    const periodDays = period === "1m" ? 30 : period === "3m" ? 90 : period === "6m" ? 180 : period === "1y" ? 365 : 730; // all = 2 years
+
     // Total contacts
     const totalContactsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(contact);
     const totalContacts = totalContactsResult[0]?.count || 0;
 
-    // Contacts growth percentage (last 30 days vs previous 30 days)
+    // Contacts growth percentage (current period vs previous period)
     const now = new Date();
-    const last30Days = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    const previous30Days = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000);
+    const currentPeriodStart = new Date(now.getTime() - periodDays * 24 * 60 * 60 * 1000);
+    const previousPeriodStart = new Date(now.getTime() - 2 * periodDays * 24 * 60 * 60 * 1000);
+    const previousPeriodEnd = currentPeriodStart;
 
     const currentPeriodContactsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(contact)
-      .where(gte(contact.createdAt, last30Days));
+      .where(gte(contact.createdAt, currentPeriodStart));
     const currentPeriodContacts = currentPeriodContactsResult[0]?.count || 0;
 
     const previousPeriodContactsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(contact)
       .where(and(
-        gte(contact.createdAt, previous30Days),
-        lt(contact.createdAt, last30Days)
+        gte(contact.createdAt, previousPeriodStart),
+        lt(contact.createdAt, previousPeriodEnd)
       ));
     const previousPeriodContacts = previousPeriodContactsResult[0]?.count || 0;
 

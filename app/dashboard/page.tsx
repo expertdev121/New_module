@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
@@ -23,6 +23,14 @@ import {
 } from 'chart.js';
 import type { TooltipItem } from 'chart.js';
 import { Line, Bar, Pie, Doughnut } from 'react-chartjs-2';
+import {
+  useDashboardOverview,
+  useDashboardTrends,
+  useDashboardPaymentMethods,
+  useDashboardPledgeStatus,
+  useDashboardTopDonors,
+  useDashboardRecentActivity,
+} from "@/lib/query/useDashboard";
 
 ChartJS.register(
   CategoryScale,
@@ -36,59 +44,6 @@ ChartJS.register(
   Legend,
   Filler
 );
-
-// Data interfaces
-interface OverviewData {
-  totalContacts: number;
-  contactsGrowthPercentage: number;
-  totalPledges: number;
-  totalPledgeAmount: number;
-  totalPayments: number;
-  totalPaymentAmount: number;
-  activePlans: number;
-  scheduledPayments: number;
-  unscheduledPayments: number;
-  thirdPartyPayments: number;
-  collectionRate: number;
-  avgPledgeSize: number;
-  avgPaymentSize: number;
-}
-
-interface TrendsData {
-  labels: string[];
-  pledges: number[];
-  payments: number[];
-}
-
-interface PaymentMethodData {
-  labels: string[];
-  values: number[];
-  counts: number[];
-}
-
-interface PledgeStatusData {
-  labels: string[];
-  values: number[];
-  percentages: number[];
-}
-
-interface TopDonor {
-  name: string;
-  pledges: number;
-  pledgeAmount: number;
-  thirdPartyAmount: number;
-  amount: number;
-  pledgedAmount: number;
-  completion: number;
-}
-
-interface RecentActivity {
-  type: string;
-  contactName: string;
-  amount: number;
-  date: string;
-  method: string;
-}
 
 const CHART_COLORS = {
   blue: 'rgb(59, 130, 246)',
@@ -110,61 +65,25 @@ export default function DashboardPage() {
   const [selectedContact, setSelectedContact] = useState("all");
   const [loading, setLoading] = useState(false);
 
-  // Data states
-  const [overviewData, setOverviewData] = useState<OverviewData | null>(null);
-  const [trendsData, setTrendsData] = useState<TrendsData | null>(null);
-  const [paymentMethodData, setPaymentMethodData] = useState<PaymentMethodData | null>(null);
-  const [pledgeStatusData, setPledgeStatusData] = useState<PledgeStatusData | null>(null);
-  const [topDonors, setTopDonors] = useState<TopDonor[]>([]);
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
-  const [dataLoading, setDataLoading] = useState(true);
+  // Data queries
+  const { data: overviewData, isLoading: overviewLoading } = useDashboardOverview(timeRange);
+  const { data: trendsData, isLoading: trendsLoading } = useDashboardTrends(timeRange);
+  const { data: paymentMethodData, isLoading: paymentMethodsLoading } = useDashboardPaymentMethods();
+  const { data: pledgeStatusData, isLoading: pledgeStatusLoading } = useDashboardPledgeStatus();
+  const { data: topDonors = [], isLoading: topDonorsLoading } = useDashboardTopDonors();
+  const { data: recentActivity = [], isLoading: recentActivityLoading } = useDashboardRecentActivity();
 
-  useEffect(() => {
-    if (status === "loading") return;
-    if (!session) {
-      router.push("/auth/login");
-    } else if (session.user.role !== "admin") {
-      router.push("/contacts");
-    }
-  }, [session, status, router]);
+  const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading;
 
-  useEffect(() => {
-    const fetchDashboardData = async () => {
-      try {
-        setDataLoading(true);
-        const [
-          overviewRes,
-          trendsRes,
-          paymentMethodsRes,
-          pledgeStatusRes,
-          topDonorsRes,
-          recentActivityRes,
-        ] = await Promise.all([
-          fetch("/api/dashboard/overview"),
-          fetch("/api/dashboard/trends"),
-          fetch("/api/dashboard/payment-methods"),
-          fetch("/api/dashboard/pledge-status"),
-          fetch("/api/dashboard/top-donors"),
-          fetch("/api/dashboard/recent-activity"),
-        ]);
-
-        if (overviewRes.ok) setOverviewData(await overviewRes.json());
-        if (trendsRes.ok) setTrendsData(await trendsRes.json());
-        if (paymentMethodsRes.ok) setPaymentMethodData(await paymentMethodsRes.json());
-        if (pledgeStatusRes.ok) setPledgeStatusData(await pledgeStatusRes.json());
-        if (topDonorsRes.ok) setTopDonors(await topDonorsRes.json());
-        if (recentActivityRes.ok) setRecentActivity(await recentActivityRes.json());
-      } catch (error) {
-        console.error("Error fetching dashboard data:", error);
-      } finally {
-        setDataLoading(false);
-      }
-    };
-
-    if (session && session.user.role === "admin") {
-      fetchDashboardData();
-    }
-  }, [session]);
+  if (status === "loading") return <div className="flex items-center justify-center h-screen">Loading...</div>;
+  if (!session) {
+    router.push("/auth/login");
+    return null;
+  }
+  if (session.user.role !== "admin") {
+    router.push("/contacts");
+    return null;
+  }
 
   const exportData = (format: "csv" | "pdf") => {
     setLoading(true);
@@ -174,12 +93,8 @@ export default function DashboardPage() {
     }, 1000);
   };
 
-  if (status === "loading" || dataLoading) {
+  if (isLoading) {
     return <div className="flex items-center justify-center h-screen">Loading...</div>;
-  }
-
-  if (!session) {
-    return null;
   }
 
   const formatCurrency = (value: number) => {
@@ -235,7 +150,11 @@ export default function DashboardPage() {
         ticks: {
           callback: function(tickValue: string | number) {
             if (typeof tickValue === 'number') {
-              return '$' + (tickValue / 1000) + 'k';
+              if (tickValue >= 1000) {
+                return '$' + (tickValue / 1000) + 'k';
+              } else {
+                return formatCurrency(tickValue);
+              }
             }
             return tickValue;
           }
@@ -413,7 +332,7 @@ export default function DashboardPage() {
                     <div className="text-2xl font-bold">{overviewData?.totalContacts.toLocaleString() || 0}</div>
                     <p className="text-xs text-green-600 flex items-center mt-1">
                       <ArrowUpRight className="w-3 h-3 mr-1" />
-                      {overviewData?.contactsGrowthPercentage || 0}% from last month
+                      {overviewData?.contactsGrowthPercentage || 0}% from previous period
                     </p>
                   </CardContent>
                 </Card>
