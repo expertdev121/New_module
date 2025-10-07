@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { NuqsAdapter } from "nuqs/adapters/next/app";
-import { TanstackQueryProvider } from "./query-provider";
-import { Toaster } from "@/components/ui/sonner";
+import { Providers } from "@/components/providers";
 import { CurrentBreadcrumb } from "@/components/current-page";
 
 const geistSans = Geist({
@@ -31,15 +29,12 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <TanstackQueryProvider>
-          <NuqsAdapter>
-            <main className="container mx-auto py-8 max-w-7xl">
-              <CurrentBreadcrumb />
-              {children}
-            </main>
-            <Toaster position="top-center" />
-          </NuqsAdapter>
-        </TanstackQueryProvider>
+        <Providers>
+          <main className="container mx-auto py-8 max-w-7xl">
+            <CurrentBreadcrumb />
+            {children}
+          </main>
+        </Providers>
       </body>
     </html>
   );

@@ -1,0 +1,81 @@
+import { NextAuthOptions } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { DrizzleAdapter } from "@auth/drizzle-adapter";
+import { db } from "@/lib/db";
+import { user } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
+import bcrypt from "bcryptjs";
+
+export const authOptions: NextAuthOptions = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  adapter: DrizzleAdapter(db) as any,
+  providers: [
+    CredentialsProvider({
+      name: "credentials",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          return null;
+        }
+
+        const users = await db
+          .select({
+            id: user.id,
+            email: user.email,
+            passwordHash: user.passwordHash,
+            role: user.role,
+            status: user.status,
+          })
+          .from(user)
+          .where(eq(user.email, credentials.email))
+          .limit(1);
+
+        if (users.length === 0) {
+          return null;
+        }
+
+        const foundUser = users[0];
+        const isValid = await bcrypt.compare(credentials.password, foundUser.passwordHash);
+
+        if (!isValid) {
+          return null;
+        }
+
+        // Check if account is suspended
+        if (foundUser.status === "suspended") {
+          throw new Error("Your account has been suspended. Please contact an administrator.");
+        }
+
+        return {
+          id: foundUser.id.toString(),
+          email: foundUser.email,
+          role: foundUser.role,
+        };
+      },
+    }),
+  ],
+  session: {
+    strategy: "jwt",
+  },
+  callbacks: {
+    async jwt({ token, user }) {
+      if (user) {
+        token.role = user.role;
+      }
+      return token;
+    },
+    async session({ session, token }) {
+      if (token) {
+        session.user.id = token.sub!;
+        session.user.role = token.role as string;
+      }
+      return session;
+    },
+  },
+  pages: {
+    signIn: "/auth/login",
+  },
+};

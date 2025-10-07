@@ -263,6 +263,24 @@
     "cancelled",
   ]);
 
+  export const roleEnum = pgEnum("role", ["admin", "user"]);
+
+  export const userStatusEnum = pgEnum("user_status", ["active", "suspended"]);
+
+  export const user = pgTable("user", {
+    id: serial("id").primaryKey(),
+    email: text("email").notNull().unique(),
+    passwordHash: text("password_hash").notNull(),
+    role: roleEnum("role").notNull().default("user"),
+    status: userStatusEnum("status").notNull().default("active"),
+    isActive: boolean("is_active").default(true).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  });
+
+  export type User = typeof user.$inferSelect;
+  export type NewUser = typeof user.$inferInsert;
+
   export const contact = pgTable("contact", {
     id: serial("id").primaryKey(),
     ghlContactId: text("ghl_contact_id"),

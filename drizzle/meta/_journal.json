@@ -50,6 +50,13 @@
       "when": 1758345334569,
       "tag": "0006_abnormal_dragon_lord",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1759813367072,
+      "tag": "0007_happy_solo",
+      "breakpoints": true
     }
   ]
 }
