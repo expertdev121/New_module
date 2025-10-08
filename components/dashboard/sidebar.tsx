@@ -4,7 +4,7 @@ import { signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen } from "lucide-react";
+import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard } from "lucide-react";
 
 export function Sidebar() {
   const router = useRouter();
@@ -60,6 +60,14 @@ export function Sidebar() {
           >
             <FolderOpen className="mr-2 h-4 w-4" />
             Manage Categories
+          </Button>
+          <Button
+            variant={isActive("/admin/payment-methods") ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => router.push("/admin/payment-methods")}
+          >
+            <CreditCard className="mr-2 h-4 w-4" />
+            Payment Methods
           </Button>
         </nav>
         <div className="pt-4 border-t">

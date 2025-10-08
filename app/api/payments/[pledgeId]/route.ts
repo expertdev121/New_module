@@ -41,7 +41,7 @@ interface PaymentItem {
   exchangeRate: string | null;
   paymentDate: string;
   receivedDate: string | null;
-  paymentMethod: string;
+  paymentMethod: string| null;
   methodDetail: string | null;
   paymentStatus: string;
   referenceNumber: string | null;

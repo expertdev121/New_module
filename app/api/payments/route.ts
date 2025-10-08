@@ -54,7 +54,7 @@ interface PaymentWithDetails {
   receivedDate: string | null;
   checkDate: string | null;
   account: string | null;
-  paymentMethod: string;
+  paymentMethod: string| null;
   methodDetail: string | null;
   paymentStatus: string;
   referenceNumber: string | null;
