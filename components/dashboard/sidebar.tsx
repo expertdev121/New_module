@@ -4,7 +4,7 @@ import { signOut } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, Users, Home, UserPlus, UserCog } from "lucide-react";
+import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen } from "lucide-react";
 
 export function Sidebar() {
   const router = useRouter();
@@ -52,6 +52,14 @@ export function Sidebar() {
           >
             <UserCog className="mr-2 h-4 w-4" />
             Manage Users
+          </Button>
+          <Button
+            variant={isActive("/admin/categories") ? "default" : "ghost"}
+            className="w-full justify-start"
+            onClick={() => router.push("/admin/categories")}
+          >
+            <FolderOpen className="mr-2 h-4 w-4" />
+            Manage Categories
           </Button>
         </nav>
         <div className="pt-4 border-t">

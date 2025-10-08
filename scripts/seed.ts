@@ -17,7 +17,7 @@ async function seed() {
 
     console.log("Admin user seeded successfully");
 
-    const userHashedPassword = await bcrypt.hash("  ", 10);
+    const userHashedPassword = await bcrypt.hash("user123", 10);
 
     await db.insert(user).values({
       email: "user@example.com",
