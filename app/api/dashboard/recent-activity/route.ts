@@ -1,12 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, eq, desc } from "drizzle-orm";
+import { sql, eq, desc, and, gte, lt, lte, SQL } from "drizzle-orm";
 import { contact, payment, pledge } from "@/lib/db/schema";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "5");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+
+    let paymentWhereCondition: SQL<unknown> = eq(payment.paymentStatus, "completed");
+    let pledgeWhereCondition: SQL<unknown> | undefined = undefined;
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      paymentWhereCondition = and(
+        eq(payment.paymentStatus, "completed"),
+        gte(payment.paymentDate, start.toISOString().split('T')[0]),
+        lte(payment.paymentDate, end.toISOString().split('T')[0])
+      ) as SQL<unknown>;
+      pledgeWhereCondition = and(
+        gte(pledge.pledgeDate, start.toISOString().split('T')[0]),
+        lte(pledge.pledgeDate, end.toISOString().split('T')[0])
+      );
+    }
 
     // Recent payments
     const recentPayments = await db
@@ -21,7 +40,7 @@ export async function GET(request: NextRequest) {
       .from(payment)
       .leftJoin(pledge, eq(payment.pledgeId, pledge.id))
       .leftJoin(contact, sql`COALESCE(${payment.payerContactId}, ${pledge.contactId}) = ${contact.id}`)
-      .where(eq(payment.paymentStatus, "completed"))
+      .where(paymentWhereCondition)
       .orderBy(desc(payment.paymentDate))
       .limit(limit);
 
@@ -37,6 +56,7 @@ export async function GET(request: NextRequest) {
       })
       .from(pledge)
       .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(pledgeWhereCondition)
       .orderBy(desc(pledge.pledgeDate))
       .limit(limit);
 

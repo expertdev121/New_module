@@ -96,11 +96,16 @@ export const useDashboardTrends = (timeRange?: string, startDate?: string, endDa
   });
 };
 
-export const useDashboardPaymentMethods = () => {
+export const useDashboardPaymentMethods = (startDate?: string, endDate?: string) => {
   return useQuery<PaymentMethodData, Error>({
-    queryKey: ["dashboard", "payment-methods"],
+    queryKey: ["dashboard", "payment-methods", startDate, endDate],
     queryFn: async () => {
-      const response = await fetch("/api/dashboard/payment-methods");
+      const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      }
+      const response = await fetch(`/api/dashboard/payment-methods?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch payment methods: ${response.statusText}`);
       }
@@ -111,11 +116,16 @@ export const useDashboardPaymentMethods = () => {
   });
 };
 
-export const useDashboardPledgeStatus = () => {
+export const useDashboardPledgeStatus = (startDate?: string, endDate?: string) => {
   return useQuery<PledgeStatusData, Error>({
-    queryKey: ["dashboard", "pledge-status"],
+    queryKey: ["dashboard", "pledge-status", startDate, endDate],
     queryFn: async () => {
-      const response = await fetch("/api/dashboard/pledge-status");
+      const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      }
+      const response = await fetch(`/api/dashboard/pledge-status?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch pledge status: ${response.statusText}`);
       }
@@ -126,11 +136,16 @@ export const useDashboardPledgeStatus = () => {
   });
 };
 
-export const useDashboardTopDonors = () => {
+export const useDashboardTopDonors = (startDate?: string, endDate?: string) => {
   return useQuery<TopDonor[], Error>({
-    queryKey: ["dashboard", "top-donors"],
+    queryKey: ["dashboard", "top-donors", startDate, endDate],
     queryFn: async () => {
-      const response = await fetch("/api/dashboard/top-donors");
+      const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      }
+      const response = await fetch(`/api/dashboard/top-donors?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch top donors: ${response.statusText}`);
       }
@@ -141,11 +156,16 @@ export const useDashboardTopDonors = () => {
   });
 };
 
-export const useDashboardRecentActivity = () => {
+export const useDashboardRecentActivity = (startDate?: string, endDate?: string) => {
   return useQuery<RecentActivity[], Error>({
-    queryKey: ["dashboard", "recent-activity"],
+    queryKey: ["dashboard", "recent-activity", startDate, endDate],
     queryFn: async () => {
-      const response = await fetch("/api/dashboard/recent-activity");
+      const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      }
+      const response = await fetch(`/api/dashboard/recent-activity?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch recent activity: ${response.statusText}`);
       }

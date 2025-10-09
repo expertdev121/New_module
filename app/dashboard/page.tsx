@@ -5,11 +5,12 @@ import { useRouter } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Download, TrendingUp, Users, DollarSign, Calendar, CreditCard, FileText, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Download, Users, DollarSign, Calendar, FileText, ArrowUpRight } from "lucide-react";
+import { DateRangePicker, RangeKeyDict } from 'react-date-range';
+import 'react-date-range/dist/styles.css';
+import 'react-date-range/dist/theme/default.css';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -63,28 +64,43 @@ const CHART_COLORS = {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [timeRange, setTimeRange] = useState("6m");
-  const [selectedContact, setSelectedContact] = useState("all");
+  const [dateRange, setDateRange] = useState([
+    {
+      startDate: new Date(new Date().setMonth(new Date().getMonth() - 6)),
+      endDate: new Date(),
+      key: 'selection'
+    }
+  ]);
+
   const [loading, setLoading] = useState(false);
-  const [customStartDate, setCustomStartDate] = useState("");
-  const [customEndDate, setCustomEndDate] = useState("");
-  const [isCustomRange, setIsCustomRange] = useState(false);
 
   // Data queries
   const { data: overviewData, isLoading: overviewLoading } = useDashboardOverview(
-    timeRange,
-    timeRange === "custom" ? customStartDate : undefined,
-    timeRange === "custom" ? customEndDate : undefined
+    "custom",
+    dateRange[0].startDate.toISOString().split('T')[0],
+    dateRange[0].endDate.toISOString().split('T')[0]
   );
   const { data: trendsData, isLoading: trendsLoading } = useDashboardTrends(
-    timeRange,
-    timeRange === "custom" ? customStartDate : undefined,
-    timeRange === "custom" ? customEndDate : undefined
+    "custom",
+    dateRange[0].startDate.toISOString().split('T')[0],
+    dateRange[0].endDate.toISOString().split('T')[0]
   );
-  const { data: paymentMethodData, isLoading: paymentMethodsLoading } = useDashboardPaymentMethods();
-  const { data: pledgeStatusData, isLoading: pledgeStatusLoading } = useDashboardPledgeStatus();
-  const { data: topDonors = [], isLoading: topDonorsLoading } = useDashboardTopDonors();
-  const { data: recentActivity = [], isLoading: recentActivityLoading } = useDashboardRecentActivity();
+  const { data: paymentMethodData, isLoading: paymentMethodsLoading } = useDashboardPaymentMethods(
+    dateRange[0].startDate.toISOString().split('T')[0],
+    dateRange[0].endDate.toISOString().split('T')[0]
+  );
+  const { data: pledgeStatusData, isLoading: pledgeStatusLoading } = useDashboardPledgeStatus(
+    dateRange[0].startDate.toISOString().split('T')[0],
+    dateRange[0].endDate.toISOString().split('T')[0]
+  );
+  const { data: topDonors = [], isLoading: topDonorsLoading } = useDashboardTopDonors(
+    dateRange[0].startDate.toISOString().split('T')[0],
+    dateRange[0].endDate.toISOString().split('T')[0]
+  );
+  const { data: recentActivity = [], isLoading: recentActivityLoading } = useDashboardRecentActivity(
+    dateRange[0].startDate.toISOString().split('T')[0],
+    dateRange[0].endDate.toISOString().split('T')[0]
+  );
 
   const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading;
 
@@ -302,52 +318,24 @@ export default function DashboardPage() {
               <p className="text-gray-500 mt-1">Welcome back, {session.user.email}</p>
             </div>
             <div className="flex gap-3 items-center">
-              <Select value={timeRange} onValueChange={(value) => {
-                if (value === "custom") {
-                  setIsCustomRange(true);
-                } else {
-                  setIsCustomRange(false);
-                  setCustomStartDate("");
-                  setCustomEndDate("");
-                }
-                setTimeRange(value);
-              }}>
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select period" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1m">Last Month</SelectItem>
-                  <SelectItem value="3m">Last 3 Months</SelectItem>
-                  <SelectItem value="6m">Last 6 Months</SelectItem>
-                  <SelectItem value="1y">Last Year</SelectItem>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="custom">Custom Range</SelectItem>
-                </SelectContent>
-              </Select>
-              {timeRange === "custom" && (
-                <div className="flex gap-2 items-center">
-                  <div className="flex flex-col">
-                    <Label htmlFor="start-date" className="text-xs text-gray-600">Start Date</Label>
-                    <Input
-                      id="start-date"
-                      type="date"
-                      value={customStartDate}
-                      onChange={(e) => setCustomStartDate(e.target.value)}
-                      className="w-32 h-8"
-                    />
-                  </div>
-                  <div className="flex flex-col">
-                    <Label htmlFor="end-date" className="text-xs text-gray-600">End Date</Label>
-                    <Input
-                      id="end-date"
-                      type="date"
-                      value={customEndDate}
-                      onChange={(e) => setCustomEndDate(e.target.value)}
-                      className="w-32 h-8"
-                    />
-                  </div>
-                </div>
-              )}
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline">
+                    <Calendar className="w-4 h-4 mr-2" />
+                    {dateRange[0].startDate.toLocaleDateString()} - {dateRange[0].endDate.toLocaleDateString()}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0">
+                  <DateRangePicker
+                    onChange={(item: RangeKeyDict) => setDateRange([item.selection as { startDate: Date; endDate: Date; key: string }])}
+                    showSelectionPreview={true}
+                    moveRangeOnFirstSelection={false}
+                    months={2}
+                    ranges={dateRange}
+                    direction="horizontal"
+                  />
+                </PopoverContent>
+              </Popover>
               <Button variant="outline" onClick={() => exportData("csv")} disabled={loading}>
                 <Download className="w-4 h-4 mr-2" />
                 CSV
@@ -429,7 +417,7 @@ export default function DashboardPage() {
                   <CardHeader>
                     <CardTitle>Pledges vs Payments Trend</CardTitle>
                     <CardDescription>
-                      {timeRange === "custom" ? "Daily/Monthly comparison over time" : "Monthly comparison over time"}
+                      Comparison over selected period
                     </CardDescription>
                   </CardHeader>
                   <CardContent>

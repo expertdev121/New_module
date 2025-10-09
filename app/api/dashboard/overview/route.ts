@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, eq, and, gte, lt } from "drizzle-orm";
+import { sql, eq, and, gte, lt, lte, SQL } from "drizzle-orm";
 import { contact, pledge, payment, paymentPlan, installmentSchedule } from "@/lib/db/schema";
 
 export async function GET(request: NextRequest) {
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
         .from(contact)
         .where(and(
           gte(contact.createdAt, start),
-          lt(contact.createdAt, end)
+          lte(contact.createdAt, end)
         ));
       totalContacts = totalContactsResult[0]?.count || 0;
 
@@ -67,6 +67,23 @@ export async function GET(request: NextRequest) {
         : 0;
     }
 
+    let pledgeWhereCondition: SQL<unknown> = sql`1=1`;
+    let paymentWhereCondition: SQL<unknown> = eq(payment.paymentStatus, "completed");
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      pledgeWhereCondition = and(
+        gte(pledge.pledgeDate, start.toISOString().split('T')[0]),
+        lte(pledge.pledgeDate, end.toISOString().split('T')[0])
+      ) as SQL<unknown>;
+      paymentWhereCondition = and(
+        eq(payment.paymentStatus, "completed"),
+        gte(payment.paymentDate, start.toISOString().split('T')[0]),
+        lte(payment.paymentDate, end.toISOString().split('T')[0])
+      )as SQL<unknown>;
+    }
+
     // Total pledges and amount
     const pledgesResult = await db
       .select({
@@ -74,7 +91,8 @@ export async function GET(request: NextRequest) {
         totalAmount: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`,
         avgSize: sql<number>`COALESCE(AVG(${pledge.originalAmountUsd}), 0)`,
       })
-      .from(pledge);
+      .from(pledge)
+      .where(pledgeWhereCondition);
     const totalPledges = pledgesResult[0]?.count || 0;
     const totalPledgeAmount = pledgesResult[0]?.totalAmount || 0;
     const avgPledgeSize = pledgesResult[0]?.avgSize || 0;
@@ -87,7 +105,7 @@ export async function GET(request: NextRequest) {
         avgSize: sql<number>`COALESCE(AVG(${payment.amountUsd}), 0)`,
       })
       .from(payment)
-      .where(eq(payment.paymentStatus, "completed"));
+      .where(paymentWhereCondition);
     const totalPayments = paymentsResult[0]?.count || 0;
     const totalPaymentAmount = paymentsResult[0]?.totalAmount || 0;
     const avgPaymentSize = paymentsResult[0]?.avgSize || 0;

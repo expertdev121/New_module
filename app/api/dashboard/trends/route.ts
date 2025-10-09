@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, eq, and, gte, lt } from "drizzle-orm";
+import { sql, eq, and, gte, lt, lte } from "drizzle-orm";
 import { pledge, payment } from "@/lib/db/schema";
 
 export async function GET(request: NextRequest) {
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
             .from(pledge)
             .where(and(
               gte(pledge.pledgeDate, startDateStr),
-              lt(pledge.pledgeDate, endDateStr)
+              lte(pledge.pledgeDate, endDateStr)
             ));
 
           // Payments for this day
@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
             .where(and(
               eq(payment.paymentStatus, "completed"),
               gte(payment.paymentDate, startDateStr),
-              lt(payment.paymentDate, endDateStr)
+              lte(payment.paymentDate, endDateStr)
             ));
 
           pledgesData.push(pledgeResult[0]?.total || 0);
@@ -85,7 +85,7 @@ export async function GET(request: NextRequest) {
             .from(pledge)
             .where(and(
               gte(pledge.pledgeDate, startDateStr),
-              lt(pledge.pledgeDate, endDateStr)
+              lte(pledge.pledgeDate, endDateStr)
             ));
 
           // Payments for this month
@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
             .where(and(
               eq(payment.paymentStatus, "completed"),
               gte(payment.paymentDate, startDateStr),
-              lt(payment.paymentDate, endDateStr)
+              lte(payment.paymentDate, endDateStr)
             ));
 
           pledgesData.push(pledgeResult[0]?.total || 0);

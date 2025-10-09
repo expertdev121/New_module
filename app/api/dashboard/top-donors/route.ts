@@ -1,12 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, eq, and } from "drizzle-orm";
+import { sql, eq, and, gte, lt, lte, SQL } from "drizzle-orm";
 import { contact, pledge, payment } from "@/lib/db/schema";
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "5");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
+
+    let pledgeWhereCondition: SQL<unknown> | undefined = undefined;
+    let paymentWhereCondition: SQL<unknown> | undefined = undefined;
+
+    if (startDate && endDate) {
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      pledgeWhereCondition = and(
+        gte(pledge.pledgeDate, start.toISOString().split('T')[0]),
+        lte(pledge.pledgeDate, end.toISOString().split('T')[0])
+      );
+      paymentWhereCondition = and(
+        eq(payment.paymentStatus, "completed"),
+        gte(payment.paymentDate, start.toISOString().split('T')[0]),
+        lte(payment.paymentDate, end.toISOString().split('T')[0])
+      );
+    }
 
     const topDonors = await db
       .select({
@@ -21,6 +40,10 @@ export async function GET(request: NextRequest) {
       .from(contact)
       .leftJoin(pledge, eq(pledge.contactId, contact.id))
       .leftJoin(payment, sql`(${payment.pledgeId} = ${pledge.id} AND ${payment.isThirdPartyPayment} = false) OR (${payment.payerContactId} = ${contact.id} AND ${payment.isThirdPartyPayment} = true)`)
+      .where(pledgeWhereCondition || paymentWhereCondition ? and(
+        pledgeWhereCondition || sql`1=1`,
+        paymentWhereCondition || sql`1=1`
+      ) : undefined)
       .groupBy(contact.id, contact.firstName, contact.lastName)
       .having(sql`COUNT(DISTINCT ${pledge.id}) > 0 OR COALESCE(SUM(CASE WHEN ${payment.isThirdPartyPayment} = true AND ${payment.paymentStatus} = 'completed' THEN ${payment.amountUsd} ELSE 0 END), 0) > 0`)
       .orderBy(sql`(COALESCE(SUM(CASE WHEN ${payment.isThirdPartyPayment} = false AND ${payment.paymentStatus} = 'completed' THEN ${payment.amountUsd} ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN ${payment.isThirdPartyPayment} = true AND ${payment.paymentStatus} = 'completed' THEN ${payment.amountUsd} ELSE 0 END), 0)) DESC`)
