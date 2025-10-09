@@ -31,12 +31,12 @@ export async function GET(
 
   try {
     const items = await db
-      .select()
+      .select({ name: categoryItem.name })
       .from(categoryItem)
       .where(eq(categoryItem.categoryId, categoryId))
       .orderBy(categoryItem.name);
 
-    return Response.json(items); // Return full items, not just names
+    return Response.json(items.map(item => item.name)); // Return array of names
   } catch (error) {
     console.error("Database error:", error);
     return Response.json(

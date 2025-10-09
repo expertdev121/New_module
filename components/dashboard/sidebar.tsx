@@ -14,7 +14,12 @@ export function Sidebar() {
     await signOut({ callbackUrl: "/" });
   };
 
-  const isActive = (path: string) => pathname === path;
+  const isActive = (path: string) => {
+    if (path === "/contacts") {
+      return pathname.startsWith("/contacts");
+    }
+    return pathname === path;
+  };
 
   return (
     <Card className="w-64 h-full p-4">
@@ -35,7 +40,7 @@ export function Sidebar() {
             onClick={() => router.push("/contacts")}
           >
             <Users className="mr-2 h-4 w-4" />
-            Contacts
+            Financial module
           </Button>
           <Button
             variant={isActive("/admin/add-user") ? "default" : "ghost"}

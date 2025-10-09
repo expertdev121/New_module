@@ -307,10 +307,8 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-8">
+    <div className="bg-gray-50">
+      <div className="p-8">
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
@@ -599,7 +597,6 @@ export default function DashboardPage() {
             </TabsContent>
           </Tabs>
         </div>
-      </main>
     </div>
   );
 }

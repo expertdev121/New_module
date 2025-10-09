@@ -515,7 +515,7 @@ export default function PledgesTable() {
                             {formatDate(pledge.pledgeDate)}
                           </TableCell>
                           <TableCell>
-                            {pledge.categoryName?.split(" ")[0]} {">"}{" "}
+                            {typeof pledge.categoryName === 'string' ? pledge.categoryName.split(" ")[0] : 'Unknown'} {">"}{" "}
                             {pledge.description || "-"}
                           </TableCell>
                           <TableCell className="text-center">

@@ -88,33 +88,15 @@ export default function ContactsTable() {
   const deleteContactMutation = useDeleteContact();
 
   const summaryData = useMemo(() => {
-    if (!data?.contacts) return undefined;
-
-    const totalContacts = data.pagination.totalCount;
-    const totalPledgedAmount = data.contacts.reduce((sum, contact) => {
-      const amount = parseFloat(contact.totalPledgedUsd?.toString() || "0");
-      return sum + (isNaN(amount) ? 0 : amount);
-    }, 0);
-    const contactsWithPledges = data.contacts.filter((contact) => {
-      const amount = parseFloat(contact.totalPledgedUsd?.toString() || "0");
-      return !isNaN(amount) && amount > 0;
-    }).length;
-
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const recentContacts = data.contacts.filter((contact) => {
-      const createdDate = new Date(contact.createdAt);
-      return createdDate >= thirtyDaysAgo;
-    }).length;
+    if (!data?.summary) return undefined;
 
     return {
-      totalContacts,
-      totalPledgedAmount,
-      contactsWithPledges,
-      recentContacts,
+      totalContacts: data.summary.totalContacts,
+      totalPledgedAmount: data.summary.totalPledgedAmount,
+      contactsWithPledges: data.summary.contactsWithPledges,
+      recentContacts: data.summary.recentContacts,
     };
-  }, [data]);
+  }, [data?.summary]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {

@@ -44,6 +44,12 @@ interface ContactsResponse {
     hasNextPage: boolean;
     hasPreviousPage: boolean;
   };
+  summary: {
+    totalContacts: number;
+    totalPledgedAmount: number;
+    contactsWithPledges: number;
+    recentContacts: number;
+  };
 }
 
 export const useGetContacts = (params: ContactQueryParams) => {

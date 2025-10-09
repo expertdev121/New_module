@@ -39,45 +39,14 @@ export default function ContactsPage() {
 
   const isAdmin = session.user.role === "admin";
 
-  if (isAdmin) {
-    return (
-      <div className="flex h-screen">
-        <Sidebar />
-        <main className="flex-1 p-8">
-          <div className="max-w-7xl">
-            <h1 className="text-3xl font-bold mb-6">Contacts</h1>
-            <Suspense
-              fallback={<div className="text-center py-8">Loading contacts...</div>}
-            >
-              <ContactsTable />
-            </Suspense>
-          </div>
-        </main>
-      </div>
-    );
-  }
-
   return (
-    <main className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Contacts</h1>
-        <div className="flex items-center gap-4">
-          <span className="text-sm text-gray-600">
-            Logged in as {session.user.email} ({session.user.role})
-          </span>
-          <Button
-            variant="outline"
-            onClick={() => signOut({ callbackUrl: "/auth/login" })}
-          >
-            Logout
-          </Button>
-        </div>
-      </div>
+    <div className="max-w-7xl">
+      <h1 className="text-3xl font-bold mb-6">Contacts</h1>
       <Suspense
         fallback={<div className="text-center py-8">Loading contacts...</div>}
       >
         <ContactsTable />
       </Suspense>
-    </main>
+    </div>
   );
 }
