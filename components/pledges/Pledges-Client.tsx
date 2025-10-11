@@ -40,6 +40,7 @@ import {
 import { usePledgesQuery } from "@/lib/query/usePledgeData";
 import { LinkButton } from "../ui/next-link";
 import PledgeDialog from "../forms/pledge-form";
+import { useCategories } from "@/lib/query/useCategories";
 import PaymentDialogClient from "../forms/payment-dialog";
 import PaymentPlanDialog from "../forms/payment-plan-dialog";
 import Link from "next/link";
@@ -204,6 +205,9 @@ export default function PledgesTable() {
   };
 
   const { data, isLoading, error, refetch } = usePledgesQuery(pledgeQueryParams);
+
+  // Fetch categories for the pledge form
+  const { data: categories } = useCategories();
 
   useEffect(() => {
     if (data?.pledges) {
@@ -419,6 +423,7 @@ export default function PledgesTable() {
             <PledgeDialog
               contactId={contactId as number}
               onPledgeCreated={handlePledgeCreated}
+              categories={categories}
             />
           </div>
 
@@ -830,6 +835,7 @@ export default function PledgesTable() {
           onPledgeUpdated={handlePledgeUpdated}
           open={editDialogOpen}
           onOpenChange={handleEditDialogChange}
+          categories={categories}
         />
       )}
     </div>

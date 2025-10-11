@@ -10,7 +10,19 @@ export async function GET(
   const { id } = await params;
   const contactId = parseInt(id, 10);
 
+  const { searchParams } = new URL(request.url);
+  const page = parseInt(searchParams.get("page") || "1", 10);
+  const limit = parseInt(searchParams.get("limit") || "10", 10);
+  const offset = (page - 1) * limit;
+
   try {
+    const [totalResult] = await db
+      .select({ total: sql<number>`COUNT(*)` })
+      .from(category)
+      .where(eq(category.isActive, true));
+
+    const total = parseInt(totalResult?.total?.toString() || "0");
+
     const categoriesWithTotals = await db
       .select({
         categoryId: category.id,
@@ -33,12 +45,22 @@ export async function GET(
         )`.as("scheduledUsd"),
       })
       .from(category)
-      .leftJoin(pledge, eq(category.id, pledge.categoryId))
-      .where(eq(pledge.contactId, contactId))
+      .leftJoin(pledge, and(eq(category.id, pledge.categoryId), eq(pledge.contactId, contactId)))
+      .where(eq(category.isActive, true))
       .groupBy(category.id, category.name, category.description)
-      .orderBy(desc(sql`SUM(${pledge.originalAmountUsd})`));
+      .orderBy(category.name)
+      .limit(limit)
+      .offset(offset);
 
-    return NextResponse.json({ categories: categoriesWithTotals });
+    return NextResponse.json({ 
+      categories: categoriesWithTotals, 
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      }
+    });
   } catch (error) {
     console.log(error);
     return NextResponse.json(

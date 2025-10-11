@@ -1,16 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { Contact, ContactRole, StudentRole } from "@/lib/db/schema";
 
+interface CategoryFinancialSummary {
+  categoryId: number | null;
+  categoryName: string | null;
+  totalPledgedUsd: number;
+  totalPaidUsd: number;
+  currentBalanceUsd: number;
+}
+
 interface ContactResponse {
   contact: Contact & {
     contactRoles: ContactRole[];
     studentRoles: StudentRole[];
   };
-  financialSummary: {
-    totalPledgedUsd: number;
-    totalPaidUsd: number;
-    currentBalanceUsd: number;
-  };
+  financialSummary: CategoryFinancialSummary[];
   pagination: {
     page: number;
     limit: number;

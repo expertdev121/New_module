@@ -5,7 +5,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, X, Edit2, Trash2, Power, PowerOff } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Power, PowerOff, ChevronLeft, ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import {
@@ -38,7 +38,7 @@ interface PaymentMethod {
   details: PaymentMethodDetail[];
 }
 
-// API Response types to handle schema property variations
+// API Response types to handle schema variations
 interface PaymentMethodApiResponse {
   id: number;
   name: string;
@@ -63,20 +63,20 @@ interface PaymentMethodDetailApiResponse {
   updated_at?: string;
 }
 
+
 type PaymentMethodsManagementProps = {
-  methods: PaymentMethod[];
+  allMethods: PaymentMethod[];
   search?: string;
   onSearchChange?: (value: string) => void;
-  onMethodUpdate?: () => Promise<void>;
+  onRefresh?: () => void;
 };
 
-function PaymentMethodsManagement({ 
-  methods: initialMethods, 
+function PaymentMethodsManagement({
+  allMethods,
   search: externalSearch = "",
   onSearchChange,
-  onMethodUpdate
+  onRefresh
 }: PaymentMethodsManagementProps) {
-  const [methods, setMethods] = useState<PaymentMethod[]>(initialMethods);
   const [activeTab, setActiveTab] = useState<"methods" | "details">("methods");
   const [search, setSearch] = useState(externalSearch);
   const [detailSearch, setDetailSearch] = useState("");
@@ -88,6 +88,14 @@ function PaymentMethodsManagement({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+
+  // Local pagination state for methods tab
+  const [currentPageMethods, setCurrentPageMethods] = useState(1);
+  const [pageSizeMethods, setPageSizeMethods] = useState(10);
+
+  // Local pagination state for details tab
+  const [currentPageDetails, setCurrentPageDetails] = useState(1);
+  const [pageSizeDetails, setPageSizeDetails] = useState(10);
 
   // Form states
   const [addForm, setAddForm] = useState({ name: "", description: "" });
@@ -116,14 +124,14 @@ function PaymentMethodsManagement({
   const [editLoading, setEditLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Update methods when props change
-  useEffect(() => {
-    setMethods(initialMethods);
-  }, [initialMethods]);
+
 
   // Update search when external search changes
   useEffect(() => {
     setSearch(externalSearch);
+    // Reset pages when search changes
+    setCurrentPageMethods(1);
+    setCurrentPageDetails(1);
   }, [externalSearch]);
 
   // Handle search change
@@ -132,18 +140,41 @@ function PaymentMethodsManagement({
     if (onSearchChange) {
       onSearchChange(value);
     }
+    // Reset pages when search changes
+    setCurrentPageMethods(1);
+    setCurrentPageDetails(1);
   };
 
   // Handle detail search change (local search for details)
   const handleDetailSearchChange = (value: string) => {
     setDetailSearch(value);
+    setCurrentPageDetails(1);
   };
 
-  // Since search is handled by parent, no need to filter here
-  const filteredMethods = methods;
+  // Filter methods by search
+  const filteredMethods = search
+    ? allMethods.filter(m =>
+        m.name.toLowerCase().includes(search.toLowerCase()) ||
+        (m.description || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : allMethods;
 
-  // Get all details from all methods for the details tab
-  const allDetails = methods.flatMap(method => 
+  // Pagination for methods
+  const totalMethods = filteredMethods.length;
+  const totalPagesMethods = Math.ceil(totalMethods / pageSizeMethods);
+  const startIndexMethods = (currentPageMethods - 1) * pageSizeMethods;
+  const endIndexMethods = startIndexMethods + pageSizeMethods;
+  const paginatedMethods = filteredMethods.slice(startIndexMethods, endIndexMethods);
+
+  // Get all details from all methods for the details tab, filtered by search on method name/description
+  const searchedMethods = search
+    ? allMethods.filter(m =>
+        m.name.toLowerCase().includes(search.toLowerCase()) ||
+        (m.description || "").toLowerCase().includes(search.toLowerCase())
+      )
+    : allMethods;
+
+  const allDetails = searchedMethods.flatMap(method =>
     method.details.map(detail => ({
       ...detail,
       methodName: method.name,
@@ -155,12 +186,19 @@ function PaymentMethodsManagement({
 
   // Filter details for the details view
   const filteredDetails = detailSearch
-    ? allDetails.filter((detail) => 
-        detail.key.toLowerCase().includes(detailSearch.toLowerCase()) || 
+    ? allDetails.filter((detail) =>
+        detail.key.toLowerCase().includes(detailSearch.toLowerCase()) ||
         detail.value.toLowerCase().includes(detailSearch.toLowerCase()) ||
         detail.methodName.toLowerCase().includes(detailSearch.toLowerCase())
       )
     : allDetails;
+
+  // Pagination for details
+  const totalDetails = filteredDetails.length;
+  const totalPagesDetails = Math.ceil(totalDetails / pageSizeDetails);
+  const startIndexDetails = (currentPageDetails - 1) * pageSizeDetails;
+  const endIndexDetails = startIndexDetails + pageSizeDetails;
+  const paginatedDetails = filteredDetails.slice(startIndexDetails, endIndexDetails);
 
   // Normalize API response to match our interface
   const normalizePaymentMethod = (apiMethod: PaymentMethodApiResponse): Omit<PaymentMethod, 'details'> => ({
@@ -181,44 +219,7 @@ function PaymentMethodsManagement({
     updatedAt: apiDetail.updatedAt || apiDetail.updated_at,
   });
 
-  async function fetchAndSetMethods() {
-    if (onMethodUpdate) {
-      await onMethodUpdate();
-    } else {
-      // Fallback to original implementation if no callback provided
-      setLoading(true);
-      setError("");
-      try {
-        const res = await fetch('/api/admin/payment-methods', {
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error("Failed to fetch");
-        const data: PaymentMethodApiResponse[] = await res.json();
-        
-        const methodsWithDetails = await Promise.all(
-          data.map(async (apiMethod: PaymentMethodApiResponse) => {
-            const detailsRes = await fetch(`/api/admin/payment-methods/details?paymentMethodId=${apiMethod.id}`, {
-              credentials: 'include',
-            });
-            const apiDetails: PaymentMethodDetailApiResponse[] = await detailsRes.json();
-            
-            const normalizedMethod = normalizePaymentMethod(apiMethod);
-            const normalizedDetails = apiDetails.map(normalizePaymentMethodDetail);
-            
-            return {
-              ...normalizedMethod,
-              details: normalizedDetails,
-            } as PaymentMethod;
-          })
-        );
-        setMethods(methodsWithDetails);
-      } catch {
-        setError("Failed to fetch payment methods");
-      } finally {
-        setLoading(false);
-      }
-    }
-  }
+
 
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault();
@@ -233,7 +234,7 @@ function PaymentMethodsManagement({
       if (!res.ok) throw new Error("Failed to add");
       setAddDialogOpen(false);
       setAddForm({ name: "", description: "" });
-      await fetchAndSetMethods();
+      onRefresh?.();
       toast.success("Payment method added successfully");
     } catch {
       toast.error("Failed to add payment method");
@@ -268,7 +269,7 @@ function PaymentMethodsManagement({
       });
       if (!res.ok) throw new Error("Failed to update");
       setEditDialogOpen(false);
-      await fetchAndSetMethods();
+      onRefresh?.();
       toast.success("Payment method updated successfully");
     } catch {
       toast.error("Failed to update payment method");
@@ -294,7 +295,7 @@ function PaymentMethodsManagement({
       if (!res.ok) throw new Error("Failed to delete");
       setDeleteDialogOpen(false);
       setDeleteId(null);
-      await fetchAndSetMethods();
+      onRefresh?.();
       toast.success("Payment method deleted successfully");
     } catch {
       toast.error("Failed to delete payment method");
@@ -310,7 +311,7 @@ function PaymentMethodsManagement({
         body: JSON.stringify({ ...method, isActive: !method.isActive }),
         credentials: 'include',
       });
-      await fetchAndSetMethods();
+      onRefresh?.();
       toast.success(`Payment method ${method.isActive ? 'deactivated' : 'activated'} successfully`);
     } catch {
       toast.error("Failed to update status");
@@ -368,7 +369,7 @@ function PaymentMethodsManagement({
       setDetailId(null);
       setDetailMethodId(null);
       setDetailForm({ key: '', value: '' });
-      await fetchAndSetMethods();
+      onRefresh?.();
     } catch {
       toast.error('Failed to save detail');
     }
@@ -385,7 +386,7 @@ function PaymentMethodsManagement({
       });
       if (!res.ok) throw new Error('Failed to delete detail');
       toast.success('Detail deleted successfully');
-      await fetchAndSetMethods();
+      onRefresh?.();
     } catch {
       toast.error('Failed to delete detail');
     }
@@ -445,7 +446,7 @@ function PaymentMethodsManagement({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMethods.map((method) => (
+              {paginatedMethods.map((method) => (
                 <TableRow key={method.id}>
                   <TableCell className="font-medium">{method.name}</TableCell>
                   <TableCell className="text-muted-foreground">{method.description || "-"}</TableCell>
@@ -479,6 +480,37 @@ function PaymentMethodsManagement({
               ))}
             </TableBody>
           </Table>
+
+          {totalPagesMethods > 1 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Showing {((currentPageMethods - 1) * pageSizeMethods) + 1} to {Math.min(currentPageMethods * pageSizeMethods, totalMethods)} of {totalMethods} payment methods
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPageMethods(currentPageMethods - 1)}
+                  disabled={currentPageMethods === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <span className="text-sm">
+                  Page {currentPageMethods} of {totalPagesMethods}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPageMethods(currentPageMethods + 1)}
+                  disabled={currentPageMethods === totalPagesMethods}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="details" className="space-y-4">
@@ -498,13 +530,13 @@ function PaymentMethodsManagement({
                 className="pl-10"
               />
             </div>
-            <Button 
+            <Button
               onClick={() => {
                 // Open add detail dialog with first method selected
-                if (methods.length > 0) {
-                  openAddDetailDialog(methods[0]);
+                if (allMethods.length > 0) {
+                  openAddDetailDialog(allMethods[0]);
                 }
-              }} 
+              }}
               className="bg-green-600 hover:bg-green-700"
             >
               <Plus className="h-4 w-4 mr-2" />
@@ -523,14 +555,14 @@ function PaymentMethodsManagement({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredDetails.length === 0 ? (
+              {paginatedDetails.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
                     No details found.
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredDetails.map((detail) => (
+                paginatedDetails.map((detail) => (
                   <TableRow key={detail.id}>
                     <TableCell className="font-medium">{detail.key}</TableCell>
                     <TableCell>{detail.value}</TableCell>
@@ -563,6 +595,37 @@ function PaymentMethodsManagement({
               )}
             </TableBody>
           </Table>
+
+          {totalPagesDetails > 1 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Showing {((currentPageDetails - 1) * pageSizeDetails) + 1} to {Math.min(currentPageDetails * pageSizeDetails, totalDetails)} of {totalDetails} details
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPageDetails(currentPageDetails - 1)}
+                  disabled={currentPageDetails === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Previous
+                </Button>
+                <span className="text-sm">
+                  Page {currentPageDetails} of {totalPagesDetails}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCurrentPageDetails(currentPageDetails + 1)}
+                  disabled={currentPageDetails === totalPagesDetails}
+                >
+                  Next
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
@@ -685,7 +748,7 @@ function PaymentMethodsManagement({
                   required
                 >
                   <option value="">Select Payment Method</option>
-                  {methods.map((method) => (
+                  {allMethods.map((method) => (
                     <option key={method.id} value={method.id}>
                       {method.name}
                     </option>

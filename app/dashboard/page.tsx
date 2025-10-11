@@ -64,7 +64,7 @@ const CHART_COLORS = {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [dateRange, setDateRange] = useState([
+  const [appliedDateRange, setAppliedDateRange] = useState([
     {
       startDate: new Date(new Date().setMonth(new Date().getMonth() - 6)),
       endDate: new Date(),
@@ -72,34 +72,38 @@ export default function DashboardPage() {
     }
   ]);
 
+  const [tempDateRange, setTempDateRange] = useState(appliedDateRange);
+  const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [isDateRangeSelected, setIsDateRangeSelected] = useState(true);
+
   const [loading, setLoading] = useState(false);
 
   // Data queries
   const { data: overviewData, isLoading: overviewLoading } = useDashboardOverview(
-    "custom",
-    dateRange[0].startDate.toISOString().split('T')[0],
-    dateRange[0].endDate.toISOString().split('T')[0]
+    isDateRangeSelected ? "custom" : undefined,
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
   const { data: trendsData, isLoading: trendsLoading } = useDashboardTrends(
-    "custom",
-    dateRange[0].startDate.toISOString().split('T')[0],
-    dateRange[0].endDate.toISOString().split('T')[0]
+    isDateRangeSelected ? "custom" : undefined,
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
   const { data: paymentMethodData, isLoading: paymentMethodsLoading } = useDashboardPaymentMethods(
-    dateRange[0].startDate.toISOString().split('T')[0],
-    dateRange[0].endDate.toISOString().split('T')[0]
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
   const { data: pledgeStatusData, isLoading: pledgeStatusLoading } = useDashboardPledgeStatus(
-    dateRange[0].startDate.toISOString().split('T')[0],
-    dateRange[0].endDate.toISOString().split('T')[0]
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
   const { data: topDonors = [], isLoading: topDonorsLoading } = useDashboardTopDonors(
-    dateRange[0].startDate.toISOString().split('T')[0],
-    dateRange[0].endDate.toISOString().split('T')[0]
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
   const { data: recentActivity = [], isLoading: recentActivityLoading } = useDashboardRecentActivity(
-    dateRange[0].startDate.toISOString().split('T')[0],
-    dateRange[0].endDate.toISOString().split('T')[0]
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
 
   const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading;
@@ -316,22 +320,79 @@ export default function DashboardPage() {
               <p className="text-gray-500 mt-1">Welcome back, {session.user.email}</p>
             </div>
             <div className="flex gap-3 items-center">
-              <Popover>
+              <Popover open={isDatePickerOpen} onOpenChange={setIsDatePickerOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="outline">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      if (isDateRangeSelected) {
+                        setTempDateRange([...appliedDateRange]);
+                      } else {
+                        setTempDateRange([
+                          {
+                            startDate: new Date(new Date().setMonth(new Date().getMonth() - 6)),
+                            endDate: new Date(),
+                            key: 'selection'
+                          }
+                        ]);
+                      }
+                    }}
+                  >
                     <Calendar className="w-4 h-4 mr-2" />
-                    {dateRange[0].startDate.toLocaleDateString()} - {dateRange[0].endDate.toLocaleDateString()}
+                    {isDateRangeSelected ? `${appliedDateRange[0].startDate.toLocaleDateString()} - ${appliedDateRange[0].endDate.toLocaleDateString()}` : "All Time"}
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent className="w-auto p-0">
                   <DateRangePicker
-                    onChange={(item: RangeKeyDict) => setDateRange([item.selection as { startDate: Date; endDate: Date; key: string }])}
+                    onChange={(item: RangeKeyDict) => setTempDateRange([item.selection as { startDate: Date; endDate: Date; key: string }])}
                     showSelectionPreview={true}
                     moveRangeOnFirstSelection={false}
                     months={2}
-                    ranges={dateRange}
+                    ranges={tempDateRange}
                     direction="horizontal"
                   />
+                  <div className="flex justify-end gap-2 p-2 border-t">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (isDateRangeSelected) {
+                          setTempDateRange([...appliedDateRange]);
+                        } else {
+                          setTempDateRange([
+                            {
+                              startDate: new Date(new Date().setMonth(new Date().getMonth() - 6)),
+                              endDate: new Date(),
+                              key: 'selection'
+                            }
+                          ]);
+                        }
+                        setIsDatePickerOpen(false);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setIsDateRangeSelected(false);
+                        setIsDatePickerOpen(false);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        setAppliedDateRange([...tempDateRange]);
+                        setIsDateRangeSelected(true);
+                        setIsDatePickerOpen(false);
+                      }}
+                    >
+                      Apply
+                    </Button>
+                  </div>
                 </PopoverContent>
               </Popover>
               <Button variant="outline" onClick={() => exportData("csv")} disabled={loading}>

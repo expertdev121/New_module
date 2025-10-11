@@ -9,37 +9,32 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Category } from "@/lib/query/useContactCategories";
+import { Category, useContactCategories } from "@/lib/query/useContactCategories";
 import { DollarSign } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-
-interface ContactCategoriesCardProps {
-  categories: Category[];
-}
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 
 // Extended interface for categories that includes scheduledUsd from the backend
 interface ExtendedCategory extends Category {
   scheduledUsd?: number | string; // Allow both number and string from backend
 }
 
-export default function ContactCategoriesCard({
-  categories,
-}: ContactCategoriesCardProps) {
+export default function ContactCategoriesCard() {
   const { contactId } = useParams<{ contactId: string }>();
+  const [page, setPage] = useState(1);
+  const limit = 10;
 
-  const categoryOrder = ["Donations", "Tuition", "Miscellaneous"];
+  const { data: categoriesData, isLoading, isError } = useContactCategories(
+    parseInt(contactId || "0"),
+    page,
+    limit
+  );
 
-  const createEmptyCategory = (name: string): ExtendedCategory => ({
-    categoryId: name.toLowerCase() as unknown as Category["categoryId"],
-    categoryName: name,
-    categoryDescription: "",
-    totalPledgedUsd: 0,
-    totalPaidUsd: 0,
-    currentBalanceUsd: 0,
-    pledgeCount: 0,
-    scheduledUsd: 0,
-  });
+  const categories = categoriesData?.categories || [];
+  const pagination = categoriesData?.pagination;
 
   const getScheduledAmount = (category: ExtendedCategory) => {
     let scheduled = category.scheduledUsd;
@@ -87,21 +82,9 @@ export default function ContactCategoriesCard({
     return unscheduled.toLocaleString("en-US");
   };
 
-  const categoryMap = new Map<string, ExtendedCategory>();
-  categories.forEach((cat) => {
-    const categoryName =
-      cat.categoryName === "Donation" ? "Donations" : cat.categoryName;
-    const updatedCategory = { ...cat, categoryName };
-    categoryMap.set(
-      categoryName.toLowerCase(),
-      updatedCategory as ExtendedCategory
-    );
-  });
-
-  const sortedCategories = categoryOrder.map((categoryName) => {
-    const existing = categoryMap.get(categoryName.toLowerCase());
-    return existing || createEmptyCategory(categoryName);
-  });
+  const sortedCategories = [...categories].sort((a, b) =>
+    a.categoryName.localeCompare(b.categoryName)
+  );
 
   console.log(
     "\n🔍 Categories with scheduled amounts from backend:",
@@ -190,6 +173,33 @@ export default function ContactCategoriesCard({
             })}
           </TableBody>
         </Table>
+        {pagination && (
+          <div className="flex items-center justify-between mt-4">
+            <div className="text-sm text-muted-foreground">
+              Page {page} of {pagination.totalPages} ({pagination.total} total categories)
+            </div>
+            <div className="flex items-center space-x-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(page - 1)}
+                disabled={page <= 1}
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(page + 1)}
+                disabled={page >= pagination.totalPages}
+              >
+                Next
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

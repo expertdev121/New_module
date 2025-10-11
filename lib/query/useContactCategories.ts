@@ -9,14 +9,23 @@ export interface Category {
   totalPaidUsd: number;
   currentBalanceUsd: number;
   pledgeCount: number;
+  scheduledUsd?: number | string;
 }
 
-export function useContactCategories(contactId: number) {
-  return useQuery<Category[]>({
-    queryKey: ["contactCategories", contactId],
+export function useContactCategories(contactId: number, page: number = 1, limit: number = 10) {
+  return useQuery<{
+    categories: Category[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>({
+    queryKey: ["contactCategories", contactId, page, limit],
     queryFn: async () => {
-      const response = await axios.get(`/api/contacts/${contactId}/categories`);
-      return response.data.categories;
+      const response = await axios.get(`/api/contacts/${contactId}/categories?page=${page}&limit=${limit}`);
+      return response.data;
     },
     retry: 2,
     staleTime: 1000 * 60 * 5,

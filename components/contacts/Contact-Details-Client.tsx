@@ -19,10 +19,10 @@ export default function ContactDetailsClient() {
   });
 
   const {
-    data: categories,
+    data: categoriesData,
     isLoading: isLoadingCategory,
     isError: isCategoryError,
-  } = useContactCategories(contactId ?? 0);
+  } = useContactCategories(contactId ?? 0, 1, 50); // Large limit to show all, or add pagination later
 
   if (isLoading || isLoadingCategory) {
     return (
@@ -76,12 +76,22 @@ export default function ContactDetailsClient() {
 
   const { contact, financialSummary } = data;
 
+  // Aggregate financial summary from array to single object
+  const aggregatedFinancialSummary = financialSummary.reduce(
+    (acc, curr) => ({
+      totalPledgedUsd: acc.totalPledgedUsd + (Number(curr.totalPledgedUsd) || 0),
+      totalPaidUsd: acc.totalPaidUsd + (Number(curr.totalPaidUsd) || 0),
+      currentBalanceUsd: acc.currentBalanceUsd + (Number(curr.currentBalanceUsd) || 0),
+    }),
+    { totalPledgedUsd: 0, totalPaidUsd: 0, currentBalanceUsd: 0 }
+  );
+
   return (
     <React.Fragment>
       <ContactOverviewTab
         contact={contact}
-        financialSummary={financialSummary}
-        categories={categories || []}
+        financialSummary={aggregatedFinancialSummary}
+        categoriesData={categoriesData}
       />
       {/* <PledgesTable /> */}
     </React.Fragment>

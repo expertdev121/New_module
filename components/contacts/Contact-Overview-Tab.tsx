@@ -26,13 +26,21 @@ interface FinancialSummary {
 interface ContactOverviewTabProps {
   contact: ContactWithRoles;
   financialSummary: FinancialSummary;
-  categories: Category[];
+  categoriesData?: {
+    categories: Category[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
 }
 
 const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   contact,
   financialSummary,
-  categories,
+  categoriesData,
 }) => {
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -186,7 +194,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
 
         {/* Categories Section */}
         <div className="lg:col-span-2">
-          <ContactCategoriesCard categories={categories} />
+          <ContactCategoriesCard />
         </div>
       </div>
 

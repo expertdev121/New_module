@@ -7,12 +7,11 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-// Updated types to match the management component's expectations
 type PaymentMethod = {
   id: number;
   name: string;
   description?: string;
-  isActive: boolean;  // Changed from is_active to isActive
+  isActive: boolean;                              
   createdAt?: string;
   updatedAt?: string;
   details: PaymentMethodDetail[];
@@ -20,7 +19,7 @@ type PaymentMethod = {
 
 type PaymentMethodDetail = {
   id: number;
-  paymentMethodId: number;  // Changed from payment_method_id to paymentMethodId
+  paymentMethodId: number;  
   key: string;
   value: string;
   createdAt?: string;
@@ -52,28 +51,18 @@ interface PaymentMethodDetailApiResponse {
   updated_at?: string;
 }
 
-interface Pagination {
-  page: number;
-  limit: number;
-  totalCount: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-}
 
 const PaymentMethodsPage = () => {
   const router = useRouter();
-  const [methods, setMethods] = useState<PaymentMethod[]>([]);
-  const [pagination, setPagination] = useState<Pagination | null>(null);
+  const [allMethods, setAllMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    fetchMethods();
-  }, [currentPage, pageSize, search]);
+    fetchAllMethods();
+  }, []);
+
 
   // Normalize API response to match our interface
   const normalizePaymentMethod = (apiMethod: PaymentMethodApiResponse): Omit<PaymentMethod, 'details'> => ({
@@ -94,108 +83,44 @@ const PaymentMethodsPage = () => {
     updatedAt: apiDetail.updatedAt || apiDetail.updated_at,
   });
 
-  async function fetchMethods() {
+  async function fetchAllMethods() {
     setLoading(true);
     setError(null);
     try {
-      // Build query parameters for pagination and search
-      const params = new URLSearchParams({
-        page: currentPage.toString(),
-        limit: pageSize.toString(),
-      });
-      if (search) params.append("search", search);
-
-      const res = await fetch(`/api/admin/payment-methods?${params}`, {
+      const res = await fetch('/api/admin/payment-methods', {
         credentials: 'include',
       });
-      
+
       if (!res.ok) throw new Error('Failed to fetch payment methods');
-      
-      const data = await res.json();
-      
-      // If your API doesn't return pagination info, create it manually
-      if (data.methods) {
-        // If API returns paginated response
-        const normalizedMethods = await Promise.all(
-          data.methods.map(async (apiMethod: PaymentMethodApiResponse) => {
-            try {
-              const detailsRes = await fetch(`/api/admin/payment-methods/details?paymentMethodId=${apiMethod.id}`, {
-                credentials: 'include',
-              });
-              const apiDetails: PaymentMethodDetailApiResponse[] = await detailsRes.json();
-              
-              const normalizedMethod = normalizePaymentMethod(apiMethod);
-              const normalizedDetails = apiDetails.map(normalizePaymentMethodDetail);
-              
-              return {
-                ...normalizedMethod,
-                details: normalizedDetails,
-              } as PaymentMethod;
-            } catch {
-              return {
-                ...normalizePaymentMethod(apiMethod),
-                details: [],
-              } as PaymentMethod;
-            }
-          })
-        );
-        
-        setMethods(normalizedMethods);
-        setPagination(data.pagination);
-      } else {
-        // If API returns all methods, handle pagination client-side
-        const allMethods: PaymentMethodApiResponse[] = data;
-        
-        // Fetch details for each method and normalize
-        const methodsWithDetails = await Promise.all(
-          allMethods.map(async (apiMethod: PaymentMethodApiResponse) => {
-            try {
-              const detailsRes = await fetch(`/api/admin/payment-methods/details?paymentMethodId=${apiMethod.id}`, {
-                credentials: 'include',
-              });
-              const apiDetails: PaymentMethodDetailApiResponse[] = await detailsRes.json();
-              
-              const normalizedMethod = normalizePaymentMethod(apiMethod);
-              const normalizedDetails = apiDetails.map(normalizePaymentMethodDetail);
-              
-              return {
-                ...normalizedMethod,
-                details: normalizedDetails,
-              } as PaymentMethod;
-            } catch {
-              return {
-                ...normalizePaymentMethod(apiMethod),
-                details: [],
-              } as PaymentMethod;
-            }
-          })
-        );
 
-        // Apply search filter
-        const filteredMethods = search 
-          ? methodsWithDetails.filter(m => 
-              m.name.toLowerCase().includes(search.toLowerCase()) || 
-              (m.description || "").toLowerCase().includes(search.toLowerCase())
-            )
-          : methodsWithDetails;
+      const data: PaymentMethodApiResponse[] = await res.json();
 
-        // Calculate pagination
-        const totalCount = filteredMethods.length;
-        const totalPages = Math.ceil(totalCount / pageSize);
-        const startIndex = (currentPage - 1) * pageSize;
-        const endIndex = startIndex + pageSize;
-        const paginatedMethods = filteredMethods.slice(startIndex, endIndex);
+      // Fetch details for each method and normalize
+      const methodsWithDetails = await Promise.all(
+        data.map(async (apiMethod: PaymentMethodApiResponse) => {
+          try {
+            const detailsRes = await fetch(`/api/admin/payment-methods/details?paymentMethodId=${apiMethod.id}`, {
+              credentials: 'include',
+            });
+            const apiDetails: PaymentMethodDetailApiResponse[] = await detailsRes.json();
 
-        setMethods(paginatedMethods);
-        setPagination({
-          page: currentPage,
-          limit: pageSize,
-          totalCount,
-          totalPages,
-          hasNextPage: currentPage < totalPages,
-          hasPreviousPage: currentPage > 1,
-        });
-      }
+            const normalizedMethod = normalizePaymentMethod(apiMethod);
+            const normalizedDetails = apiDetails.map(normalizePaymentMethodDetail);
+
+            return {
+              ...normalizedMethod,
+              details: normalizedDetails,
+            } as PaymentMethod;
+          } catch {
+            return {
+              ...normalizePaymentMethod(apiMethod),
+              details: [],
+            } as PaymentMethod;
+          }
+        })
+      );
+
+      setAllMethods(methodsWithDetails);
     } catch (e) {
       setError('Failed to load payment methods');
     } finally {
@@ -203,18 +128,8 @@ const PaymentMethodsPage = () => {
     }
   }
 
-  const handlePageChange = (page: number) => {
-    setCurrentPage(page);
-  };
-
-  const handlePageSizeChange = (size: string) => {
-    setPageSize(Number(size));
-    setCurrentPage(1);
-  };
-
   const handleSearchChange = (value: string) => {
     setSearch(value);
-    setCurrentPage(1);
   };
 
   if (loading) {
@@ -243,25 +158,10 @@ const PaymentMethodsPage = () => {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Payment Methods ({pagination?.totalCount || 0})</CardTitle>
+              <CardTitle>Payment Methods ({allMethods.length})</CardTitle>
               <CardDescription>
                 Manage all payment methods and their details
               </CardDescription>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">Show</span>
-              <Select value={pageSize.toString()} onValueChange={handlePageSizeChange}>
-                <SelectTrigger className="w-20">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="5">5</SelectItem>
-                  <SelectItem value="10">10</SelectItem>
-                  <SelectItem value="25">25</SelectItem>
-                  <SelectItem value="50">50</SelectItem>
-                </SelectContent>
-              </Select>
-              <span className="text-sm text-muted-foreground">per page</span>
             </div>
           </div>
         </CardHeader>
@@ -270,43 +170,12 @@ const PaymentMethodsPage = () => {
             <div className="text-red-600 mb-4">{error}</div>
           )}
           
-          <PaymentMethodsManagement 
-            methods={methods} 
+          <PaymentMethodsManagement
+            allMethods={allMethods}
             search={search}
             onSearchChange={handleSearchChange}
-            onMethodUpdate={fetchMethods}
+            onRefresh={fetchAllMethods}
           />
-
-          {pagination && pagination.totalPages > 1 && (
-            <div className="flex items-center justify-between mt-6 pt-4 border-t">
-              <div className="text-sm text-muted-foreground">
-                Showing {((currentPage - 1) * pageSize) + 1} to {Math.min(currentPage * pageSize, pagination.totalCount)} of {pagination.totalCount} payment methods
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage - 1)}
-                  disabled={!pagination.hasPreviousPage}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                  Previous
-                </Button>
-                <span className="text-sm">
-                  Page {currentPage} of {pagination.totalPages}
-                </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handlePageChange(currentPage + 1)}
-                  disabled={!pagination.hasNextPage}
-                >
-                  Next
-                  <ChevronRight className="h-4 w-4" />
-                </Button>
-              </div>
-            </div>
-          )}
         </CardContent>
       </Card>
     </div>

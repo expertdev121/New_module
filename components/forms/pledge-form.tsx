@@ -87,12 +87,15 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
+import { useCategories } from "@/lib/query/useCategories";
+
 // Static categories for display
-const STATIC_CATEGORIES = [
-  { id: 1, name: "Donation", description: "General donations" },
-  { id: 2, name: "Tuition", description: "Educational tuition fees" },
-  { id: 3, name: "Miscellaneous", description: "Miscellaneous fees and charges" },
-];
+// Removed static categories to use dynamic categories from props
+// const STATIC_CATEGORIES = [
+//   { id: 1, name: "Donation", description: "General donations" },
+//   { id: 2, name: "Tuition", description: "Educational tuition fees" },
+//   { id: 3, name: "Miscellaneous", description: "Miscellaneous fees and charges" },
+// ];
 
 const pledgeSchema = z.object({
   contactId: z.number().positive("Contact ID is required"),
@@ -119,6 +122,21 @@ const pledgeSchema = z.object({
   notes: z.string().optional(),
   tagIds: z.array(z.number()).optional(),
 });
+
+// Add categories prop to accept dynamic categories
+interface PledgeFormProps {
+  contactId: number;
+  contactName?: string;
+  mode?: "create" | "edit";
+  pledgeData?: any;
+  onPledgeCreated?: (pledgeId: number) => void;
+  onPledgeCreatedAndPay?: (pledgeId: number) => void;
+  onPledgeUpdated?: (pledgeId: number) => void;
+  trigger?: React.ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  categories?: Array<{ id: number; name: string; description?: string | null }>;
+}
 
 type PledgeFormData = z.infer<typeof pledgeSchema>;
 
@@ -173,6 +191,7 @@ interface PledgeDialogProps {
   trigger?: React.ReactNode;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  categories?: Array<{ id: number; name: string; description?: string | null }>;
 }
 
 export default function PledgeDialog({
@@ -186,6 +205,7 @@ export default function PledgeDialog({
   trigger,
   open: controlledOpen,
   onOpenChange: controlledOnOpenChange,
+  categories = [],
 }: PledgeDialogProps) {
   
   // ENHANCED: Normalize pledge data structure
@@ -218,7 +238,7 @@ export default function PledgeDialog({
   const [categoryItems, setCategoryItems] = useState<string[]>([]);
   const [loadingCategoryItems, setLoadingCategoryItems] = useState(false);
 
-  const donationCategory = STATIC_CATEGORIES.find(
+  const donationCategory = categories.find(
     (cat) => cat.name.toLowerCase() === "donation"
   );
   const defaultCategoryId = donationCategory?.id || null;
@@ -516,7 +536,7 @@ export default function PledgeDialog({
   };
 
   const isDonationCategory = selectedCategoryId
-    ? STATIC_CATEGORIES.find((cat) => cat.id === selectedCategoryId)?.name?.toLowerCase() ===
+    ? categories.find((cat) => cat.id === selectedCategoryId)?.name?.toLowerCase() ===
     "donation"
     : false;
 
@@ -613,7 +633,7 @@ export default function PledgeDialog({
     updatePledgeMutation.isPending;
 
   const selectedCategory = selectedCategoryId ?
-    STATIC_CATEGORIES.find(cat => cat.id === selectedCategoryId) : null;
+    categories.find(cat => cat.id === selectedCategoryId) : null;
 
   const defaultTrigger = isEditMode ? (
     <Button size="sm" variant="outline" aria-label="Edit Pledge">
@@ -699,7 +719,7 @@ export default function PledgeDialog({
                                 aria-expanded={categoryPopoverOpen}
                               >
                                 {field.value
-                                  ? STATIC_CATEGORIES.find(
+                                  ? categories.find(
                                     (category) => category.id === field.value
                                   )?.name
                                   : "Select category"}
@@ -713,7 +733,7 @@ export default function PledgeDialog({
                               <CommandList>
                                 <CommandEmpty>No category found.</CommandEmpty>
                                 <CommandGroup>
-                                  {STATIC_CATEGORIES.map((category) => (
+                                  {categories.map((category) => (
                                     <CommandItem
                                       key={category.id}
                                       value={category.name}
