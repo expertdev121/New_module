@@ -61,7 +61,12 @@ import { PlusCircleIcon } from "lucide-react";
 import { usePledgesQuery } from "@/lib/query/usePledgeData";
 import useContactId from "@/hooks/use-contact-id";
 import { useTagsQuery } from "@/lib/query/tags/useTagsQuery";
-import { usePaymentMethodOptions, usePaymentMethodDetailOptions } from "@/lib/query/usePaymentMethods";
+
+import {
+  usePaymentMethodOptions,
+  usePaymentMethodDetailOptions
+} from "@/lib/query/usePaymentMethods";
+
 
 interface Solicitor {
   id: number;
@@ -189,82 +194,6 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
-const paymentMethods = [
-  { value: "ach", label: "ACH" },
-  { value: "bill_pay", label: "Bill Pay" },
-  { value: "cash", label: "Cash" },
-  { value: "check", label: "Check" },
-  { value: "credit", label: "Credit" },
-  { value: "credit_card", label: "Credit Card" },
-  { value: "expected", label: "Expected" },
-  { value: "goods_and_services", label: "Goods and Services" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "money_order", label: "Money Order" },
-  { value: "p2p", label: "P2P" },
-  { value: "pending", label: "Pending" },
-  { value: "bank_transfer", label: "Bank Transfer" },
-  { value: "refund", label: "Refund" },
-  { value: "scholarship", label: "Scholarship" },
-  { value: "stock", label: "Stock" },
-  { value: "student_portion", label: "Student Portion" },
-  { value: "unknown", label: "Unknown" },
-  { value: "wire", label: "Wire" },
-  { value: "xfer", label: "Xfer" },
-] as const;
-
-const methodDetails = [
-  { value: "achisomoch", label: "Achisomoch" },
-  { value: "authorize", label: "Authorize" },
-  { value: "bank_of_america_charitable", label: "Bank of America Charitable" },
-  { value: "banquest", label: "Banquest" },
-  { value: "banquest_cm", label: "Banquest CM" },
-  { value: "benevity", label: "Benevity" },
-  { value: "chai_charitable", label: "Chai Charitable" },
-  { value: "charityvest_inc", label: "Charityvest Inc." },
-  { value: "cjp", label: "CJP" },
-  { value: "donors_fund", label: "Donors' Fund" },
-  { value: "earthport", label: "EarthPort" },
-  { value: "e_transfer", label: "e-transfer" },
-  { value: "facts", label: "FACTS" },
-  { value: "fidelity", label: "Fidelity" },
-  { value: "fjc", label: "FJC" },
-  { value: "foundation", label: "Foundation" },
-  { value: "goldman_sachs", label: "Goldman Sachs" },
-  { value: "htc", label: "HTC" },
-  { value: "jcf", label: "JCF" },
-  { value: "jcf_san_diego", label: "JCF San Diego" },
-  { value: "jgive", label: "Jgive" },
-  { value: "keshet", label: "Keshet" },
-  { value: "masa", label: "MASA" },
-  { value: "masa_old", label: "MASA Old" },
-  { value: "matach", label: "Matach" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "mizrachi_canada", label: "Mizrachi Canada" },
-  { value: "mizrachi_olami", label: "Mizrachi Olami" },
-  { value: "montrose", label: "Montrose" },
-  { value: "morgan_stanley_gift", label: "Morgan Stanley Gift" },
-  { value: "ms", label: "MS" },
-  { value: "mt", label: "MT" },
-  { value: "ojc", label: "OJC" },
-  { value: "paypal", label: "PayPal" },
-  { value: "pelecard", label: "PeleCard (EasyCount)" },
-  { value: "schwab_charitable", label: "Schwab Charitable" },
-  { value: "stripe", label: "Stripe" },
-  { value: "tiaa", label: "TIAA" },
-  { value: "touro", label: "Touro" },
-  { value: "uktoremet", label: "UKToremet (JGive)" },
-  { value: "vanguard_charitable", label: "Vanguard Charitable" },
-  { value: "venmo", label: "Venmo" },
-  { value: "vmm", label: "VMM" },
-  { value: "wise", label: "Wise" },
-  { value: "worldline", label: "Worldline" },
-  { value: "yaadpay", label: "YaadPay" },
-  { value: "yaadpay_cm", label: "YaadPay CM" },
-  { value: "yourcause", label: "YourCause" },
-  { value: "yu", label: "YU" },
-  { value: "zelle", label: "Zelle" },
-] as const;
-
 const paymentStatuses = [
   { value: "expected", label: "Expected" },
   { value: "pending", label: "Pending" },
@@ -368,7 +297,7 @@ export default function PaymentFormDialog({
       exchangeRateToPledgeCurrency: 1,
       paymentDate: new Date().toISOString().split("T")[0],
       receivedDate: null,
-      paymentMethod: "cash",
+      paymentMethod: undefined,
       methodDetail: undefined,
       account: "",
       checkDate: null,
@@ -413,6 +342,16 @@ export default function PaymentFormDialog({
       tagIds: [],
     },
   });
+  const { options: paymentMethodOptions, isLoading: isLoadingPaymentMethods } = usePaymentMethodOptions();
+
+  const watchedPaymentMethod = useRef<string | undefined>(undefined);
+  const currentPaymentMethod = form.watch("paymentMethod");
+
+  const { options: methodDetailOptions, isLoading: isLoadingDetailOptions } =
+    usePaymentMethodDetailOptions(watchedPaymentMethod.current);
+
+  const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
+  const [methodDetailOpen, setMethodDetailOpen] = useState(false);
 
   const { fields, append, remove } = useFieldArray({
     control: form.control,
@@ -728,6 +667,13 @@ export default function PaymentFormDialog({
       setSelectedTagIds(watchedTagIds);
     }
   }, [watchedTagIds]);
+  useEffect(() => {
+    watchedPaymentMethod.current = currentPaymentMethod;
+    // Clear method detail when payment method changes
+    if (currentPaymentMethod) {
+      form.setValue("methodDetail", "");
+    }
+  }, [currentPaymentMethod, form]);
 
   const resetForm = useCallback(() => {
     form.reset({
@@ -786,7 +732,8 @@ export default function PaymentFormDialog({
     setContactSearch("");
     setMultiContactAllocations([]);
     setShowMultiContactSection(false);
-    // RESET TAG STATE
+    setPaymentMethodOpen(false);
+    setMethodDetailOpen(false);
     setSelectedTagIds([]);
   }, [form, initialPledgeId]);
 
@@ -2374,54 +2321,155 @@ export default function PaymentFormDialog({
                     control={form.control}
                     name="paymentMethod"
                     render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Payment Method</FormLabel>
-                        <Select onValueChange={field.onChange} value={field.value}>
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select payment method" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {paymentMethods.map((method) => (
-                              <SelectItem key={method.value} value={method.value}>
-                                {method.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Payment Method *</FormLabel>
+                        <Popover open={paymentMethodOpen} onOpenChange={setPaymentMethodOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={paymentMethodOpen}
+                                disabled={isLoadingPaymentMethods}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {isLoadingPaymentMethods ? (
+                                  "Loading payment methods..."
+                                ) : field.value ? (
+                                  paymentMethodOptions.find(
+                                    (method) => method.value === field.value
+                                  )?.label || field.value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                ) : (
+                                  "Select payment method"
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0" align="start">
+                            <Command shouldFilter={true}>
+                              <CommandInput placeholder="Search payment methods..." />
+                              <CommandEmpty>No payment method found.</CommandEmpty>
+                              <CommandList className="max-h-[300px] overflow-y-auto">
+                                <CommandGroup>
+                                  {paymentMethodOptions.map((method, index) => (
+                                    <CommandItem
+                                      key={`payment-method-${method.value}-${index}`}
+                                      value={method.value}
+                                      onSelect={(value) => {
+                                        const selectedMethod = paymentMethodOptions.find(
+                                          m => m.value === value
+                                        );
+                                        if (selectedMethod) {
+                                          form.setValue("paymentMethod", selectedMethod.value);
+                                          form.setValue("methodDetail", "");
+                                          setPaymentMethodOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          method.value === field.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      {method.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
 
+                  {/* Method Detail - DYNAMIC DROPDOWN */}
                   <FormField
                     control={form.control}
                     name="methodDetail"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="flex flex-col">
                         <FormLabel>Method Detail</FormLabel>
-                        <Select
-                          onValueChange={(value) => field.onChange(value === "none" ? null : value)}
-                          value={field.value || "none"}
-                        >
-                          <FormControl>
-                            <SelectTrigger>
-                              <SelectValue placeholder="Select method detail" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            <SelectItem value="none">None</SelectItem>
-                            {methodDetails.map((detail) => (
-                              <SelectItem key={detail.value} value={detail.value}>
-                                {detail.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <Popover open={methodDetailOpen} onOpenChange={setMethodDetailOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={methodDetailOpen}
+                                disabled={!watchedPaymentMethod.current || isLoadingDetailOptions}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {!watchedPaymentMethod.current ? (
+                                  "Select payment method first"
+                                ) : isLoadingDetailOptions ? (
+                                  "Loading details..."
+                                ) : field.value ? (
+                                  methodDetailOptions.find(
+                                    (detail) => detail.value === field.value
+                                  )?.label || field.value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                ) : (
+                                  "Select method detail"
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0" align="start">
+                            <Command shouldFilter={true}>
+                              <CommandInput placeholder="Search method details..." />
+                              <CommandEmpty>
+                                {methodDetailOptions.length === 0
+                                  ? "No method details available for this payment method."
+                                  : "No method detail found."}
+                              </CommandEmpty>
+                              <CommandList className="max-h-[300px] overflow-y-auto">
+                                <CommandGroup>
+                                  {methodDetailOptions.map((detail, index) => (
+                                    <CommandItem
+                                      key={`method-detail-${detail.value}-${index}`}
+                                      value={detail.value}
+                                      onSelect={(value) => {
+                                        const selectedDetail = methodDetailOptions.find(
+                                          d => d.value === value
+                                        );
+                                        if (selectedDetail) {
+                                          form.setValue("methodDetail", selectedDetail.value);
+                                          setMethodDetailOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          detail.value === field.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      {detail.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={form.control}
                     name="account"
