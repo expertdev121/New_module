@@ -55,17 +55,17 @@ type PlanStatusType = z.infer<typeof PlanStatusEnum>;
 // *************************
 function formatNameLastFirst(fullName: string | null | undefined): string {
   if (!fullName || fullName.trim() === "") return "-";
-  
+
   const nameParts = fullName.trim().split(/\s+/);
-  
+
   // If only one name part, return as is
   if (nameParts.length === 1) return nameParts[0];
-  
+
   // If two parts: "First Last" -> "Last First"
   if (nameParts.length === 2) {
     return `${nameParts[1]} ${nameParts[0]}`;
   }
-  
+
   // If three or more parts: "First Middle Last" -> "Last First Middle"
   // Assumes last word is the last name
   const lastName = nameParts[nameParts.length - 1];
@@ -136,16 +136,16 @@ export default function PaymentPlansTable({
   // Filter out third-party payment plans for beneficiaries
   const filteredPaymentPlans = React.useMemo(() => {
     if (!data?.paymentPlans) return [];
-    
+
     return data.paymentPlans.filter((plan: any) => {
       const isThirdParty = plan.isThirdPartyPayment || false;
       const isCurrentContactBeneficiary = contactId && plan.contactId === contactId;
-      
+
       // Hide third-party payment plans from beneficiaries
       if (isThirdParty && isCurrentContactBeneficiary) {
         return false;
       }
-      
+
       return true;
     });
   }, [data?.paymentPlans, contactId]);
@@ -221,11 +221,22 @@ export default function PaymentPlansTable({
   const displayAmountWithUSD = (
     amount: string | null | undefined,
     currency: string,
+    usdAmount: string | null | undefined, // Add this parameter
     exchangeRate: string | null | undefined,
     showUSDBelow = false
   ) => {
     const formatted = formatCurrency(amount, currency);
-    const usdValue = convertToUSD(amount, exchangeRate);
+
+    // Use the same logic as getUSDAmount
+    let usdValue: string | null = null;
+    if (currency === 'USD') {
+      usdValue = amount || '0';
+    } else if (usdAmount && usdAmount !== "0") {
+      usdValue = usdAmount; // ✅ Use DB value first
+    } else {
+      usdValue = convertToUSD(amount, exchangeRate); // Fallback to calculation
+    }
+
     const formattedUsd = usdValue ? parseFloat(usdValue).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
 
     if (showUSDBelow && formattedUsd && currency !== 'USD') {
@@ -244,6 +255,7 @@ export default function PaymentPlansTable({
       </div>
     );
   };
+
 
   const getUSDAmount = (
     originalAmount: string | null | undefined,
@@ -434,7 +446,7 @@ export default function PaymentPlansTable({
                   <TableHead className="font-semibold text-gray-900">Paid</TableHead>
                   <TableHead className="font-semibold text-gray-900">Balance</TableHead>
                   <TableHead className="font-semibold text-gray-900">Status</TableHead>
-                </TableRow> 
+                </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
@@ -595,6 +607,7 @@ export default function PaymentPlansTable({
                             {displayAmountWithUSD(
                               pledgeOriginalAmount,
                               pledgeCurrency,
+                              plan.totalPlannedAmountUsd,
                               plan.exchangeRate,
                               true
                             )}
@@ -610,12 +623,12 @@ export default function PaymentPlansTable({
 
                           {/* Paid */}
                           <TableCell>
-                            {displayAmountWithUSD(plan.totalPaid || "0", planCurrency, plan.exchangeRate)}
+                            {displayAmountWithUSD(plan.totalPaid || "0", planCurrency, plan.exchangeRate, plan.totalPaidUsd, )}
                           </TableCell>
 
                           {/* Balance */}
                           <TableCell>
-                            {displayAmountWithUSD(remainingAmount, planCurrency, plan.exchangeRate)}
+                            {displayAmountWithUSD(remainingAmount, remainingUSD,  planCurrency, plan.exchangeRate)}
                           </TableCell>
 
                           {/* Status */}
@@ -683,7 +696,7 @@ export default function PaymentPlansTable({
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">Total Planned (USD):</span>
-                                      <span className="font-medium">${formatCurrency(convertToUSD(plan.totalPlannedAmount || "0", plan.exchangeRate) || "0", "USD").amount}</span>
+                                      <span className="font-medium">${totalPlannedUSD}</span>
                                     </div>
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">Installment Amount:</span>

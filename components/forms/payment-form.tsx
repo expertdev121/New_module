@@ -189,7 +189,7 @@ export default function PaymentDialog({
   pledgeDescription = "",
   onPaymentCreated,
 }: PaymentDialogProps) {
-    console.log('=== PAYMENT DIALOG RENDERED ===', { open, pledgeId });
+  console.log('=== PAYMENT DIALOG RENDERED ===', { open, pledgeId });
 
   const createPaymentMutation = useCreatePaymentMutation();
 
@@ -205,9 +205,9 @@ export default function PaymentDialog({
   const { data: solicitorsData } = useSolicitors({ status: "active" });
 
   console.log('=== SOLICITOR DEBUG ===');
-console.log('Solicitors data:', solicitorsData);
-console.log('Is solicitors data loading?');
-console.log('Raw solicitors array:', solicitorsData?.solicitors);
+  console.log('Solicitors data:', solicitorsData);
+  console.log('Is solicitors data loading?');
+  console.log('Raw solicitors array:', solicitorsData?.solicitors);
 
 
   // Debug logging like in edit form
@@ -279,7 +279,7 @@ console.log('Raw solicitors array:', solicitorsData?.solicitors);
     contact: solicitor.contact,
   })) || [];
 
-console.log('C options after mapping:', solicitorOptions);
+  console.log('C options after mapping:', solicitorOptions);
 
   // Update exchange rate when currency changes
   useEffect(() => {
@@ -602,115 +602,165 @@ console.log('C options after mapping:', solicitorOptions);
                 <FormField
                   control={form.control}
                   name="paymentMethod"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Payment Method</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className={cn(
-                                "w-full justify-between",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value
-                                ? paymentMethodOptions.find((method) => method.value === field.value)?.label
-                                : "Select payment method"}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-full p-0">
-                          <Command>
-                            <CommandInput placeholder="Search payment method..." />
-                            <CommandList>
+                  render={({ field }) => {
+                    const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
+
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Payment Method</FormLabel>
+                        <Popover open={paymentMethodOpen} onOpenChange={setPaymentMethodOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={paymentMethodOpen}
+                                disabled={isLoadingPaymentMethods}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {isLoadingPaymentMethods ? (
+                                  "Loading payment methods..."
+                                ) : field.value ? (
+                                  paymentMethodOptions.find(
+                                    (method) => method.value === field.value
+                                  )?.label || field.value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                ) : (
+                                  "Select payment method"
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search payment method..." />
                               <CommandEmpty>No payment method found.</CommandEmpty>
-                              <CommandGroup>
-                                {paymentMethodOptions.map((method) => (
-                                  <CommandItem
-                                    value={method.value}
-                                    key={method.value}
-                                    onSelect={() => {
-                                      form.setValue("paymentMethod", method.value);
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        method.value === field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {method.label}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                              <CommandList>
+                                <CommandGroup className="max-h-[300px] overflow-y-auto">
+                                  {paymentMethodOptions.map((method, index) => (
+                                    <CommandItem
+                                      key={`payment-method-${method.value}-${index}`}
+                                      value={method.value}
+                                      onSelect={(value) => {
+                                        const selectedMethod = paymentMethodOptions.find(
+                                          m => m.value === value
+                                        );
+                                        if (selectedMethod) {
+                                          form.setValue("paymentMethod", selectedMethod.value);
+                                          form.setValue("methodDetail", undefined); // Clear method detail
+                                          setPaymentMethodOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          method.value === field.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      {method.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
+
                 <FormField
                   control={form.control}
                   name="methodDetail"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-col">
-                      <FormLabel>Method Detail</FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              variant="outline"
-                              role="combobox"
-                              className={cn(
-                                "w-full justify-between",
-                                !field.value && "text-muted-foreground"
-                              )}
-                            >
-                              {field.value
-                                ? methodDetailOptions.find((detail) => detail.value === field.value)?.label
-                                : "Select method detail"}
-                              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-full p-0">
-                          <Command>
-                            <CommandInput placeholder="Search method detail..." />
-                            <CommandList>
-                              <CommandEmpty>No method detail found.</CommandEmpty>
-                              <CommandGroup>
-                                {methodDetailOptions.map((detail) => (
-                                  <CommandItem
-                                    value={detail.value}
-                                    key={detail.value}
-                                    onSelect={() => {
-                                      form.setValue("methodDetail", detail.value);
-                                    }}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        detail.value === field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    {detail.label}
-                                  </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            </CommandList>
-                          </Command>
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const [methodDetailOpen, setMethodDetailOpen] = useState(false);
+                    const watchedPaymentMethod = form.watch("paymentMethod");
+
+                    return (
+                      <FormItem className="flex flex-col">
+                        <FormLabel>Method Detail</FormLabel>
+                        <Popover open={methodDetailOpen} onOpenChange={setMethodDetailOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                variant="outline"
+                                role="combobox"
+                                aria-expanded={methodDetailOpen}
+                                disabled={!watchedPaymentMethod || isLoadingMethodDetails}
+                                className={cn(
+                                  "w-full justify-between",
+                                  !field.value && "text-muted-foreground"
+                                )}
+                              >
+                                {!watchedPaymentMethod ? (
+                                  "Select payment method first"
+                                ) : isLoadingMethodDetails ? (
+                                  "Loading details..."
+                                ) : field.value ? (
+                                  methodDetailOptions.find(
+                                    (detail) => detail.value === field.value
+                                  )?.label || field.value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                ) : (
+                                  "Select method detail"
+                                )}
+                                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-[400px] p-0" align="start">
+                            <Command>
+                              <CommandInput placeholder="Search method detail..." />
+                              <CommandEmpty>
+                                {methodDetailOptions.length === 0
+                                  ? "No method details available for this payment method."
+                                  : "No method detail found."}
+                              </CommandEmpty>
+                              <CommandList>
+                                <CommandGroup className="max-h-[300px] overflow-y-auto">
+                                  {methodDetailOptions.map((detail, index) => (
+                                    <CommandItem
+                                      key={`method-detail-${detail.value}-${index}`}
+                                      value={detail.value}
+                                      onSelect={(value) => {
+                                        const selectedDetail = methodDetailOptions.find(
+                                          d => d.value === value
+                                        );
+                                        if (selectedDetail) {
+                                          form.setValue("methodDetail", selectedDetail.value);
+                                          setMethodDetailOpen(false);
+                                        }
+                                      }}
+                                    >
+                                      <Check
+                                        className={cn(
+                                          "mr-2 h-4 w-4",
+                                          detail.value === field.value
+                                            ? "opacity-100"
+                                            : "opacity-0"
+                                        )}
+                                      />
+                                      {detail.label}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              </CommandList>
+                            </Command>
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
+
                 <FormField
                   control={form.control}
                   name="account"
@@ -767,6 +817,7 @@ console.log('C options after mapping:', solicitorOptions);
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={form.control}
                   name="checkDate"
@@ -789,6 +840,7 @@ console.log('C options after mapping:', solicitorOptions);
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={form.control}
                   name="checkNumber"
@@ -802,6 +854,7 @@ console.log('C options after mapping:', solicitorOptions);
                     </FormItem>
                   )}
                 />
+
                 <FormField
                   control={form.control}
                   name="paymentStatus"
