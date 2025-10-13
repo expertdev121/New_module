@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient, UseQueryOptions } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+
 // Update the interfaces to match your form schema exactly
 export interface CustomInstallment {
   installmentDate: string;
@@ -13,6 +14,7 @@ export interface CustomInstallment {
   notes?: string;
   paymentId?: number;
 }
+
 
 export interface PaymentPlanFormData {
   pledgeId: number;
@@ -44,12 +46,15 @@ export interface PaymentPlanFormData {
   notes?: string;
   internalNotes?: string;
   customInstallments?: CustomInstallment[];
-  paymentMethod: "ach" | "bill_pay" | "cash" | "check" | "credit" | "credit_card" | "expected" | 
-                 "goods_and_services" | "matching_funds" | "money_order" | "p2p" | "pending" | 
-                 "bank_transfer" | "refund" | "scholarship" | "stock" | "student_portion" | 
-                 "unknown" | "wire" | "xfer" | "other";
-  methodDetail: string;
+  paymentMethod: string;
+  methodDetail?: string;
+  // Third-party payment fields - UPDATED to allow null
+  isThirdPartyPayment?: boolean;
+  thirdPartyContactId?: number | null;
+  payerContactId?: number | null;
 }
+
+
 
 export interface InstallmentSchedule {
   id: number;
@@ -66,9 +71,11 @@ export interface InstallmentSchedule {
   updatedAt: string;
 }
 
+
 export interface PaymentPlanUpdateData extends Partial<PaymentPlanFormData> {
   id: number;
 }
+
 
 export interface PaymentPlan {
   id: number;
@@ -113,7 +120,14 @@ export interface PaymentPlan {
   contactId?: number;
   installmentSchedule?: InstallmentSchedule[];
   customInstallments?: CustomInstallment[];
+  // Third-party payment fields
+  isThirdPartyPayment?: boolean;
+  thirdPartyContactId?: number | null;
+  payerContactId?: number;
+  payerContactName?: string;
+  pledgeContactName?: string;
 }
+
 
 export interface PledgeDetails {
   pledge: {
@@ -169,10 +183,11 @@ export interface PledgeDetails {
   activePaymentPlans: PaymentPlan[];
 }
 
+
 // Utility function to clean payment plan data
 const cleanPaymentPlanData = (data: PaymentPlanFormData): PaymentPlanFormData => {
   const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
-  
+
   const cleanedData: PaymentPlanFormData = {
     ...data,
     totalPlannedAmount: roundMoney(data.totalPlannedAmount),
@@ -186,65 +201,75 @@ const cleanPaymentPlanData = (data: PaymentPlanFormData): PaymentPlanFormData =>
     planStatus: data.planStatus || "active",
     autoRenew: data.autoRenew || false,
     paymentMethod: data.paymentMethod,
-    methodDetail: data.methodDetail
+    methodDetail: data.methodDetail || ""
   };
+
 
   // Clean USD amounts if provided
   if (data.totalPlannedAmountUsd) {
     cleanedData.totalPlannedAmountUsd = roundMoney(data.totalPlannedAmountUsd);
   }
 
+
   if (data.installmentAmountUsd) {
     cleanedData.installmentAmountUsd = roundMoney(data.installmentAmountUsd);
   }
+
 
   // Handle custom installments
   if (data.customInstallments && data.customInstallments.length > 0) {
     cleanedData.customInstallments = data.customInstallments.map(installment => ({
       ...installment,
       installmentAmount: roundMoney(installment.installmentAmount),
-      installmentAmountUsd: installment.installmentAmountUsd ? 
+      installmentAmountUsd: installment.installmentAmountUsd ?
         roundMoney(installment.installmentAmountUsd) : undefined
     }));
   }
 
+
   return cleanedData;
 };
+
 
 // Utility function to clean update data
 const cleanPaymentPlanUpdateData = (data: Partial<PaymentPlanFormData>): Partial<PaymentPlanFormData> => {
   const roundMoney = (amount: number) => Math.round(amount * 100) / 100;
-  
+
   const cleanedData: Partial<PaymentPlanFormData> = { ...data };
+
 
   // Clean monetary values if they exist
   if (data.totalPlannedAmount !== undefined) {
     cleanedData.totalPlannedAmount = roundMoney(data.totalPlannedAmount);
   }
-  
+
   if (data.totalPlannedAmountUsd !== undefined) {
     cleanedData.totalPlannedAmountUsd = roundMoney(data.totalPlannedAmountUsd);
   }
-  
+
   if (data.installmentAmount !== undefined) {
     cleanedData.installmentAmount = roundMoney(data.installmentAmount);
   }
+
 
   if (data.installmentAmountUsd !== undefined) {
     cleanedData.installmentAmountUsd = roundMoney(data.installmentAmountUsd);
   }
 
+
   if (data.customInstallments && data.customInstallments.length > 0) {
     cleanedData.customInstallments = data.customInstallments.map(installment => ({
       ...installment,
       installmentAmount: roundMoney(installment.installmentAmount),
-      installmentAmountUsd: installment.installmentAmountUsd !== undefined ? 
+      installmentAmountUsd: installment.installmentAmountUsd !== undefined ?
         roundMoney(installment.installmentAmountUsd) : undefined
     }));
   }
 
+
   return cleanedData;
 };
+
 
 export const useInstallmentScheduleQuery = (paymentPlanId: number) => {
   return useQuery({
@@ -259,12 +284,15 @@ export const useInstallmentScheduleQuery = (paymentPlanId: number) => {
   });
 };
 
+
 export const useCreatePaymentPlanMutation = () => {
   const queryClient = useQueryClient();
+
 
   return useMutation({
     mutationFn: async (data: PaymentPlanFormData) => {
       const cleanedData = cleanPaymentPlanData(data);
+
 
       const response = await fetch("/api/payment-plans", {
         method: "POST",
@@ -272,7 +300,9 @@ export const useCreatePaymentPlanMutation = () => {
         body: JSON.stringify(cleanedData),
       });
 
+
       const responseData = await response.json();
+
 
       if (!response.ok) {
         // Handle validation errors specifically
@@ -285,6 +315,7 @@ export const useCreatePaymentPlanMutation = () => {
         }
         throw new Error(responseData.error || "Failed to create payment plan");
       }
+
 
       return responseData;
     },
@@ -302,6 +333,7 @@ export const useCreatePaymentPlanMutation = () => {
   });
 };
 
+
 export const usePaymentPlansQuery = (params?: {
   pledgeId?: number;
   contactId?: number;
@@ -313,6 +345,7 @@ export const usePaymentPlansQuery = (params?: {
   currency?: string;
 }) => {
   const searchParams = new URLSearchParams();
+
 
   if (params?.pledgeId)
     searchParams.append("pledgeId", params.pledgeId.toString());
@@ -326,6 +359,7 @@ export const usePaymentPlansQuery = (params?: {
   if (params?.frequency) searchParams.append("frequency", params.frequency);
   if (params?.currency) searchParams.append("currency", params.currency);
 
+
   return useQuery({
     queryKey: ["paymentPlans", params],
     queryFn: async () => {
@@ -333,10 +367,12 @@ export const usePaymentPlansQuery = (params?: {
         `/api/payment-plans?${searchParams.toString()}`
       );
 
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch payment plans");
       }
+
 
       return response.json();
     },
@@ -344,9 +380,11 @@ export const usePaymentPlansQuery = (params?: {
   });
 };
 
+
 export const usePaymentPlansByPledgeQuery = (pledgeId: number) => {
   return usePaymentPlansQuery({ pledgeId, limit: 100 });
 };
+
 
 export const usePaymentPlanQuery = (planId: number) => {
   return useQuery({
@@ -354,10 +392,12 @@ export const usePaymentPlanQuery = (planId: number) => {
     queryFn: async (): Promise<{ paymentPlan: PaymentPlan }> => {
       const response = await fetch(`/api/payment-plans/${planId}`);
 
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch payment plan");
       }
+
 
       return response.json();
     },
@@ -365,6 +405,7 @@ export const usePaymentPlanQuery = (planId: number) => {
     staleTime: 2 * 60 * 1000,
   });
 };
+
 
 export const usePledgeDetailsQuery = (
   pledgeId: number,
@@ -375,10 +416,12 @@ export const usePledgeDetailsQuery = (
     queryFn: async (): Promise<PledgeDetails> => {
       const response = await fetch(`/api/pledges/${pledgeId}`);
 
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to fetch pledge details");
       }
+
 
       return response.json();
     },
@@ -388,8 +431,10 @@ export const usePledgeDetailsQuery = (
   });
 };
 
+
 export const useUpdatePaymentPlanMutation = () => {
   const queryClient = useQueryClient();
+
 
   return useMutation({
     mutationFn: async ({
@@ -401,13 +446,16 @@ export const useUpdatePaymentPlanMutation = () => {
     }) => {
       const cleanedData = cleanPaymentPlanUpdateData(data);
 
+
       const response = await fetch(`/api/payment-plans/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(cleanedData),
       });
 
+
       const responseData = await response.json();
+
 
       if (!response.ok) {
         // Handle validation errors specifically
@@ -420,6 +468,7 @@ export const useUpdatePaymentPlanMutation = () => {
         throw new Error(responseData.error || "Failed to update payment plan");
       }
 
+
       return responseData;
     },
     onSuccess: (data, variables) => {
@@ -427,6 +476,7 @@ export const useUpdatePaymentPlanMutation = () => {
       queryClient.invalidateQueries({
         queryKey: ["payment-plan", variables.id],
       });
+
 
       const updatedPlan = data.paymentPlan;
       if (updatedPlan?.pledgeId) {
@@ -438,7 +488,9 @@ export const useUpdatePaymentPlanMutation = () => {
         });
       }
 
+
       queryClient.invalidateQueries({ queryKey: ["pledges"] });
+
 
       toast.success("Payment plan updated successfully!");
     },
@@ -451,8 +503,10 @@ export const useUpdatePaymentPlanMutation = () => {
   });
 };
 
+
 export const useCancelPaymentPlanMutation = () => {
   const queryClient = useQueryClient();
+
 
   return useMutation({
     mutationFn: async (planId: number) => {
@@ -461,10 +515,12 @@ export const useCancelPaymentPlanMutation = () => {
         headers: { "Content-Type": "application/json" },
       });
 
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to cancel payment plan");
       }
+
 
       return response.json();
     },
@@ -482,8 +538,10 @@ export const useCancelPaymentPlanMutation = () => {
   });
 };
 
+
 export const useDeletePaymentPlanMutation = () => {
   const queryClient = useQueryClient();
+
 
   return useMutation({
     mutationFn: async (planId: number) => {
@@ -492,10 +550,12 @@ export const useDeletePaymentPlanMutation = () => {
         headers: { "Content-Type": "application/json" },
       });
 
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || "Failed to delete payment plan");
       }
+
 
       return response.json();
     },
@@ -513,8 +573,10 @@ export const useDeletePaymentPlanMutation = () => {
   });
 };
 
-export const usePauseResumePaymentPlanMutation = () => {  
+
+export const usePauseResumePaymentPlanMutation = () => {
   const queryClient = useQueryClient();
+
 
   return useMutation({
     mutationFn: async ({
@@ -526,16 +588,19 @@ export const usePauseResumePaymentPlanMutation = () => {
     }) => {
       const newStatus = action === "pause" ? "paused" : "active";
 
+
       const response = await fetch(`/api/payment-plans/${planId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ planStatus: newStatus }),
       });
 
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || `Failed to ${action} payment plan`);
       }
+
 
       return response.json();
     },
@@ -544,6 +609,7 @@ export const usePauseResumePaymentPlanMutation = () => {
       queryClient.invalidateQueries({
         queryKey: ["payment-plan", variables.planId],
       });
+
 
       const actionText = variables.action === "pause" ? "paused" : "resumed";
       toast.success(`Payment plan ${actionText} successfully!`);
