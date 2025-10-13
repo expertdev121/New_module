@@ -49,6 +49,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { useExchangeRates } from "@/lib/query/useExchangeRates";
+import { usePaymentMethodOptions, usePaymentMethodDetailOptions } from "@/lib/query/usePaymentMethods";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useCreatePaymentMutation } from "@/lib/query/payments/usePaymentQuery";
@@ -90,102 +91,8 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
-const paymentMethodValues = [
-  "ach",
-  "bill_pay",
-  "cash",
-  "check",
-  "credit",
-  "credit_card",
-  "expected",
-  "goods_and_services",
-  "matching_funds",
-  "money_order",
-  "p2p",
-  "pending",
-  "refund",
-  "scholarship",
-  "stock",
-  "student_portion",
-  "unknown",
-  "wire",
-  "xfer",
-] as const;
 
-const paymentMethodOptions = [
-  { value: "ach", label: "ACH" },
-  { value: "bill_pay", label: "Bill Pay" },
-  { value: "cash", label: "Cash" },
-  { value: "check", label: "Check" },
-  { value: "credit", label: "Credit" },
-  { value: "credit_card", label: "Credit Card" },
-  { value: "expected", label: "Expected" },
-  { value: "goods_and_services", label: "Goods and Services" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "money_order", label: "Money Order" },
-  { value: "p2p", label: "P2P" },
-  { value: "pending", label: "Pending" },
-  { value: "refund", label: "Refund" },
-  { value: "scholarship", label: "Scholarship" },
-  { value: "stock", label: "Stock" },
-  { value: "student_portion", label: "Student Portion" },
-  { value: "unknown", label: "Unknown" },
-  { value: "wire", label: "Wire" },
-  { value: "xfer", label: "Xfer" },
-] as const;
 
-const methodDetailValues = [
-  "achisomoch",
-  "authorize",
-  "bank_of_america_charitable",
-  "banquest",
-  "banquest_cm",
-  "benevity",
-  "chai_charitable",
-  "charityvest_inc",
-  "cjp",
-  "donors_fund",
-  "earthport",
-  "e_transfer",
-  "facts",
-  "fidelity",
-  "fjc",
-  "foundation",
-  "goldman_sachs",
-  "htc",
-  "jcf",
-  "jcf_san_diego",
-  "jgive",
-  "keshet",
-  "masa",
-  "masa_old",
-  "matach",
-  "matching_funds",
-  "mizrachi_canada",
-  "mizrachi_olami",
-  "montrose",
-  "morgan_stanley_gift",
-  "ms",
-  "mt",
-  "ojc",
-  "paypal",
-  "pelecard",
-  "schwab_charitable",
-  "stripe",
-  "tiaa",
-  "touro",
-  "uktoremet",
-  "vanguard_charitable",
-  "venmo",
-  "vmm",
-  "wise",
-  "worldline",
-  "yaadpay",
-  "yaadpay_cm",
-  "yourcause",
-  "yu",
-  "zelle",
-] as const;
 interface Solicitor {
   id: number;
   firstName: string;
@@ -202,59 +109,6 @@ interface SolicitorOption {
   commissionRate?: number;
   contact?: any;
 }
-
-const methodDetailOptions = [
-  { value: "achisomoch", label: "Achisomoch" },
-  { value: "authorize", label: "Authorize" },
-  { value: "bank_of_america_charitable", label: "Bank of America Charitable" },
-  { value: "banquest", label: "Banquest" },
-  { value: "banquest_cm", label: "Banquest CM" },
-  { value: "benevity", label: "Benevity" },
-  { value: "chai_charitable", label: "Chai Charitable" },
-  { value: "charityvest_inc", label: "Charityvest Inc." },
-  { value: "cjp", label: "CJP" },
-  { value: "donors_fund", label: "Donors' Fund" },
-  { value: "earthport", label: "EarthPort" },
-  { value: "e_transfer", label: "e-transfer" },
-  { value: "facts", label: "FACTS" },
-  { value: "fidelity", label: "Fidelity" },
-  { value: "fjc", label: "FJC" },
-  { value: "foundation", label: "Foundation" },
-  { value: "goldman_sachs", label: "Goldman Sachs" },
-  { value: "htc", label: "HTC" },
-  { value: "jcf", label: "JCF" },
-  { value: "jcf_san_diego", label: "JCF San Diego" },
-  { value: "jgive", label: "Jgive" },
-  { value: "keshet", label: "Keshet" },
-  { value: "masa", label: "MASA" },
-  { value: "masa_old", label: "MASA Old" },
-  { value: "matach", label: "Matach" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "mizrachi_canada", label: "Mizrachi Canada" },
-  { value: "mizrachi_olami", label: "Mizrachi Olami" },
-  { value: "montrose", label: "Montrose" },
-  { value: "morgan_stanley_gift", label: "Morgan Stanley Gift" },
-  { value: "ms", label: "MS" },
-  { value: "mt", label: "MT" },
-  { value: "ojc", label: "OJC" },
-  { value: "paypal", label: "PayPal" },
-  { value: "pelecard", label: "PeleCard (EasyCount)" },
-  { value: "schwab_charitable", label: "Schwab Charitable" },
-  { value: "stripe", label: "Stripe" },
-  { value: "tiaa", label: "TIAA" },
-  { value: "touro", label: "Touro" },
-  { value: "uktoremet", label: "UKToremet (JGive)" },
-  { value: "vanguard_charitable", label: "Vanguard Charitable" },
-  { value: "venmo", label: "Venmo" },
-  { value: "vmm", label: "VMM" },
-  { value: "wise", label: "Wise" },
-  { value: "worldline", label: "Worldline" },
-  { value: "yaadpay", label: "YaadPay" },
-  { value: "yaadpay_cm", label: "YaadPay CM" },
-  { value: "yourcause", label: "YourCause" },
-  { value: "yu", label: "YU" },
-  { value: "zelle", label: "Zelle" },
-] as const;
 
 const paymentStatusValues = [
   "expected",
@@ -299,8 +153,8 @@ const paymentSchema = z.object({
   exchangeRate: z.number().positive(),
   paymentDate: z.string(),
   receivedDate: z.string().optional().nullable(),
-  paymentMethod: z.enum(paymentMethodValues),
-  methodDetail: z.enum(methodDetailValues).optional().nullable(),
+  paymentMethod: z.string(),
+  methodDetail: z.string().optional().nullable(),
   account: z.string().optional().nullable(),
   checkDate: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),
@@ -413,6 +267,10 @@ console.log('Raw solicitors array:', solicitorsData?.solicitors);
     isLoading: isLoadingRates,
     error: ratesError,
   } = useExchangeRates(watchedPaymentDate);
+
+  // Get dynamic payment methods and details
+  const { options: paymentMethodOptions, isLoading: isLoadingPaymentMethods } = usePaymentMethodOptions();
+  const { options: methodDetailOptions, isLoading: isLoadingMethodDetails } = usePaymentMethodDetailOptions(form.watch("paymentMethod"));
 
   const solicitorOptions: SolicitorOption[] = solicitorsData?.solicitors?.map((solicitor: Solicitor) => ({
     label: `${solicitor.firstName} ${solicitor.lastName}`,

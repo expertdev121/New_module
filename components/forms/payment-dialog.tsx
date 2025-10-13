@@ -60,8 +60,8 @@ import { usePledgeDetailsQuery } from "@/lib/query/payment-plans/usePaymentPlanQ
 import { PlusCircleIcon } from "lucide-react";
 import { usePledgesQuery } from "@/lib/query/usePledgeData";
 import useContactId from "@/hooks/use-contact-id";
-// ADD THIS IMPORT FOR TAGS
 import { useTagsQuery } from "@/lib/query/tags/useTagsQuery";
+import { usePaymentMethodOptions, usePaymentMethodDetailOptions } from "@/lib/query/usePaymentMethods";
 
 interface Solicitor {
   id: number;
@@ -202,6 +202,7 @@ const paymentMethods = [
   { value: "money_order", label: "Money Order" },
   { value: "p2p", label: "P2P" },
   { value: "pending", label: "Pending" },
+  { value: "bank_transfer", label: "Bank Transfer" },
   { value: "refund", label: "Refund" },
   { value: "scholarship", label: "Scholarship" },
   { value: "stock", label: "Stock" },
