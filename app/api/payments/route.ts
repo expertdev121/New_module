@@ -16,23 +16,6 @@ class AppError extends Error {
   }
 }
 
-const paymentMethodValues = [
-  "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-  "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
-  "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
-] as const;
-
-const methodDetailValues = [
-  "achisomoch", "authorize", "bank_of_america_charitable", "banquest", "banquest_cm",
-  "benevity", "chai_charitable", "charityvest_inc", "cjp", "donors_fund", "earthport",
-  "e_transfer", "facts", "fidelity", "fjc", "foundation", "goldman_sachs", "htc",
-  "jcf", "jcf_san_diego", "jgive", "keshet", "masa", "masa_old", "matach",
-  "matching_funds", "mizrachi_canada", "mizrachi_olami", "montrose", "morgan_stanley_gift",
-  "ms", "mt", "ojc", "paypal", "pelecard", "schwab_charitable", "stripe", "tiaa",
-  "touro", "uktoremet", "vanguard_charitable", "venmo", "vmm", "wise", "worldline",
-  "yaadpay", "yaadpay_cm", "yourcause", "yu", "zelle"
-] as const;
-
 const supportedCurrencies = ["USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR"] as const;
 const receiptTypeValues = ["invoice", "receipt", "confirmation", "other"] as const;
 const paymentStatusValues = [
@@ -49,12 +32,12 @@ interface PaymentWithDetails {
   pledgeCurrencyExchangeRate: string | null;
   amountInPlanCurrency: string | null;
   planCurrencyExchangeRate: string | null;
-  exchangeRate: string| null;
+  exchangeRate: string | null;
   paymentDate: string;
   receivedDate: string | null;
   checkDate: string | null;
   account: string | null;
-  paymentMethod: string| null;
+  paymentMethod: string | null;
   methodDetail: string | null;
   paymentStatus: string;
   referenceNumber: string | null;
@@ -93,7 +76,8 @@ const querySchema = z.object({
   page: z.preprocess((val) => parseInt(String(val), 10), z.number().min(1).default(1)).optional(),
   limit: z.preprocess((val) => parseInt(String(val), 10), z.number().min(1).default(10)).optional(),
   search: z.string().optional(),
-  paymentMethod: z.enum(paymentMethodValues).optional(),
+  paymentMethod: z.string().optional().nullable(),
+  methodDetail: z.string().optional().nullable(),
   paymentStatus: z.enum(paymentStatusValues).optional(),
   startDate: z.string().optional(),
   endDate: z.string().optional(),
@@ -138,8 +122,8 @@ const paymentCreateSchema = z.object({
   receivedDate: z.string().refine((date) => !isNaN(new Date(date).getTime()), { message: "Invalid date format" }).optional().nullable(),
   checkDate: z.string().refine((date) => !isNaN(new Date(date).getTime()), { message: "Invalid date format" }).optional().nullable(),
   account: z.string().optional().nullable(),
-  paymentMethod: z.enum(paymentMethodValues),
-  methodDetail: z.enum(methodDetailValues).optional().nullable(),
+  paymentMethod: z.string().optional().nullable(),
+  methodDetail: z.string().optional().nullable(),
   paymentStatus: z.enum(paymentStatusValues),
   referenceNumber: z.string().optional().nullable(),
   checkNumber: z.string().optional().nullable(),

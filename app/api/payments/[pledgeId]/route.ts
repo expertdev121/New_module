@@ -41,7 +41,7 @@ interface PaymentItem {
   exchangeRate: string | null;
   paymentDate: string;
   receivedDate: string | null;
-  paymentMethod: string| null;
+  paymentMethod: string | null;
   methodDetail: string | null;
   paymentStatus: string;
   referenceNumber: string | null;
@@ -59,7 +59,7 @@ interface PaymentItem {
   createdAt: Date;
   updatedAt: Date;
   pledgeExchangeRate: string | null;
-  pledgeDescription: string| null;
+  pledgeDescription: string | null;
   contactId: number;
   thirdPartyContactName: string | null;
   payerContactName: string | null;
@@ -121,13 +121,7 @@ const updatePaymentSchema = z.object({
   paymentDate: z.string().min(1, "Payment date is required").optional(),
   receivedDate: z.string().optional().nullable(),
   checkDate: z.string().optional().nullable(),
-
-  // Payment method and details
-  paymentMethod: z.enum([
-    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
-    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
-  ]).optional(),
+  paymentMethod: z.string().optional().nullable(),
   methodDetail: z.string().optional().nullable(),
   paymentStatus: PaymentStatusEnum.optional(),
 

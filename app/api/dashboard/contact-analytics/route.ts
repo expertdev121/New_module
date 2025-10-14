@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, eq, and, gte, lte, desc, count, sum } from "drizzle-orm";
+import { sql, eq, and, gte, lte, desc, count, sum, type SQL } from "drizzle-orm";
 import { contact, pledge, payment, relationships } from "@/lib/db/schema";
 
 export async function GET(request: NextRequest) {
@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
 
-    let dateFilter: any = null;
+    let dateFilter: SQL | undefined = undefined;
     if (startDate && endDate) {
       dateFilter = and(
         gte(contact.createdAt, new Date(startDate)),

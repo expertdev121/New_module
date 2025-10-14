@@ -58,12 +58,8 @@ const paymentPlanSchema = z.object({
   nextPaymentDate: z.string().optional().nullable(),
   autoRenew: z.boolean().default(false),
   planStatus: z.enum(["active", "completed", "cancelled", "paused", "overdue"]).default("active"),
-  paymentMethod: z.enum([
-    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
-    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
-  ]).optional(),
-  methodDetail: z.string().optional(),
+  paymentMethod: z.string().optional().nullable(),
+  methodDetail: z.string().optional().nullable(),
   currencyPriority: z.number().int().positive().default(1),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),

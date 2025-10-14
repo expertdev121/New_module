@@ -78,12 +78,8 @@ const updatePaymentPlanSchema = z.object({
   planStatus: PlanStatusEnum.optional(),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
-  paymentMethod: z.enum([
-    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending", "bank_transfer",
-    "refund", "scholarship", "stock", "student_portion", "unknown", "wire", "xfer", "other"
-  ]).optional(),
-  methodDetail: z.string().optional(),
+   paymentMethod: z.string().optional().nullable(),
+  methodDetail: z.string().optional().nullable(),
   customInstallments: z
     .array(
       z.object({
@@ -324,10 +320,11 @@ function safeNumericString(value: number | string | null | undefined): string | 
 
 export async function GET(
   request: NextRequest,
-  context: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const paymentPlanId = parseInt(context.params.id, 10);
+    const { id: planIdString } = await params;
+    const paymentPlanId = parseInt(planIdString, 10);
 
     if (isNaN(paymentPlanId) || paymentPlanId <= 0) {
       return NextResponse.json(

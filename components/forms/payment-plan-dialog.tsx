@@ -1039,13 +1039,24 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       }
     }
   }, [existingPlan, isEditMode, form, isFormInitializedRef.current]);
+  // Track if this is the first render
+  const isInitialRenderRef = useRef(true);
+
   useEffect(() => {
+    const previousMethod = watchedPaymentMethodRef.current;
     watchedPaymentMethodRef.current = currentPaymentMethod;
-    // Clear method detail when payment method changes
-    if (currentPaymentMethod) {
+
+    // Only clear method detail if payment method actually changed (not on initial load)
+    if (!isInitialRenderRef.current && previousMethod && previousMethod !== currentPaymentMethod) {
       form.setValue("methodDetail", "");
     }
+
+    // Mark that initial render is complete
+    if (isInitialRenderRef.current && currentPaymentMethod) {
+      isInitialRenderRef.current = false;
+    }
   }, [currentPaymentMethod, form]);
+
   // Enhanced currency conversion effect
   useEffect(() => {
     if (isEditMode && !isFormInitializedRef.current) {
