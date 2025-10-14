@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,6 +15,10 @@ import {
   CommandInput,
   CommandList,
 } from "@/components/ui/command";
+import {
+  usePaymentMethodOptions,
+  usePaymentMethodDetailOptions
+} from "@/lib/query/usePaymentMethods";
 import {
   Dialog,
   DialogContent,
@@ -251,82 +255,6 @@ const supportedCurrencies = [
   "USD", "ILS", "EUR", "JPY", "GBP", "AUD", "CAD", "ZAR",
 ] as const;
 
-const paymentMethods = [
-  { value: "ach", label: "ACH" },
-  { value: "bill_pay", label: "Bill Pay" },
-  { value: "cash", label: "Cash" },
-  { value: "check", label: "Check" },
-  { value: "credit", label: "Credit" },
-  { value: "credit_card", label: "Credit Card" },
-  { value: "expected", label: "Expected" },
-  { value: "goods_and_services", label: "Goods and Services" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "money_order", label: "Money Order" },
-  { value: "p2p", label: "P2P" },
-  { value: "pending", label: "Pending" },
-  { value: "refund", label: "Refund" },
-  { value: "scholarship", label: "Scholarship" },
-  { value: "stock", label: "Stock" },
-  { value: "student_portion", label: "Student Portion" },
-  { value: "unknown", label: "Unknown" },
-  { value: "wire", label: "Wire" },
-  { value: "xfer", label: "Xfer" },
-  { value: "other", label: "Other" },
-] as const;
-
-const methodDetails = [
-  { value: "achisomoch", label: "Achisomoch" },
-  { value: "authorize", label: "Authorize" },
-  { value: "bank_of_america_charitable", label: "Bank of America Charitable" },
-  { value: "banquest", label: "Banquest" },
-  { value: "banquest_cm", label: "Banquest CM" },
-  { value: "benevity", label: "Benevity" },
-  { value: "chai_charitable", label: "Chai Charitable" },
-  { value: "charityvest_inc", label: "Charityvest Inc." },
-  { value: "cjp", label: "CJP" },
-  { value: "donors_fund", label: "Donors' Fund" },
-  { value: "earthport", label: "EarthPort" },
-  { value: "e_transfer", label: "e-transfer" },
-  { value: "facts", label: "FACTS" },
-  { value: "fidelity", label: "Fidelity" },
-  { value: "fjc", label: "FJC" },
-  { value: "foundation", label: "Foundation" },
-  { value: "goldman_sachs", label: "Goldman Sachs" },
-  { value: "htc", label: "HTC" },
-  { value: "jcf", label: "JCF" },
-  { value: "jcf_san_diego", label: "JCF San Diego" },
-  { value: "jgive", label: "Jgive" },
-  { value: "keshet", label: "Keshet" },
-  { value: "masa", label: "MASA" },
-  { value: "masa_old", label: "MASA Old" },
-  { value: "matach", label: "Matach" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "mizrachi_canada", label: "Mizrachi Canada" },
-  { value: "mizrachi_olami", label: "Mizrachi Olami" },
-  { value: "montrose", label: "Montrose" },
-  { value: "morgan_stanley_gift", label: "Morgan Stanley Gift" },
-  { value: "ms", label: "MS" },
-  { value: "mt", label: "MT" },
-  { value: "ojc", label: "OJC" },
-  { value: "paypal", label: "PayPal" },
-  { value: "pelecard", label: "PeleCard (EasyCount)" },
-  { value: "schwab_charitable", label: "Schwab Charitable" },
-  { value: "stripe", label: "Stripe" },
-  { value: "tiaa", label: "TIAA" },
-  { value: "touro", label: "Touro" },
-  { value: "uktoremet", label: "UKToremet (JGive)" },
-  { value: "vanguard_charitable", label: "Vanguard Charitable" },
-  { value: "venmo", label: "Venmo" },
-  { value: "vmm", label: "VMM" },
-  { value: "wise", label: "Wise" },
-  { value: "worldline", label: "Worldline" },
-  { value: "yaadpay", label: "YaadPay" },
-  { value: "yaadpay_cm", label: "YaadPay CM" },
-  { value: "yourcause", label: "YourCause" },
-  { value: "yu", label: "YU" },
-  { value: "zelle", label: "Zelle" },
-] as const;
-
 const paymentStatuses = [
   { value: "expected", label: "Expected" },
   { value: "pending", label: "Pending" },
@@ -536,6 +464,9 @@ export default function EditPaymentDialog({
   const [selectedTagIds, setSelectedTagIds] = useState<number[]>(() => {
     return payment.tagIds || [];
   });
+  const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
+  const [methodDetailOpen, setMethodDetailOpen] = useState(false);
+  const watchedPaymentMethodRef = useRef<string | null | undefined>(payment.paymentMethod);
   const handleTagToggle = (tagId: number) => {
     const currentTagIds = form.getValues("tagIds") || [];
     const newTagIds = currentTagIds.includes(tagId)
@@ -645,7 +576,7 @@ export default function EditPaymentDialog({
       tagIds: payment.tagIds || [],
       receivedDate: payment.receivedDate || null,
       paymentMethod: payment.paymentMethod ?? undefined,
-      methodDetail: payment.methodDetail ?? undefined,
+      methodDetail: payment.methodDetail || null,
       paymentStatus: payment.paymentStatus ?? undefined,
       account: payment.account ?? undefined,
       checkDate: payment.checkDate ?? undefined,
@@ -703,6 +634,13 @@ export default function EditPaymentDialog({
     control: form.control,
     name: "allocations",
   });
+
+  const { options: paymentMethodOptions, isLoading: isLoadingPaymentMethods } = usePaymentMethodOptions();
+
+  const currentPaymentMethod = form.watch("paymentMethod");
+
+  const { options: methodDetailOptions, isLoading: isLoadingDetailOptions } =
+    usePaymentMethodDetailOptions(watchedPaymentMethodRef.current ?? undefined);
 
   const watchedCurrency = form.watch("currency");
   const watchedAmount = form.watch("amount");
@@ -852,6 +790,24 @@ export default function EditPaymentDialog({
     0
   );
   const remainingToAllocate = (watchedAmount || 0) - totalAllocatedAmount;
+
+  useEffect(() => {
+    // Pre-select method detail when editing if it exists and options are loaded
+    if (payment.methodDetail && methodDetailOptions.length > 0 && !form.getValues("methodDetail")) {
+      const matchingDetail = methodDetailOptions.find(opt => opt.value === payment.methodDetail);
+      if (matchingDetail) {
+        form.setValue("methodDetail", payment.methodDetail);
+      }
+    }
+  }, [methodDetailOptions, payment.methodDetail, form]);
+
+  useEffect(() => {
+    watchedPaymentMethodRef.current = currentPaymentMethod;
+    // ONLY clear method detail when payment method changes, not on initial load
+    if (currentPaymentMethod && currentPaymentMethod !== payment.paymentMethod) {
+      form.setValue("methodDetail", "");
+    }
+  }, [currentPaymentMethod, form, payment.paymentMethod]);
 
   useEffect(() => {
     if (isExistingMultiContactPayment && multiContactAllocations.length === 0) {
@@ -3333,56 +3289,54 @@ export default function EditPaymentDialog({
                     control={form.control}
                     name="paymentMethod"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="flex flex-col">
                         <FormLabel>Payment Method</FormLabel>
-                        <Popover>
+                        <Popover open={paymentMethodOpen} onOpenChange={setPaymentMethodOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
                                 variant="outline"
                                 role="combobox"
+                                aria-expanded={paymentMethodOpen}
+                                disabled={isLoadingPaymentMethods}
                                 className={cn(
                                   "w-full justify-between",
                                   !field.value && "text-muted-foreground"
                                 )}
                               >
-                                {field.value
-                                  ? paymentMethods.find((method) => method.value === field.value)?.label
-                                  : "Select method..."}
+                                {isLoadingPaymentMethods
+                                  ? "Loading payment methods..."
+                                  : field.value
+                                    ? paymentMethodOptions.find(method => method.value === field.value)?.label ||
+                                    field.value.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
+                                    : "Select payment method"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0" align="start">
-                            <Command>
+                          <PopoverContent className="w-[400px] p-0" align="start">
+                            <Command shouldFilter={true}>
                               <CommandInput placeholder="Search payment methods..." />
-                              <CommandList>
-                                <CommandEmpty>No payment method found.</CommandEmpty>
+                              <CommandEmpty>No payment method found.</CommandEmpty>
+                              <CommandList className="max-h-[300px] overflow-y-auto">
                                 <CommandGroup>
-                                  <CommandItem
-                                    value="none"
-                                    onSelect={() => field.onChange(null)}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        !field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    None
-                                  </CommandItem>
-                                  {paymentMethods.map((method) => (
+                                  {paymentMethodOptions.map((method, index) => (
                                     <CommandItem
-                                      key={method.value}
+                                      key={`payment-method-${method.value}-${index}`}
                                       value={method.value}
-                                      onSelect={() => {
-                                        field.onChange(method.value);
+                                      onSelect={(value) => {
+                                        const selectedMethod = paymentMethodOptions.find(m => m.value === value);
+                                        if (selectedMethod) {
+                                          form.setValue("paymentMethod", selectedMethod.value);
+                                          form.setValue("methodDetail", "");
+                                          setPaymentMethodOpen(false);
+                                        }
                                       }}
                                     >
                                       <Check
                                         className={cn(
                                           "mr-2 h-4 w-4",
-                                          field.value === method.value ? "opacity-100" : "opacity-0"
+                                          method.value === field.value ? "opacity-100" : "opacity-0"
                                         )}
                                       />
                                       {method.label}
@@ -3402,56 +3356,59 @@ export default function EditPaymentDialog({
                     control={form.control}
                     name="methodDetail"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="flex flex-col">
                         <FormLabel>Method Detail</FormLabel>
-                        <Popover>
+                        <Popover open={methodDetailOpen} onOpenChange={setMethodDetailOpen}>
                           <PopoverTrigger asChild>
                             <FormControl>
                               <Button
                                 variant="outline"
                                 role="combobox"
+                                aria-expanded={methodDetailOpen}
+                                disabled={!watchedPaymentMethodRef.current || isLoadingDetailOptions}
                                 className={cn(
                                   "w-full justify-between",
                                   !field.value && "text-muted-foreground"
                                 )}
                               >
-                                {field.value
-                                  ? methodDetails.find((detail) => detail.value === field.value)?.label
-                                  : "Select detail..."}
+                                {!watchedPaymentMethodRef.current
+                                  ? "Select payment method first"
+                                  : isLoadingDetailOptions
+                                    ? "Loading details..."
+                                    : field.value
+                                      ? methodDetailOptions.find(detail => detail.value === field.value)?.label ||
+                                      field.value.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase())
+                                      : "Select method detail"}
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </FormControl>
                           </PopoverTrigger>
-                          <PopoverContent className="w-full p-0" align="start">
-                            <Command>
+                          <PopoverContent className="w-[400px] p-0" align="start">
+                            <Command shouldFilter={true}>
                               <CommandInput placeholder="Search method details..." />
-                              <CommandList>
-                                <CommandEmpty>No method detail found.</CommandEmpty>
+                              <CommandEmpty>
+                                {methodDetailOptions.length === 0
+                                  ? "No method details available for this payment method."
+                                  : "No method detail found."}
+                              </CommandEmpty>
+                              <CommandList className="max-h-[300px] overflow-y-auto">
                                 <CommandGroup>
-                                  <CommandItem
-                                    value="none"
-                                    onSelect={() => field.onChange(null)}
-                                  >
-                                    <Check
-                                      className={cn(
-                                        "mr-2 h-4 w-4",
-                                        !field.value ? "opacity-100" : "opacity-0"
-                                      )}
-                                    />
-                                    None
-                                  </CommandItem>
-                                  {methodDetails.map((detail) => (
+                                  {methodDetailOptions.map((detail, index) => (
                                     <CommandItem
-                                      key={detail.value}
+                                      key={`method-detail-${detail.value}-${index}`}
                                       value={detail.value}
-                                      onSelect={() => {
-                                        field.onChange(detail.value);
+                                      onSelect={(value) => {
+                                        const selectedDetail = methodDetailOptions.find(d => d.value === value);
+                                        if (selectedDetail) {
+                                          form.setValue("methodDetail", selectedDetail.value);
+                                          setMethodDetailOpen(false);
+                                        }
                                       }}
                                     >
                                       <Check
                                         className={cn(
                                           "mr-2 h-4 w-4",
-                                          field.value === detail.value ? "opacity-100" : "opacity-0"
+                                          detail.value === field.value ? "opacity-100" : "opacity-0"
                                         )}
                                       />
                                       {detail.label}
