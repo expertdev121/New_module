@@ -324,11 +324,10 @@ function safeNumericString(value: number | string | null | undefined): string | 
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params: { id: string } }
 ) {
   try {
-    const { id: paymentPlanIdString } = await params;
-    const paymentPlanId = parseInt(paymentPlanIdString, 10);
+    const paymentPlanId = parseInt(context.params.id, 10);
 
     if (isNaN(paymentPlanId) || paymentPlanId <= 0) {
       return NextResponse.json(
@@ -371,20 +370,32 @@ export async function GET(
         createdAt: paymentPlan.createdAt,
         updatedAt: paymentPlan.updatedAt,
 
-        // Pledge related - subqueries:
-        pledgeOriginalAmount: sql<string>`(SELECT ${pledge.originalAmount} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmount"),
-        pledgeOriginalAmountUsd: sql<string>`(SELECT ${pledge.originalAmountUsd} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeOriginalAmountUsd"),
-        pledgeCurrency: sql<string>`(SELECT ${pledge.currency} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeCurrency"),
-        pledgeDescription: sql<string>`(SELECT ${pledge.description} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeDescription"),
-        pledgeExchangeRate: sql<string>`(SELECT ${pledge.exchangeRate} FROM ${pledge} WHERE ${pledge.id} = ${paymentPlan.pledgeId})`.as("pledgeExchangeRate"),
-        pledgeContact: sql<string>`(SELECT CONCAT(c.first_name, ' ', c.last_name) FROM ${pledge} p JOIN contact c ON p.contact_id = c.id WHERE p.id = ${paymentPlan.pledgeId})`.as("pledgeContact"),
+        pledgeOriginalAmount: sql<string>`(SELECT original_amount FROM pledge WHERE id = payment_plan.pledge_id)`.as("pledgeOriginalAmount"),
+        pledgeOriginalAmountUsd: sql<string>`(SELECT original_amount_usd FROM pledge WHERE id = payment_plan.pledge_id)`.as("pledgeOriginalAmountUsd"),
+        pledgeCurrency: sql<string>`(SELECT currency FROM pledge WHERE id = payment_plan.pledge_id)`.as("pledgeCurrency"),
+        pledgeDescription: sql<string>`(SELECT description FROM pledge WHERE id = payment_plan.pledge_id)`.as("pledgeDescription"),
+        pledgeExchangeRate: sql<string>`(SELECT exchange_rate FROM pledge WHERE id = payment_plan.pledge_id)`.as("pledgeExchangeRate"),
+        pledgeContact: sql<string>`(SELECT CONCAT(c.first_name, ' ', c.last_name) FROM pledge p JOIN contact c ON p.contact_id = c.id WHERE p.id = payment_plan.pledge_id)`.as("pledgeContact"),
 
-        // Third-party payment information
+        // FIX: Use direct column names instead of Drizzle field references
+        paymentMethod: sql<string | null>`(
+          SELECT payment_method FROM payment 
+          WHERE payment_plan_id = payment_plan.id 
+          LIMIT 1
+        )`.as("paymentMethod"),
+
+        methodDetail: sql<string | null>`(
+          SELECT method_detail FROM payment 
+          WHERE payment_plan_id = payment_plan.id 
+          LIMIT 1
+        )`.as("methodDetail"),
+
         isThirdPartyPayment: sql<boolean>`(
           SELECT COALESCE(bool_or(is_third_party_payment), false)
           FROM payment
           WHERE payment_plan_id = payment_plan.id
         )`.as("isThirdPartyPayment"),
+
         payerContactId: sql<number | null>`(
           SELECT payer_contact_id
           FROM payment
@@ -392,6 +403,7 @@ export async function GET(
             AND payer_contact_id IS NOT NULL
           LIMIT 1
         )`.as("payerContactId"),
+
         payerContactName: sql<string | null>`(
           SELECT CONCAT(c.first_name, ' ', c.last_name)
           FROM payment p

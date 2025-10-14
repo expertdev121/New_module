@@ -1127,6 +1127,9 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   // Initialize form with existing plan data
   useEffect(() => {
     if (isEditMode && existingPlan && !isFormInitializedRef.current) {
+      console.log("Existing plan data:", existingPlan);
+      console.log("Payment Method:", existingPlan.paymentMethod);
+      console.log("Method Detail:", existingPlan.methodDetail);
       const planData = {
         pledgeId: existingPlan.pledgeId,
         relationshipId: existingPlan.relationshipId || undefined,

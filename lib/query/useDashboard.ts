@@ -52,6 +52,43 @@ export interface RecentActivity {
   method: string;
 }
 
+export interface ContactAnalyticsData {
+  genderData: {
+    labels: string[];
+    values: number[];
+  };
+  titleData: {
+    labels: string[];
+    values: number[];
+  };
+  contactCreationData: {
+    labels: string[];
+    values: number[];
+  };
+  engagementData: {
+    totalContacts: number;
+    contactsWithPledges: number;
+    contactsWithPayments: number;
+  };
+  relationshipData: {
+    labels: string[];
+    values: number[];
+  };
+  topContributors: {
+    name: string;
+    pledges: number;
+    pledgeAmount: number;
+    payments: number;
+    paymentAmount: number;
+  }[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+}
+
 export const useDashboardOverview = (timeRange?: string, startDate?: string, endDate?: string) => {
   return useQuery<OverviewData, Error>({
     queryKey: ["dashboard", "overview", timeRange, startDate, endDate],
@@ -168,6 +205,28 @@ export const useDashboardRecentActivity = (startDate?: string, endDate?: string)
       const response = await fetch(`/api/dashboard/recent-activity?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch recent activity: ${response.statusText}`);
+      }
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
+  });
+};
+
+export const useDashboardContactAnalytics = (startDate?: string, endDate?: string, page?: number, limit?: number) => {
+  return useQuery<ContactAnalyticsData, Error>({
+    queryKey: ["dashboard", "contact-analytics", startDate, endDate, page, limit],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      }
+      if (page) params.append("page", page.toString());
+      if (limit) params.append("limit", limit.toString());
+      const response = await fetch(`/api/dashboard/contact-analytics?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch contact analytics: ${response.statusText}`);
       }
       return response.json();
     },

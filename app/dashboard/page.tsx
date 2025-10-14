@@ -33,6 +33,7 @@ import {
   useDashboardPledgeStatus,
   useDashboardTopDonors,
   useDashboardRecentActivity,
+  useDashboardContactAnalytics,
 } from "@/lib/query/useDashboard";
 
 ChartJS.register(
@@ -105,8 +106,12 @@ export default function DashboardPage() {
     isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
     isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
+  const { data: contactAnalyticsData, isLoading: contactAnalyticsLoading } = useDashboardContactAnalytics(
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
+  );
 
-  const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading;
+  const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading || contactAnalyticsLoading;
 
   if (status === "loading") return <div className="flex items-center justify-center h-screen">Loading...</div>;
   if (!session) {
@@ -643,15 +648,137 @@ export default function DashboardPage() {
             </TabsContent>
 
             <TabsContent value="contacts" className="space-y-6">
+              {/* Contact Creation Trend */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Contact Analytics</CardTitle>
-                  <CardDescription>Overview of contact engagement and contributions</CardDescription>
+                  <CardTitle>Contact Creation Trend</CardTitle>
+                  <CardDescription>Monthly contact additions over the last 12 months</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-center py-8">
-                    <Users className="w-16 h-16 mx-auto text-gray-300 mb-4" />
-                    <p className="text-gray-500">Contact analytics coming soon</p>
+                  <div className="h-[300px]">
+                    <Line
+                      data={{
+                        labels: contactAnalyticsData?.contactCreationData.labels || [],
+                        datasets: [
+                          {
+                            label: 'New Contacts',
+                            data: contactAnalyticsData?.contactCreationData.values || [],
+                            borderColor: CHART_COLORS.indigo,
+                            backgroundColor: 'rgba(99, 102, 241, 0.1)',
+                            fill: true,
+                            tension: 0.4,
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            display: false,
+                          },
+                        },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                          },
+                        },
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Engagement and Relationship Data */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Contact Engagement</CardTitle>
+                    <CardDescription>Contacts with pledges and payments</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">Total Contacts</span>
+                      <span className="font-bold">{contactAnalyticsData?.engagementData.totalContacts || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">With Pledges</span>
+                      <span className="font-bold text-blue-600">{contactAnalyticsData?.engagementData.contactsWithPledges || 0}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600">With Payments</span>
+                      <span className="font-bold text-green-600">{contactAnalyticsData?.engagementData.contactsWithPayments || 0}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle>Relationship Types</CardTitle>
+                    <CardDescription>Distribution of contact relationships</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[200px]">
+                      <Bar
+                        data={{
+                          labels: contactAnalyticsData?.relationshipData.labels || [],
+                          datasets: [
+                            {
+                              label: 'Count',
+                              data: contactAnalyticsData?.relationshipData.values || [],
+                              backgroundColor: CHART_COLORS.purple,
+                              borderColor: CHART_COLORS.purple,
+                              borderWidth: 1,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              display: false,
+                            },
+                          },
+                          scales: {
+                            y: {
+                              beginAtZero: true,
+                            },
+                          },
+                        }}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Top Contributors */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Contributors</CardTitle>
+                  <CardDescription>Contacts with highest pledge and payment amounts</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {contactAnalyticsData?.topContributors.map((contributor, index) => (
+                      <div key={index} className="flex items-center justify-between border-b pb-3 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center font-semibold">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <p className="font-medium">{contributor.name}</p>
+                            <p className="text-sm text-gray-500">
+                              {contributor.pledges} pledges • {contributor.payments} payments
+                            </p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold">{formatCurrency(contributor.pledgeAmount)}</p>
+                          <p className="text-sm text-green-600">{formatCurrency(contributor.paymentAmount)} paid</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </CardContent>
               </Card>

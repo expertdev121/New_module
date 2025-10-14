@@ -1133,7 +1133,7 @@ export async function GET(request: NextRequest) {
       )
     )`
       );
-    }  
+    }
 
     if (planStatus) {
       conditions.push(eq(paymentPlan.planStatus, planStatus));
@@ -1180,6 +1180,19 @@ export async function GET(request: NextRequest) {
         createdAt: paymentPlan.createdAt,
         updatedAt: paymentPlan.updatedAt,
         exchangeRate: paymentPlan.exchangeRate,
+        paymentMethod: sql<string | null>`(
+  SELECT ${payment.paymentMethod} FROM ${payment} 
+  WHERE ${payment.paymentPlanId} = ${paymentPlan.id} 
+  LIMIT 1
+)`.as("paymentMethod"),
+
+        methodDetail: sql<string | null>`(
+  SELECT ${payment.methodDetail} FROM ${payment} 
+  WHERE ${payment.paymentPlanId} = ${paymentPlan.id} 
+  LIMIT 1
+)`.as("methodDetail"),
+
+
         pledgeDescription: sql<string>`(
       SELECT description FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
     )`.as("pledgeDescription"),
@@ -1190,15 +1203,13 @@ export async function GET(request: NextRequest) {
       SELECT contact_id FROM ${pledge} WHERE id = ${paymentPlan.pledgeId}
     )`.as("contactId"),
 
-        // NEW: Third-party payment information
-        // Check if any payment in this plan is a third-party payment
+        // Third-party payment information
         isThirdPartyPayment: sql<boolean>`(
       SELECT COALESCE(bool_or(is_third_party_payment), false)
       FROM payment
       WHERE payment_plan_id = payment_plan.id
     )`.as("isThirdPartyPayment"),
 
-        // Get the payer contact ID (from the first payment in the plan)
         payerContactId: sql<number | null>`(
       SELECT payer_contact_id
       FROM payment
@@ -1207,7 +1218,6 @@ export async function GET(request: NextRequest) {
       LIMIT 1
     )`.as("payerContactId"),
 
-        // Get the payer contact name
         payerContactName: sql<string | null>`(
       SELECT CONCAT(c.first_name, ' ', c.last_name)
       FROM payment p
@@ -1217,7 +1227,6 @@ export async function GET(request: NextRequest) {
       LIMIT 1
     )`.as("payerContactName"),
 
-        // Get the pledge contact name (beneficiary)
         pledgeContactName: sql<string | null>`(
       SELECT CONCAT(c.first_name, ' ', c.last_name)
       FROM pledge pl
