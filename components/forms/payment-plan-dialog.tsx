@@ -71,7 +71,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-
+import {
+  usePaymentMethodOptions,
+  usePaymentMethodDetailOptions
+} from "@/lib/query/usePaymentMethods";
 import {
   Card,
   CardContent,
@@ -155,84 +158,6 @@ const statusOptions = [
   { value: "overdue", label: "Overdue" },
 ] as const;
 
-// Payment methods - matches your schema exactly
-const paymentMethods = [
-  { value: "ach", label: "ACH" },
-  { value: "bill_pay", label: "Bill Pay" },
-  { value: "cash", label: "Cash" },
-  { value: "check", label: "Check" },
-  { value: "credit", label: "Credit" },
-  { value: "credit_card", label: "Credit Card" },
-  { value: "expected", label: "Expected" },
-  { value: "goods_and_services", label: "Goods and Services" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "money_order", label: "Money Order" },
-  { value: "p2p", label: "P2P" },
-  { value: "pending", label: "Pending" },
-  { value: "bank_transfer", label: "Bank Transfer" },
-  { value: "refund", label: "Refund" },
-  { value: "scholarship", label: "Scholarship" },
-  { value: "stock", label: "Stock" },
-  { value: "student_portion", label: "Student Portion" },
-  { value: "unknown", label: "Unknown" },
-  { value: "wire", label: "Wire" },
-  { value: "xfer", label: "Xfer" },
-  { value: "other", label: "Other" },
-] as const;
-
-const methodDetails = [
-  { value: "achisomoch", label: "Achisomoch" },
-  { value: "authorize", label: "Authorize" },
-  { value: "bank_of_america_charitable", label: "Bank of America Charitable" },
-  { value: "banquest", label: "Banquest" },
-  { value: "banquest_cm", label: "Banquest CM" },
-  { value: "benevity", label: "Benevity" },
-  { value: "chai_charitable", label: "Chai Charitable" },
-  { value: "charityvest_inc", label: "Charityvest Inc." },
-  { value: "cjp", label: "CJP" },
-  { value: "donors_fund", label: "Donors' Fund" },
-  { value: "earthport", label: "EarthPort" },
-  { value: "e_transfer", label: "e-transfer" },
-  { value: "facts", label: "FACTS" },
-  { value: "fidelity", label: "Fidelity" },
-  { value: "fjc", label: "FJC" },
-  { value: "foundation", label: "Foundation" },
-  { value: "goldman_sachs", label: "Goldman Sachs" },
-  { value: "htc", label: "HTC" },
-  { value: "jcf", label: "JCF" },
-  { value: "jcf_san_diego", label: "JCF San Diego" },
-  { value: "jgive", label: "Jgive" },
-  { value: "keshet", label: "Keshet" },
-  { value: "masa", label: "MASA" },
-  { value: "masa_old", label: "MASA Old" },
-  { value: "matach", label: "Matach" },
-  { value: "matching_funds", label: "Matching Funds" },
-  { value: "mizrachi_canada", label: "Mizrachi Canada" },
-  { value: "mizrachi_olami", label: "Mizrachi Olami" },
-  { value: "montrose", label: "Montrose" },
-  { value: "morgan_stanley_gift", label: "Morgan Stanley Gift" },
-  { value: "ms", label: "MS" },
-  { value: "mt", label: "MT" },
-  { value: "ojc", label: "OJC" },
-  { value: "paypal", label: "PayPal" },
-  { value: "pelecard", label: "PeleCard (EasyCount)" },
-  { value: "schwab_charitable", label: "Schwab Charitable" },
-  { value: "stripe", label: "Stripe" },
-  { value: "tiaa", label: "TIAA" },
-  { value: "touro", label: "Touro" },
-  { value: "uktoremet", label: "UKToremet (JGive)" },
-  { value: "vanguard_charitable", label: "Vanguard Charitable" },
-  { value: "venmo", label: "Venmo" },
-  { value: "vmm", label: "VMM" },
-  { value: "wise", label: "Wise" },
-  { value: "worldline", label: "Worldline" },
-  { value: "yaadpay", label: "YaadPay" },
-  { value: "yaadpay_cm", label: "YaadPay CM" },
-  { value: "yourcause", label: "YourCause" },
-  { value: "yu", label: "YU" },
-  { value: "zelle", label: "Zelle" },
-] as const;
-
 // Type definitions
 interface Contact {
   id: number;
@@ -252,11 +177,6 @@ const ensureCurrency = (value: string | undefined): typeof supportedCurrencies[n
 const ensureFrequency = (value: string | undefined): typeof frequencies[number]['value'] => {
   const validFrequency = frequencies.find(f => f.value === value);
   return validFrequency ? validFrequency.value : "monthly";
-};
-
-const ensurePaymentMethod = (value: string | undefined): typeof paymentMethods[number]['value'] => {
-  const validMethod = paymentMethods.find(m => m.value === value);
-  return validMethod ? validMethod.value : "ach";
 };
 
 const ensurePlanStatus = (value: string | undefined): typeof statusOptions[number]['value'] => {
@@ -326,13 +246,8 @@ export const paymentPlanSchema = z.object({
       })
     )
     .optional(),
-  // Payment method fields
-  paymentMethod: z.enum([
-    "ach", "bill_pay", "cash", "check", "credit", "credit_card", "expected",
-    "goods_and_services", "matching_funds", "money_order", "p2p", "pending",
-    "bank_transfer", "refund", "scholarship", "stock", "student_portion",
-    "unknown", "wire", "xfer", "other"
-  ], {
+  // Payment method fields - NOW DYNAMIC
+  paymentMethod: z.string({
     required_error: "Payment method is required",
     invalid_type_error: "Please select a valid payment method"
   }),
@@ -576,266 +491,6 @@ const calculateEndDate = (
   return end.toISOString().split("T")[0];
 };
 
-// Preview Component
-const PaymentPlanPreview = ({
-  formData,
-  onConfirm,
-  onEdit,
-  isLoading = false,
-  isEditMode = false,
-  installmentsModified = false,
-  exchangeRates,
-}: {
-  formData: PaymentPlanFormData;
-  onConfirm: () => void;
-  onEdit: () => void;
-  isLoading?: boolean;
-  isEditMode?: boolean;
-  installmentsModified?: boolean;
-  exchangeRates?: Record<string, string>;
-}) => {
-  const previewInstallments = useMemo(() => {
-    if (formData.distributionType === "custom" && formData.customInstallments) {
-      return formData.customInstallments.map((inst, index) => ({
-        installmentNumber: index + 1,
-        date: inst.installmentDate,
-        amount: inst.installmentAmount,
-        currency: inst.currency,
-        formattedDate: new Date(inst.installmentDate).toLocaleDateString(),
-        notes: inst.notes,
-        isPaid: inst.status === "paid",
-      }));
-    } else {
-      return generatePreviewInstallments(
-        formData.startDate,
-        formData.frequency,
-        formData.numberOfInstallments,
-        formData.totalPlannedAmount,
-        formData.currency
-      );
-    }
-  }, [formData]);
-
-  const totalPreviewAmount = previewInstallments.reduce((sum, inst) => sum + inst.amount, 0);
-
-  // Calculate USD equivalent
-  const usdEquivalent = useMemo(() => {
-    if (!exchangeRates || formData.currency === "USD") {
-      return formData.currency === "USD" ? totalPreviewAmount : null;
-    }
-    return convertAmount(totalPreviewAmount, formData.currency, "USD", exchangeRates);
-  }, [totalPreviewAmount, formData.currency, exchangeRates]);
-
-  return (
-    <div className="space-y-6">
-      <div className="text-center">
-        <h3 className="text-lg font-semibold">Payment Plan Preview</h3>
-        <p className="text-sm text-muted-foreground mt-1">
-          Review the payment schedule before confirming
-        </p>
-      </div>
-
-      {/* Show warning for fixed plans being converted */}
-      {isEditMode && formData.distributionType === "fixed" && installmentsModified && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="p-3">
-            <div className="flex items-center">
-              <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
-              <span className="text-sm text-amber-700">
-                This plan will be converted from fixed to custom distribution due to installment modifications.
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="border-blue-200 bg-blue-50">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-blue-900 text-base">Plan Summary</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-3 text-sm">
-            <div>
-              <span className="text-blue-700">Total Amount:</span>
-              <span className="font-medium ml-2">
-                {formData.currency} {formData.totalPlannedAmount.toLocaleString()}
-              </span>
-            </div>
-            {usdEquivalent && formData.currency !== "USD" && (
-              <div>
-                <span className="text-blue-700">USD Equivalent:</span>
-                <span className="font-medium ml-2">
-                  ${roundToPrecision(usdEquivalent, 2).toLocaleString()}
-                </span>
-              </div>
-            )}
-            <div>
-              <span className="text-blue-700">Frequency:</span>
-              <span className="font-medium ml-2 capitalize">
-                {formData.frequency.replace('_', ' ')}
-              </span>
-            </div>
-            {formData.paymentMethod && (
-              <div>
-                <span className="text-blue-700">Payment Method:</span>
-                <span className="font-medium ml-2">
-                  {paymentMethods.find(m => m.value === formData.paymentMethod)?.label}
-                </span>
-              </div>
-            )}
-            {formData.methodDetail && (
-              <div className="col-span-2">
-                <span className="text-blue-700">Method Detail:</span>
-                <span className="font-medium ml-2">
-                  {methodDetails.find(m => m.value === formData.methodDetail)?.label || formData.methodDetail}
-                </span>
-              </div>
-            )}
-            <div>
-              <span className="text-blue-700">Distribution:</span>
-              <span className="font-medium ml-2">
-                {formData.distributionType === 'custom' ? 'Custom Schedule' : 'Fixed Amount'}
-              </span>
-            </div>
-            <div>
-              <span className="text-blue-700">Total Installments:</span>
-              <span className="font-medium ml-2">{previewInstallments.length}</span>
-            </div>
-            {formData.distributionType !== 'custom' && (
-              <div>
-                <span className="text-blue-700">Per Installment:</span>
-                <span className="font-medium ml-2">
-                  {formData.currency} {formData.installmentAmount.toLocaleString()}
-                </span>
-              </div>
-            )}
-            <div>
-              <span className="text-blue-700">Start Date:</span>
-              <span className="font-medium ml-2">
-                {new Date(formData.startDate).toLocaleDateString()}
-              </span>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base">Payment Schedule</CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="max-h-96 overflow-y-auto">
-            {previewInstallments.map((installment, index) => (
-              <div
-                key={index}
-                className={`px-4 py-3 border-b last:border-b-0 flex items-center justify-between ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
-                  }`}
-              >
-                <div className="flex items-center space-x-4">
-                  <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
-                    {installment.installmentNumber}
-                  </div>
-                  <div>
-                    <div className="font-medium">{installment.formattedDate}</div>
-                    <div className="text-sm text-gray-500">{installment.date}</div>
-                    {installment.notes && (
-                      <div className="text-xs text-gray-400 mt-1">{installment.notes}</div>
-                    )}
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-medium">
-                    {installment.currency} {installment.amount.toLocaleString()}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    {formData.distributionType === 'custom' ? 'Custom' : 'Fixed'}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
-      {Math.abs(totalPreviewAmount - formData.totalPlannedAmount) > 0.01 && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardContent className="p-3">
-            <div className="flex items-center">
-              <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
-              <span className="text-sm text-amber-700">
-                Warning: Total installments ({formData.currency} {totalPreviewAmount.toLocaleString()})
-                differ from planned amount ({formData.currency} {formData.totalPlannedAmount.toLocaleString()})
-                by {formData.currency} {Math.abs(totalPreviewAmount - formData.totalPlannedAmount).toLocaleString()}
-              </span>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      <Card className="border-green-200 bg-green-50">
-        <CardContent className="p-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <div className="font-medium text-green-900">
-                Total: {formData.currency} {totalPreviewAmount.toLocaleString()}
-                {usdEquivalent && formData.currency !== "USD" && (
-                  <span className="text-sm text-green-700 ml-2">
-                    (~${roundToPrecision(usdEquivalent, 2).toLocaleString()} USD)
-                  </span>
-                )}
-              </div>
-              <div className="text-sm text-green-700">
-                {previewInstallments.length} payments over {
-                  formData.distributionType === 'custom'
-                    ? 'custom schedule'
-                    : `${formData.numberOfInstallments} ${formData.frequency} periods`
-                }
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-sm text-green-700">
-                {formData.endDate && (
-                  <>End Date: {new Date(formData.endDate).toLocaleDateString()}</>
-                )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      <div className="flex justify-end space-x-3 pt-4 border-t">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onEdit}
-          disabled={isLoading}
-        >
-          <Edit className="w-4 h-4 mr-2" />
-          Edit Plan
-        </Button>
-        <Button
-          type="button"
-          onClick={onConfirm}
-          disabled={isLoading}
-          className="text-white"
-        >
-          {isLoading ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
-              Confirming...
-            </>
-          ) : (
-            <>
-              <Check className="w-4 h-4 mr-2" />
-              Confirm & Create Plan
-            </>
-          )}
-        </Button>
-      </div>
-    </div>
-  );
-};
-
 export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const {
     pledgeId: initialPledgeId,
@@ -1023,7 +678,267 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       thirdPartyContactId: null,
     },
   });
+  // Preview Component
+  const PaymentPlanPreview = ({
+    formData,
+    onConfirm,
+    onEdit,
+    isLoading = false,
+    isEditMode = false,
+    installmentsModified = false,
+    exchangeRates,
+  }: {
+    formData: PaymentPlanFormData;
+    onConfirm: () => void;
+    onEdit: () => void;
+    isLoading?: boolean;
+    isEditMode?: boolean;
+    installmentsModified?: boolean;
+    exchangeRates?: Record<string, string>;
+  }) => {
+    const previewInstallments = useMemo(() => {
+      if (formData.distributionType === "custom" && formData.customInstallments) {
+        return formData.customInstallments.map((inst, index) => ({
+          installmentNumber: index + 1,
+          date: inst.installmentDate,
+          amount: inst.installmentAmount,
+          currency: inst.currency,
+          formattedDate: new Date(inst.installmentDate).toLocaleDateString(),
+          notes: inst.notes,
+          isPaid: inst.status === "paid",
+        }));
+      } else {
+        return generatePreviewInstallments(
+          formData.startDate,
+          formData.frequency,
+          formData.numberOfInstallments,
+          formData.totalPlannedAmount,
+          formData.currency
+        );
+      }
+    }, [formData]);
 
+    const totalPreviewAmount = previewInstallments.reduce((sum, inst) => sum + inst.amount, 0);
+
+    // Calculate USD equivalent
+    const usdEquivalent = useMemo(() => {
+      if (!exchangeRates || formData.currency === "USD") {
+        return formData.currency === "USD" ? totalPreviewAmount : null;
+      }
+      return convertAmount(totalPreviewAmount, formData.currency, "USD", exchangeRates);
+    }, [totalPreviewAmount, formData.currency, exchangeRates]);
+
+    return (
+      <div className="space-y-6">
+        <div className="text-center">
+          <h3 className="text-lg font-semibold">Payment Plan Preview</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Review the payment schedule before confirming
+          </p>
+        </div>
+
+        {/* Show warning for fixed plans being converted */}
+        {isEditMode && formData.distributionType === "fixed" && installmentsModified && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="p-3">
+              <div className="flex items-center">
+                <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
+                <span className="text-sm text-amber-700">
+                  This plan will be converted from fixed to custom distribution due to installment modifications.
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="border-blue-200 bg-blue-50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-blue-900 text-base">Plan Summary</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-blue-700">Total Amount:</span>
+                <span className="font-medium ml-2">
+                  {formData.currency} {formData.totalPlannedAmount.toLocaleString()}
+                </span>
+              </div>
+              {usdEquivalent && formData.currency !== "USD" && (
+                <div>
+                  <span className="text-blue-700">USD Equivalent:</span>
+                  <span className="font-medium ml-2">
+                    ${roundToPrecision(usdEquivalent, 2).toLocaleString()}
+                  </span>
+                </div>
+              )}
+              <div>
+                <span className="text-blue-700">Frequency:</span>
+                <span className="font-medium ml-2 capitalize">
+                  {formData.frequency.replace('_', ' ')}
+                </span>
+              </div>
+              {formData.paymentMethod && (
+                <div>
+                  <span className="text-blue-700">Payment Method:</span>
+                  <span className="font-medium ml-2">
+                    {paymentMethodOptions.find(m => m.value === formData.paymentMethod)?.label ||
+                      formData.paymentMethod.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </span>
+                </div>
+              )}
+              {formData.methodDetail && (
+                <div className="col-span-2">
+                  <span className="text-blue-700">Method Detail:</span>
+                  <span className="font-medium ml-2">
+                    {methodDetailOptions.find(m => m.value === formData.methodDetail)?.label ||
+                      formData.methodDetail.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                  </span>
+                </div>
+              )}
+              <div>
+                <span className="text-blue-700">Distribution:</span>
+                <span className="font-medium ml-2">
+                  {formData.distributionType === 'custom' ? 'Custom Schedule' : 'Fixed Amount'}
+                </span>
+              </div>
+              <div>
+                <span className="text-blue-700">Total Installments:</span>
+                <span className="font-medium ml-2">{previewInstallments.length}</span>
+              </div>
+              {formData.distributionType !== 'custom' && (
+                <div>
+                  <span className="text-blue-700">Per Installment:</span>
+                  <span className="font-medium ml-2">
+                    {formData.currency} {formData.installmentAmount.toLocaleString()}
+                  </span>
+                </div>
+              )}
+              <div>
+                <span className="text-blue-700">Start Date:</span>
+                <span className="font-medium ml-2">
+                  {new Date(formData.startDate).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Payment Schedule</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="max-h-96 overflow-y-auto">
+              {previewInstallments.map((installment, index) => (
+                <div
+                  key={index}
+                  className={`px-4 py-3 border-b last:border-b-0 flex items-center justify-between ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                    }`}
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="w-8 h-8 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-sm font-medium">
+                      {installment.installmentNumber}
+                    </div>
+                    <div>
+                      <div className="font-medium">{installment.formattedDate}</div>
+                      <div className="text-sm text-gray-500">{installment.date}</div>
+                      {installment.notes && (
+                        <div className="text-xs text-gray-400 mt-1">{installment.notes}</div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="font-medium">
+                      {installment.currency} {installment.amount.toLocaleString()}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {formData.distributionType === 'custom' ? 'Custom' : 'Fixed'}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {Math.abs(totalPreviewAmount - formData.totalPlannedAmount) > 0.01 && (
+          <Card className="border-amber-200 bg-amber-50">
+            <CardContent className="p-3">
+              <div className="flex items-center">
+                <AlertTriangle className="w-4 h-4 text-amber-600 mr-2" />
+                <span className="text-sm text-amber-700">
+                  Warning: Total installments ({formData.currency} {totalPreviewAmount.toLocaleString()})
+                  differ from planned amount ({formData.currency} {formData.totalPlannedAmount.toLocaleString()})
+                  by {formData.currency} {Math.abs(totalPreviewAmount - formData.totalPlannedAmount).toLocaleString()}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="p-4">
+            <div className="flex justify-between items-center">
+              <div>
+                <div className="font-medium text-green-900">
+                  Total: {formData.currency} {totalPreviewAmount.toLocaleString()}
+                  {usdEquivalent && formData.currency !== "USD" && (
+                    <span className="text-sm text-green-700 ml-2">
+                      (~${roundToPrecision(usdEquivalent, 2).toLocaleString()} USD)
+                    </span>
+                  )}
+                </div>
+                <div className="text-sm text-green-700">
+                  {previewInstallments.length} payments over {
+                    formData.distributionType === 'custom'
+                      ? 'custom schedule'
+                      : `${formData.numberOfInstallments} ${formData.frequency} periods`
+                  }
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-sm text-green-700">
+                  {formData.endDate && (
+                    <>End Date: {new Date(formData.endDate).toLocaleDateString()}</>
+                  )}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="flex justify-end space-x-3 pt-4 border-t">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onEdit}
+            disabled={isLoading}
+          >
+            <Edit className="w-4 h-4 mr-2" />
+            Edit Plan
+          </Button>
+          <Button
+            type="button"
+            onClick={onConfirm}
+            disabled={isLoading}
+            className="text-white"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />
+                Confirming...
+              </>
+            ) : (
+              <>
+                <Check className="w-4 h-4 mr-2" />
+                Confirm & Create Plan
+              </>
+            )}
+          </Button>
+        </div>
+      </div>
+    );
+  };
   const watchedFrequency = form.watch("frequency");
   const watchedStartDate = form.watch("startDate");
   const watchedNumberOfInstallments = form.watch("numberOfInstallments");
@@ -1031,7 +946,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   const watchedInstallmentAmount = form.watch("installmentAmount");
   const watchedCurrency = form.watch("currency");
   const watchedDistributionType = form.watch("distributionType");
+  const { options: paymentMethodOptions, isLoading: isLoadingPaymentMethods } = usePaymentMethodOptions();
 
+  const watchedPaymentMethodRef = useRef<string | undefined>(undefined);
+  const currentPaymentMethod = form.watch("paymentMethod");
+
+  const { options: methodDetailOptions, isLoading: isLoadingDetailOptions } =
+    usePaymentMethodDetailOptions(watchedPaymentMethodRef.current);
   const regenerateInstallments = () => {
     const currentData = form.getValues();
 
@@ -1118,7 +1039,13 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       }
     }
   }, [existingPlan, isEditMode, form, isFormInitializedRef.current]);
-
+  useEffect(() => {
+    watchedPaymentMethodRef.current = currentPaymentMethod;
+    // Clear method detail when payment method changes
+    if (currentPaymentMethod) {
+      form.setValue("methodDetail", "");
+    }
+  }, [currentPaymentMethod, form]);
   // Enhanced currency conversion effect
   useEffect(() => {
     if (isEditMode && !isFormInitializedRef.current) {
@@ -1248,7 +1175,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
           notes: inst.notes || undefined,
           paymentId: inst.paymentId || undefined,
         })) : undefined,
-        paymentMethod: ensurePaymentMethod(existingPlan.paymentMethod),
+        paymentMethod: existingPlan.paymentMethod as any,
         methodDetail: existingPlan.methodDetail || "",
         // Third-party fields from API response
         isThirdPartyPayment: (existingPlan as any).isThirdPartyPayment || false,
@@ -1295,13 +1222,8 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
   useEffect(() => {
     if (selectedPledgeId) {
       form.setValue('pledgeId', selectedPledgeId);
-
-      // In edit mode, ensure the correct pledge is pre-selected
-      if (isEditMode && existingPlan && !selectedPledgeId) {
-        setSelectedPledgeId(existingPlan.pledgeId);
-      }
     }
-  }, [selectedPledgeId, form, isEditMode, existingPlan]);
+  }, [selectedPledgeId, form]);
 
 
   // Initialize form for create mode
@@ -1500,7 +1422,7 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
         notes: existingPlan.notes || "",
         internalNotes: existingPlan.internalNotes || "",
         customInstallments: existingPlan.customInstallments as any || undefined,
-        paymentMethod: ensurePaymentMethod(existingPlan.paymentMethod),
+        paymentMethod: existingPlan.paymentMethod || undefined,
         methodDetail: existingPlan.methodDetail || "",
         isThirdPartyPayment: false,
         thirdPartyContactId: null,
@@ -1574,9 +1496,14 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
       return selectedThirdPartyContact?.id;
     } else {
       // For regular payments, use the pledge owner contact ID
+      // In edit mode, ensure we have the contact ID from the pledge data
+      if (isEditMode && pledgeData?.contact?.id) {
+        return pledgeData.contact.id;
+      }
       return pledgeOwnerContactId;
     }
-  }, [watchedIsThirdParty, selectedThirdPartyContact?.id, pledgeOwnerContactId]);
+  }, [watchedIsThirdParty, selectedThirdPartyContact?.id, pledgeOwnerContactId, isEditMode, pledgeData?.contact?.id]);
+
   const { data: pledgesData, isLoading: isLoadingPledges } = usePledgesQuery({
     page: 1,
     limit: 100,
@@ -2346,34 +2273,42 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                   variant="outline"
                                   role="combobox"
                                   aria-expanded={paymentMethodOpen}
+                                  disabled={isLoadingPaymentMethods}
                                   className={cn(
                                     "w-full justify-between",
                                     !field.value && "text-muted-foreground"
                                   )}
                                 >
-                                  {field.value
-                                    ? paymentMethods.find(
+                                  {isLoadingPaymentMethods ? (
+                                    "Loading payment methods..."
+                                  ) : field.value ? (
+                                    paymentMethodOptions.find(
                                       (method) => method.value === field.value
-                                    )?.label
-                                    : "Select payment method"}
+                                    )?.label || field.value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                  ) : (
+                                    "Select payment method"
+                                  )}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
                             </PopoverTrigger>
                             <PopoverContent className="w-[400px] p-0" align="start">
-                              <Command>
+                              <Command shouldFilter={true}>
                                 <CommandInput placeholder="Search payment methods..." />
                                 <CommandEmpty>No payment method found.</CommandEmpty>
-                                <CommandList>
-                                  <CommandGroup className="max-h-[300px] overflow-y-auto">
-                                    {paymentMethods.map((method) => (
+                                <CommandList className="max-h-[300px] overflow-y-auto">
+                                  <CommandGroup>
+                                    {paymentMethodOptions.map((method, index) => (
                                       <CommandItem
-                                        key={method.value}
+                                        key={`payment-method-${method.value}-${index}`}
                                         value={method.value}
                                         onSelect={(value) => {
-                                          const selectedMethod = paymentMethods.find(m => m.value === value);
+                                          const selectedMethod = paymentMethodOptions.find(
+                                            m => m.value === value
+                                          );
                                           if (selectedMethod) {
                                             form.setValue("paymentMethod", selectedMethod.value);
+                                            form.setValue("methodDetail", "");
                                             setPaymentMethodOpen(false);
                                           }
                                         }}
@@ -2412,32 +2347,45 @@ export default function PaymentPlanDialog(props: PaymentPlanDialogProps) {
                                   variant="outline"
                                   role="combobox"
                                   aria-expanded={methodDetailOpen}
+                                  disabled={!watchedPaymentMethodRef.current || isLoadingDetailOptions}
                                   className={cn(
                                     "w-full justify-between",
                                     !field.value && "text-muted-foreground"
                                   )}
                                 >
-                                  {field.value
-                                    ? methodDetails.find(
+                                  {!watchedPaymentMethodRef.current ? (
+                                    "Select payment method first"
+                                  ) : isLoadingDetailOptions ? (
+                                    "Loading details..."
+                                  ) : field.value ? (
+                                    methodDetailOptions.find(
                                       (detail) => detail.value === field.value
-                                    )?.label || field.value
-                                    : "Select method detail"}
+                                    )?.label || field.value.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+                                  ) : (
+                                    "Select method detail"
+                                  )}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
                             </PopoverTrigger>
                             <PopoverContent className="w-[400px] p-0" align="start">
-                              <Command>
+                              <Command shouldFilter={true}>
                                 <CommandInput placeholder="Search method details..." />
-                                <CommandEmpty>No method detail found.</CommandEmpty>
-                                <CommandList>
-                                  <CommandGroup className="max-h-[300px] overflow-y-auto">
-                                    {methodDetails.map((detail) => (
+                                <CommandEmpty>
+                                  {methodDetailOptions.length === 0
+                                    ? "No method details available for this payment method."
+                                    : "No method detail found."}
+                                </CommandEmpty>
+                                <CommandList className="max-h-[300px] overflow-y-auto">
+                                  <CommandGroup>
+                                    {methodDetailOptions.map((detail, index) => (
                                       <CommandItem
-                                        key={detail.value}
+                                        key={`method-detail-${detail.value}-${index}`}
                                         value={detail.value}
                                         onSelect={(value) => {
-                                          const selectedDetail = methodDetails.find(d => d.value === value);
+                                          const selectedDetail = methodDetailOptions.find(
+                                            d => d.value === value
+                                          );
                                           if (selectedDetail) {
                                             form.setValue("methodDetail", selectedDetail.value);
                                             setMethodDetailOpen(false);

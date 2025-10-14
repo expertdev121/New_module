@@ -91,18 +91,6 @@ const supportedCurrencies = [
   "ZAR",
 ] as const;
 
-
-
-interface Solicitor {
-  id: number;
-  firstName: string;
-  lastName: string;
-  commissionRate: number;
-  solicitorCode: string;
-  status: string;
-  contact?: any;
-}
-
 interface SolicitorOption {
   label: string;
   value: number;
@@ -136,7 +124,7 @@ const NO_SELECTION = "__NONE__"; // Sentinel for 'None' selection for Select com
 // Allocation schema with receipt fields per allocation
 const allocationSchema = z.object({
   pledgeId: z.number().positive(),
-  amount: z.number().nonnegative(), // Changed from allocatedAmount to amount
+  amount: z.number().nonnegative(),
   installmentScheduleId: z.number().optional().nullable(),
   notes: z.string().optional().nullable(),
   receiptNumber: z.string().optional().nullable(),
@@ -194,12 +182,17 @@ export default function PaymentDialog({
   const createPaymentMutation = useCreatePaymentMutation();
 
   const [showSolicitorSection, setShowSolicitorSection] = useState(false);
-  console.log('Show solicitor section:', showSolicitorSection);
-
+  
+  // FIXED: Move these useState hooks to the top level
+  const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
+  const [methodDetailOpen, setMethodDetailOpen] = useState(false);
+  
   const [pledgeExchangeRate, setPledgeExchangeRate] = useState(1);
   const [pledgeUsdAmount, setPledgeUsdAmount] = useState(0);
   const [pledgeExchangeRateToPledgeCurrency, setPledgeExchangeRateToPledgeCurrency] = useState(1);
   const [amountInPledgeCurrency, setAmountInPledgeCurrency] = useState(0);
+
+  console.log('Show solicitor section:', showSolicitorSection);
 
   // Use the same solicitors fetching pattern as edit form
   const { data: solicitorsData } = useSolicitors({ status: "active" });
@@ -208,10 +201,6 @@ export default function PaymentDialog({
   console.log('Solicitors data:', solicitorsData);
   console.log('Is solicitors data loading?');
   console.log('Raw solicitors array:', solicitorsData?.solicitors);
-
-
-  // Debug logging like in edit form
-  console.log('Solicitors data:', solicitorsData);
 
   const form = useForm<PaymentFormData>({
     resolver: zodResolver(paymentSchema),
@@ -238,7 +227,7 @@ export default function PaymentDialog({
       allocations: [
         {
           pledgeId: pledgeId ?? 0,
-          amount: pledgeAmount, // Changed from allocatedAmount to amount
+          amount: pledgeAmount,
           installmentScheduleId: null,
           notes: null,
           receiptNumber: null,
@@ -261,6 +250,7 @@ export default function PaymentDialog({
   const watchedIsSplitPayment = form.watch("isSplitPayment");
   const watchedAllocations = form.watch("allocations");
   const watchedPaymentDate = form.watch("paymentDate");
+  const watchedPaymentMethod = form.watch("paymentMethod");
 
   const {
     data: exchangeRatesData,
@@ -270,7 +260,7 @@ export default function PaymentDialog({
 
   // Get dynamic payment methods and details
   const { options: paymentMethodOptions, isLoading: isLoadingPaymentMethods } = usePaymentMethodOptions();
-  const { options: methodDetailOptions, isLoading: isLoadingMethodDetails } = usePaymentMethodDetailOptions(form.watch("paymentMethod"));
+  const { options: methodDetailOptions, isLoading: isLoadingMethodDetails } = usePaymentMethodDetailOptions(watchedPaymentMethod);
 
   const solicitorOptions: SolicitorOption[] = solicitorsData?.solicitors?.map((solicitor: Solicitor) => ({
     label: `${solicitor.firstName} ${solicitor.lastName}`,
@@ -279,7 +269,7 @@ export default function PaymentDialog({
     contact: solicitor.contact,
   })) || [];
 
-  console.log('C options after mapping:', solicitorOptions);
+  console.log('Solicitor options after mapping:', solicitorOptions);
 
   // Update exchange rate when currency changes
   useEffect(() => {
@@ -330,7 +320,7 @@ export default function PaymentDialog({
 
   // Validate allocations sum equals amount
   const totalAllocated = (watchedAllocations || []).reduce(
-    (sum, alloc) => sum + (alloc.amount || 0), // Changed from allocatedAmount to amount
+    (sum, alloc) => sum + (alloc.amount || 0),
     0,
   );
   const allocationsValid =
@@ -403,7 +393,7 @@ export default function PaymentDialog({
   const addAllocation = () => {
     append({
       pledgeId: 0,
-      amount: 0, // Changed from allocatedAmount to amount
+      amount: 0,
       installmentScheduleId: null,
       notes: null,
       receiptNumber: null,
@@ -603,8 +593,7 @@ export default function PaymentDialog({
                   control={form.control}
                   name="paymentMethod"
                   render={({ field }) => {
-                    const [paymentMethodOpen, setPaymentMethodOpen] = useState(false);
-
+                    // FIXED: Removed useState from inside render function
                     return (
                       <FormItem className="flex flex-col">
                         <FormLabel>Payment Method</FormLabel>
@@ -650,7 +639,7 @@ export default function PaymentDialog({
                                         );
                                         if (selectedMethod) {
                                           form.setValue("paymentMethod", selectedMethod.value);
-                                          form.setValue("methodDetail", undefined); // Clear method detail
+                                          form.setValue("methodDetail", undefined);
                                           setPaymentMethodOpen(false);
                                         }
                                       }}
@@ -681,9 +670,7 @@ export default function PaymentDialog({
                   control={form.control}
                   name="methodDetail"
                   render={({ field }) => {
-                    const [methodDetailOpen, setMethodDetailOpen] = useState(false);
-                    const watchedPaymentMethod = form.watch("paymentMethod");
-
+                    // FIXED: Removed useState from inside render function
                     return (
                       <FormItem className="flex flex-col">
                         <FormLabel>Method Detail</FormLabel>
@@ -1081,7 +1068,7 @@ export default function PaymentDialog({
                           />
                           <FormField
                             control={form.control}
-                            name={`allocations.${index}.amount`} // Changed from allocatedAmount to amount
+                            name={`allocations.${index}.amount`}
                             render={({ field }) => (
                               <FormItem>
                                 <FormLabel>Allocated Amount *</FormLabel>
