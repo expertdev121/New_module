@@ -123,12 +123,36 @@ export default function DashboardPage() {
     return null;
   }
 
-  const exportData = (format: "csv" | "pdf") => {
+  const exportData = async (format: "csv" | "xlsx" | "pdf") => {
     setLoading(true);
-    setTimeout(() => {
-      alert(`Exporting data as ${format.toUpperCase()}...`);
+    try {
+      const params = new URLSearchParams();
+      params.append("format", format);
+      if (isDateRangeSelected && appliedDateRange[0].startDate && appliedDateRange[0].endDate) {
+        params.append("startDate", appliedDateRange[0].startDate.toISOString().split('T')[0]);
+        params.append("endDate", appliedDateRange[0].endDate.toISOString().split('T')[0]);
+      }
+
+      const response = await fetch(`/api/dashboard/export?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error("Export failed");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `dashboard-export-${new Date().toISOString().split('T')[0]}.${format}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (error) {
+      console.error("Export error:", error);
+      alert("Failed to export data. Please try again.");
+    } finally {
       setLoading(false);
-    }, 1000);
+    }
   };
 
   if (isLoading) {
@@ -403,6 +427,10 @@ export default function DashboardPage() {
               <Button variant="outline" onClick={() => exportData("csv")} disabled={loading}>
                 <Download className="w-4 h-4 mr-2" />
                 CSV
+              </Button>
+              <Button variant="outline" onClick={() => exportData("xlsx")} disabled={loading}>
+                <Download className="w-4 h-4 mr-2" />
+                XLSX
               </Button>
               <Button variant="outline" onClick={() => exportData("pdf")} disabled={loading}>
                 <Download className="w-4 h-4 mr-2" />
