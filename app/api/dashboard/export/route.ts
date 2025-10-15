@@ -4,7 +4,6 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { contact, payment, pledge, paymentPlan } from "@/lib/db/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
-import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -165,34 +164,6 @@ export async function GET(request: NextRequest) {
         headers: {
           "Content-Type": "text/csv",
           "Content-Disposition": `attachment; filename="dashboard-export-${new Date().toISOString().split('T')[0]}.csv"`,
-        },
-      });
-    } else if (format === "xlsx") {
-      // Generate XLSX
-      const wb = XLSX.utils.book_new();
-
-      // Overview sheet
-      const overviewWS = XLSX.utils.json_to_sheet([exportData.overview]);
-      XLSX.utils.book_append_sheet(wb, overviewWS, "Overview");
-
-      // Trends sheet
-      const trendsWS = XLSX.utils.json_to_sheet(exportData.trends);
-      XLSX.utils.book_append_sheet(wb, trendsWS, "Trends");
-
-      // Payment Methods sheet
-      const paymentMethodsWS = XLSX.utils.json_to_sheet(exportData.paymentMethods);
-      XLSX.utils.book_append_sheet(wb, paymentMethodsWS, "Payment Methods");
-
-      // Top Donors sheet
-      const topDonorsWS = XLSX.utils.json_to_sheet(exportData.topDonors);
-      XLSX.utils.book_append_sheet(wb, topDonorsWS, "Top Donors");
-
-      const buffer = XLSX.write(wb, { type: "buffer" });
-
-      return new NextResponse(buffer, {
-        headers: {
-          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-          "Content-Disposition": `attachment; filename="dashboard-export-${new Date().toISOString().split('T')[0]}.xlsx"`,
         },
       });
     } else if (format === "pdf") {
