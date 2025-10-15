@@ -123,7 +123,7 @@ export default function DashboardPage() {
     return null;
   }
 
-  const exportData = async (format: "csv" | "xlsx" | "pdf") => {
+  const exportData = async (format: "csv" | "pdf") => {
     setLoading(true);
     try {
       const params = new URLSearchParams();
@@ -427,10 +427,6 @@ export default function DashboardPage() {
               <Button variant="outline" onClick={() => exportData("csv")} disabled={loading}>
                 <Download className="w-4 h-4 mr-2" />
                 CSV
-              </Button>
-              <Button variant="outline" onClick={() => exportData("xlsx")} disabled={loading}>
-                <Download className="w-4 h-4 mr-2" />
-                XLSX
               </Button>
               <Button variant="outline" onClick={() => exportData("pdf")} disabled={loading}>
                 <Download className="w-4 h-4 mr-2" />
