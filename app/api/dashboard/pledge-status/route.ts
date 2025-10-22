@@ -40,19 +40,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fully paid: balanceUsd <= 0 (filter by admin's location)
+    // Fully paid: originalAmountUsd - totalPaidUsd <= 0 (filter by admin's location)
     const fullyPaidResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(pledge)
       .innerJoin(contact, eq(pledge.contactId, contact.id))
-      .where(whereCondition ? and(whereCondition, sql`${pledge.balanceUsd} <= 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.balanceUsd} <= 0`, eq(contact.locationId, adminLocationId)));
+      .where(whereCondition ? and(whereCondition, sql`${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} <= 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} <= 0`, eq(contact.locationId, adminLocationId)));
 
-    // Partially paid: totalPaidUsd > 0 AND balanceUsd > 0 (filter by admin's location)
+    // Partially paid: totalPaidUsd > 0 AND originalAmountUsd - totalPaidUsd > 0 (filter by admin's location)
     const partiallyPaidResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(pledge)
       .innerJoin(contact, eq(pledge.contactId, contact.id))
-      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} > 0 AND ${pledge.balanceUsd} > 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.totalPaidUsd} > 0 AND ${pledge.balanceUsd} > 0`, eq(contact.locationId, adminLocationId)));
+      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} > 0 AND ${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} > 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.totalPaidUsd} > 0 AND ${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} > 0`, eq(contact.locationId, adminLocationId)));
 
     // Unpaid: totalPaidUsd = 0 OR totalPaidUsd IS NULL (filter by admin's location)
     const unpaidResult = await db
