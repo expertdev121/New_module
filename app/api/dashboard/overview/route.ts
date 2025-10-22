@@ -149,23 +149,37 @@ export async function GET(request: NextRequest) {
     const activePlansResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(paymentPlan)
-      .where(eq(paymentPlan.planStatus, "active"));
+      .innerJoin(pledge, eq(paymentPlan.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        eq(paymentPlan.planStatus, "active"),
+        eq(contact.locationId, adminLocationId)
+      ));
     const activePlans = activePlansResult[0]?.count || 0;
 
     // Scheduled payments (pending installments)
     const scheduledPaymentsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(installmentSchedule)
-      .where(eq(installmentSchedule.status, "pending"));
+      .innerJoin(paymentPlan, eq(installmentSchedule.paymentPlanId, paymentPlan.id))
+      .innerJoin(pledge, eq(paymentPlan.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        eq(installmentSchedule.status, "pending"),
+        eq(contact.locationId, adminLocationId)
+      ));
     const scheduledPayments = scheduledPaymentsResult[0]?.count || 0;
 
     // Unscheduled payments (completed payments not linked to installments)
     const unscheduledPaymentsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(payment)
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
       .where(and(
         eq(payment.paymentStatus, "completed"),
-        sql`${payment.installmentScheduleId} IS NULL`
+        sql`${payment.installmentScheduleId} IS NULL`,
+        eq(contact.locationId, adminLocationId)
       ));
     const unscheduledPayments = unscheduledPaymentsResult[0]?.count || 0;
 
@@ -173,9 +187,12 @@ export async function GET(request: NextRequest) {
     const thirdPartyPaymentsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(payment)
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
       .where(and(
         eq(payment.paymentStatus, "completed"),
-        eq(payment.isThirdPartyPayment, true)
+        eq(payment.isThirdPartyPayment, true),
+        eq(contact.locationId, adminLocationId)
       ));
     const thirdPartyPayments = thirdPartyPaymentsResult[0]?.count || 0;
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql, eq } from "drizzle-orm";
-import { solicitor, payment, bonusCalculation, user } from "@/lib/db/schema";
+import { solicitor, payment, bonusCalculation, user, contact, pledge } from "@/lib/db/schema";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 
@@ -31,6 +31,8 @@ export async function GET(request: NextRequest) {
         count: sql<number>`COUNT(*)`,
       })
       .from(solicitor)
+      .innerJoin(contact, eq(solicitor.contactId, contact.id))
+      .where(eq(contact.locationId, adminLocationId))
       .groupBy(solicitor.status);
 
     const paymentStats = await db
@@ -40,7 +42,10 @@ export async function GET(request: NextRequest) {
         totalAmount: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)`,
         assignedAmount: sql<number>`COALESCE(SUM(${payment.amountUsd}) FILTER (WHERE ${payment.solicitorId} IS NOT NULL), 0)`,
       })
-      .from(payment);
+      .from(payment)
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(eq(contact.locationId, adminLocationId));
 
     const bonusStats = await db
       .select({
@@ -50,7 +55,11 @@ export async function GET(request: NextRequest) {
         totalCalculations: sql<number>`COUNT(*)`,
         unpaidCalculations: sql<number>`COUNT(*) FILTER (WHERE ${bonusCalculation.isPaid} = false)`,
       })
-      .from(bonusCalculation);
+      .from(bonusCalculation)
+      .innerJoin(payment, eq(bonusCalculation.paymentId, payment.id))
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(eq(contact.locationId, adminLocationId));
 
     const activeSolicitors =
       solicitorStats.find((s) => s.status === "active")?.count || 0;
