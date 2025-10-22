@@ -34,7 +34,7 @@ export default function LoginPage() {
         // Small delay to ensure session is updated
         setTimeout(async () => {
           const session = await getSession();
-          if (session?.user?.role === "admin") {
+          if (session?.user?.role === "admin" || session?.user?.role === "super_admin") {
             router.push("/dashboard");
           } else if (session?.user?.contactId) {
             router.push(`/contacts/${session.user.contactId}`);

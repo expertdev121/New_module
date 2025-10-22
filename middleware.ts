@@ -6,7 +6,32 @@ export default withAuth(
   },
   {
     callbacks: {
-      authorized: ({ token }) => !!token,
+      authorized: ({ token, req }) => {
+        if (!token) return false;
+
+        const { pathname } = req.nextUrl;
+
+        // Super admin can access all routes
+        if (token.role === "super_admin") return true;
+
+        // Regular admin routes
+        if (pathname.startsWith("/admin")) {
+          return token.role === "admin";
+        }
+
+        // Dashboard routes require admin or super_admin
+        if (pathname.startsWith("/dashboard")) {
+          return token.role === "admin" || token.role === "super_admin";
+        }
+
+        // Contacts routes require admin or super_admin
+        if (pathname.startsWith("/contacts")) {
+          return token.role === "admin" || token.role === "super_admin";
+        }
+
+        // Default: authenticated users can access
+        return !!token;
+      },
     },
     pages: {
       signIn: "/auth/login",

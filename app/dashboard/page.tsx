@@ -118,7 +118,7 @@ export default function DashboardPage() {
     router.push("/auth/login");
     return null;
   }
-  if (session.user.role !== "admin") {
+  if (session.user.role !== "admin" && session.user.role !== "super_admin") {
     router.push("/contacts");
     return null;
   }

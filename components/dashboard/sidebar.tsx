@@ -1,10 +1,10 @@
 "use client";
 
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useRouter, usePathname } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard } from "lucide-react";
+import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText } from "lucide-react";
 
 export function Sidebar() {
   const router = useRouter();
@@ -21,59 +21,82 @@ export function Sidebar() {
     return pathname === path;
   };
 
+  // Get user role from session
+  const { data: session } = useSession();
+  const userRole = session?.user?.role;
+
+  // Define navigation items based on role
+  const getNavigationItems = () => {
+    if (userRole === "super_admin") {
+      return [
+        {
+          path: "/admin/manage-admins",
+          label: "Manage Admins",
+          icon: UserCog,
+        },
+        {
+          path: "/admin/log-reports",
+          label: "Log Reports",
+          icon: FileText,
+        },
+      ];
+    } else {
+      // Regular admin navigation
+      return [
+        {
+          path: "/dashboard",
+          label: "Dashboard Home",
+          icon: Home,
+        },
+        {
+          path: "/contacts",
+          label: "Financial module",
+          icon: Users,
+        },
+        {
+          path: "/admin/add-user",
+          label: "Add User",
+          icon: UserPlus,
+        },
+        {
+          path: "/admin/users",
+          label: "Manage Users",
+          icon: UserCog,
+        },
+        {
+          path: "/admin/categories",
+          label: "Manage Categories",
+          icon: FolderOpen,
+        },
+        {
+          path: "/admin/payment-methods",
+          label: "Payment Methods",
+          icon: CreditCard,
+        },
+      ];
+    }
+  };
+
+  const navigationItems = getNavigationItems();
+
   return (
     <Card className="w-64 h-full p-4">
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">Admin Dashboard</h2>
+        <h2 className="text-lg font-semibold">
+          {userRole === "super_admin" ? "Super Admin Dashboard" : "Admin Dashboard"}
+        </h2>
         <nav className="space-y-2">
-          <Button
-            variant={isActive("/dashboard") ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => router.push("/dashboard")}
-          >
-            <Home className="mr-2 h-4 w-4" />
-            Dashboard Home
-          </Button>
-          <Button
-            variant={isActive("/contacts") ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => router.push("/contacts")}
-          >
-            <Users className="mr-2 h-4 w-4" />
-            Financial module
-          </Button>
-          <Button
-            variant={isActive("/admin/add-user") ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => router.push("/admin/add-user")}
-          >
-            <UserPlus className="mr-2 h-4 w-4" />
-            Add User
-          </Button>
-          <Button
-            variant={isActive("/admin/users") ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => router.push("/admin/users")}
-          >
-            <UserCog className="mr-2 h-4 w-4" />
-            Manage Users
-          </Button>
-          <Button
-            variant={isActive("/admin/categories") ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => router.push("/admin/categories")}
-          >
-            <FolderOpen className="mr-2 h-4 w-4" />
-            Manage Categories
-          </Button>
-          <Button
-            variant={isActive("/admin/payment-methods") ? "default" : "ghost"}
-            className="w-full justify-start"
-            onClick={() => router.push("/admin/payment-methods")}
-          >
-            <CreditCard className="mr-2 h-4 w-4" />
-            Payment Methods
-          </Button>
+          {navigationItems.map((item) => (
+            <Button
+              key={item.path}
+              variant={isActive(item.path) ? "default" : "ghost"}
+              className="w-full justify-start"
+              onClick={() => router.push(item.path)}
+            >
+              <item.icon className="mr-2 h-4 w-4" />
+              {item.label}
+            </Button>
+          ))}
         </nav>
         <div className="pt-4 border-t">
           <Button
