@@ -345,7 +345,6 @@ export default function DashboardPage() {
     <div className="bg-gray-50">
       {isAdmin ? (
         <div className="flex h-screen">
-          {/* <Sidebar /> */}
           <main className="flex-1 p-8 overflow-y-auto">
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
