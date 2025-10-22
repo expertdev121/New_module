@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { contact } from '@/lib/db/schema';
+import { contact, user } from '@/lib/db/schema';
 import type { Contact } from '@/lib/db/schema';
 import { eq, and } from 'drizzle-orm';
 import { z } from 'zod';
+import bcrypt from 'bcryptjs';
 
 // Helper: safely extract error message
 function getErrorMessage(err: unknown): string {
@@ -68,7 +69,8 @@ const webhookSchema = z.object({
   contact: z.string().optional(),
   attributionSource: z.string().optional(),
   customData: z.string().optional(),
-  ghlcontactid: z.string().optional(), // ✅ new field
+  ghlcontactid: z.string().optional(),
+  locationid: z.string().optional(),
 }).catchall(z.string().optional());
 
 // Extract names
@@ -122,6 +124,32 @@ function extractDisplayName(data: Record<string, string | undefined>, firstName:
   return displayName;
 }
 
+// Helper: Create or update user
+async function handleUserUpsert(email: string) {
+  try {
+    // Check if user already exists
+    const existingUser = await db.select().from(user).where(eq(user.email, email)).limit(1);
+    
+    if (!existingUser.length) {
+      // Create new user with email as password
+      const passwordHash = await bcrypt.hash(email, 10);
+      
+      await db.insert(user).values({
+        email,
+        passwordHash,
+        role: 'user',
+        status: 'active',
+        isActive: true,
+      });
+      
+      console.log(`Created user account for: ${email}`);
+    }
+  } catch (error) {
+    console.error(`Error creating user for ${email}:`, error);
+    // Don't throw - we don't want to fail the contact creation if user creation fails
+  }
+}
+
 // Upsert contact
 async function handleContactUpsert(data: {
   firstName: string;
@@ -133,10 +161,11 @@ async function handleContactUpsert(data: {
   title?: string | undefined;
   externalContactId?: string;
   ghlContactId?: string;
+  locationId?: string;
 }) {
-  const { firstName, lastName, email, phone, address, displayName, title, externalContactId, ghlContactId } = data;
+  const { firstName, lastName, email, phone, address, displayName, title, externalContactId, ghlContactId, locationId } = data;
 
-  let existingContact: Contact[] = []; // typed as Contact[]
+  let existingContact: Contact[] = [];
 
   // 1. Match by GHL ID
   if (ghlContactId) {
@@ -166,8 +195,15 @@ async function handleContactUpsert(data: {
     if (displayName !== undefined) updateData.displayName = displayName;
     if (title !== undefined) updateData.title = title;
     if (ghlContactId !== undefined) updateData.ghlContactId = ghlContactId;
+    if (locationId !== undefined) updateData.locationId = locationId;
 
     const updated = await db.update(contact).set(updateData).where(eq(contact.id, existingContact[0].id)).returning();
+    
+    // Create or update user if email exists
+    if (email) {
+      await handleUserUpsert(email);
+    }
+    
     return { contact: { ...updated[0], externalContactId }, isNew: false, action: "updated" as const };
   } else {
     const inserted = await db.insert(contact).values({
@@ -179,7 +215,14 @@ async function handleContactUpsert(data: {
       displayName,
       title,
       ghlContactId,
+      locationId,
     }).returning();
+    
+    // Create user if email exists
+    if (email) {
+      await handleUserUpsert(email);
+    }
+    
     return { contact: { ...inserted[0], externalContactId }, isNew: true, action: "created" as const };
   }
 }
@@ -262,6 +305,7 @@ export async function POST(request: NextRequest) {
     const phone = normalizePhone(validData.phone);
     const address = validData.address?.trim() || undefined;
     const ghlContactId = validData.ghlcontactid?.trim();
+    const locationId = validData.locationid?.trim();
 
     const result = await handleContactUpsert({
       firstName,
@@ -272,6 +316,7 @@ export async function POST(request: NextRequest) {
       displayName,
       title,
       ghlContactId,
+      locationId,
       externalContactId: validData.contact_id,
     });
 
@@ -305,11 +350,11 @@ export async function GET() {
     success: true,
     message: 'Webhook endpoint is active',
     methods: ['POST'],
-    note: 'Accepts data via query, form data, or JSON body. Matches contact by ghlContactId, firstname+lastname, email, or displayName.',
+    note: 'Accepts data via query, form data, or JSON body. Matches contact by ghlContactId, firstname+lastname, email, or displayName. Creates user account if email is provided.',
     example: {
-      queryParams: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com&ghlcontactid=123',
-      formData: 'POST form data: firstname, lastname, email, ghlcontactid, etc.',
-      jsonBody: 'POST JSON body: {"firstname": "John", "lastname": "Doe", "email": "john@test.com", "ghlcontactid": "123"}',
+      queryParams: '/api/webhook/contact?firstname=John&lastname=Doe&email=john@test.com&ghlcontactid=123&locationid=loc_abc',
+      formData: 'POST form data: firstname, lastname, email, ghlcontactid, locationid, etc.',
+      jsonBody: 'POST JSON body: {"firstname": "John", "lastname": "Doe", "email": "john@test.com", "ghlcontactid": "123", "locationid": "loc_abc"}',
     }
   }, { status: 200 });
 }
