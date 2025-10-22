@@ -13,7 +13,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get("period") || "1m"; // Default to 1 month
+    const period = searchParams.get("period") || "1m"; 
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
@@ -33,23 +33,14 @@ export async function GET(request: NextRequest) {
     let contactsGrowthPercentage = 0;
     let totalContacts = 0;
 
+    // Total contacts (always for the location, not filtered by date range)
+    const totalContactsResult = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(contact)
+      .where(eq(contact.locationId, adminLocationId));
+    totalContacts = totalContactsResult[0]?.count || 0;
+
     if (startDate && endDate) {
-      // For custom dates, calculate total contacts and growth within the date range
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-      // Total contacts within the date range
-      const totalContactsResult = await db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(contact)
-        .where(and(
-          gte(contact.createdAt, start),
-          lte(contact.createdAt, end),
-          eq(contact.locationId, adminLocationId)
-        ));
-      totalContacts = totalContactsResult[0]?.count || 0;
-
       // For custom dates, we can't easily calculate growth percentage, so set to 0
       contactsGrowthPercentage = 0;
     } else {

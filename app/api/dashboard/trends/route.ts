@@ -63,19 +63,24 @@ export async function GET(request: NextRequest) {
           const pledgeResult = await db
             .select({ total: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)` })
             .from(pledge)
+            .innerJoin(contact, eq(pledge.contactId, contact.id))
             .where(and(
               gte(pledge.pledgeDate, startDateStr),
-              lte(pledge.pledgeDate, endDateStr)
+              lte(pledge.pledgeDate, endDateStr),
+              eq(contact.locationId, adminLocationId)
             ));
 
           // Payments for this day
           const paymentResult = await db
             .select({ total: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)` })
             .from(payment)
+            .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+            .innerJoin(contact, eq(pledge.contactId, contact.id))
             .where(and(
               eq(payment.paymentStatus, "completed"),
               gte(payment.paymentDate, startDateStr),
-              lte(payment.paymentDate, endDateStr)
+              lte(payment.paymentDate, endDateStr),
+              eq(contact.locationId, adminLocationId)
             ));
 
           pledgesData.push(pledgeResult[0]?.total || 0);
@@ -103,19 +108,24 @@ export async function GET(request: NextRequest) {
           const pledgeResult = await db
             .select({ total: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)` })
             .from(pledge)
+            .innerJoin(contact, eq(pledge.contactId, contact.id))
             .where(and(
               gte(pledge.pledgeDate, startDateStr),
-              lte(pledge.pledgeDate, endDateStr)
+              lte(pledge.pledgeDate, endDateStr),
+              eq(contact.locationId, adminLocationId)
             ));
 
           // Payments for this month
           const paymentResult = await db
             .select({ total: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)` })
             .from(payment)
+            .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+            .innerJoin(contact, eq(pledge.contactId, contact.id))
             .where(and(
               eq(payment.paymentStatus, "completed"),
               gte(payment.paymentDate, startDateStr),
-              lte(payment.paymentDate, endDateStr)
+              lte(payment.paymentDate, endDateStr),
+              eq(contact.locationId, adminLocationId)
             ));
 
           pledgesData.push(pledgeResult[0]?.total || 0);
@@ -137,19 +147,24 @@ export async function GET(request: NextRequest) {
         const pledgeResult = await db
           .select({ total: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)` })
           .from(pledge)
+          .innerJoin(contact, eq(pledge.contactId, contact.id))
           .where(and(
             gte(pledge.pledgeDate, startDateStr),
-            lt(pledge.pledgeDate, endDateStr)
+            lt(pledge.pledgeDate, endDateStr),
+            eq(contact.locationId, adminLocationId)
           ));
 
         // Payments for this week
         const paymentResult = await db
           .select({ total: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)` })
           .from(payment)
+          .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+          .innerJoin(contact, eq(pledge.contactId, contact.id))
           .where(and(
             eq(payment.paymentStatus, "completed"),
             gte(payment.paymentDate, startDateStr),
-            lt(payment.paymentDate, endDateStr)
+            lt(payment.paymentDate, endDateStr),
+            eq(contact.locationId, adminLocationId)
           ));
 
         pledgesData.push(pledgeResult[0]?.total || 0);
@@ -172,19 +187,24 @@ export async function GET(request: NextRequest) {
         const pledgeResult = await db
           .select({ total: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)` })
           .from(pledge)
+          .innerJoin(contact, eq(pledge.contactId, contact.id))
           .where(and(
             gte(pledge.pledgeDate, startDateStr),
-            lt(pledge.pledgeDate, endDateStr)
+            lt(pledge.pledgeDate, endDateStr),
+            eq(contact.locationId, adminLocationId)
           ));
 
         // Payments for this year
         const paymentResult = await db
           .select({ total: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)` })
           .from(payment)
+          .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+          .innerJoin(contact, eq(pledge.contactId, contact.id))
           .where(and(
             eq(payment.paymentStatus, "completed"),
             gte(payment.paymentDate, startDateStr),
-            lt(payment.paymentDate, endDateStr)
+            lt(payment.paymentDate, endDateStr),
+            eq(contact.locationId, adminLocationId)
           ));
 
         pledgesData.push(pledgeResult[0]?.total || 0);
@@ -207,19 +227,24 @@ export async function GET(request: NextRequest) {
         const pledgeResult = await db
           .select({ total: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)` })
           .from(pledge)
+          .innerJoin(contact, eq(pledge.contactId, contact.id))
           .where(and(
             gte(pledge.pledgeDate, startDateStr),
-            lt(pledge.pledgeDate, endDateStr)
+            lt(pledge.pledgeDate, endDateStr),
+            eq(contact.locationId, adminLocationId)
           ));
 
         // Payments for this month
         const paymentResult = await db
           .select({ total: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)` })
           .from(payment)
+          .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+          .innerJoin(contact, eq(pledge.contactId, contact.id))
           .where(and(
             eq(payment.paymentStatus, "completed"),
             gte(payment.paymentDate, startDateStr),
-            lt(payment.paymentDate, endDateStr)
+            lt(payment.paymentDate, endDateStr),
+            eq(contact.locationId, adminLocationId)
           ));
 
         pledgesData.push(pledgeResult[0]?.total || 0);
