@@ -281,6 +281,7 @@ export type NewUser = typeof user.$inferInsert;
 export const contact = pgTable("contact", {
   id: serial("id").primaryKey(),
   ghlContactId: text("ghl_contact_id"),
+    locationId: text("location_id"),
   firstName: text("first_name").notNull(),
   displayName: text("display_name"),
   lastName: text("last_name").notNull(),
