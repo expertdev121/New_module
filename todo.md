@@ -1,0 +1,3 @@
+- [ ] Modify /api/contacts/route.ts to add user-based filtering
+- [ ] Update app/contacts/page.tsx to handle no contact data for users
+- [ ] Test with admin and user accounts

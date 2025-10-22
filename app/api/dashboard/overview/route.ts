@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql, eq, and, gte, lt, lte, SQL } from "drizzle-orm";
-import { contact, pledge, payment, paymentPlan, installmentSchedule } from "@/lib/db/schema";
+import { contact, pledge, payment, paymentPlan, installmentSchedule, user } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const period = searchParams.get("period") || "1m"; // Default to 1 month
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
 
     let contactsGrowthPercentage = 0;
     let totalContacts = 0;
@@ -25,7 +45,8 @@ export async function GET(request: NextRequest) {
         .from(contact)
         .where(and(
           gte(contact.createdAt, start),
-          lte(contact.createdAt, end)
+          lte(contact.createdAt, end),
+          eq(contact.locationId, adminLocationId)
         ));
       totalContacts = totalContactsResult[0]?.count || 0;
 
@@ -38,7 +59,8 @@ export async function GET(request: NextRequest) {
       // Total contacts
       const totalContactsResult = await db
         .select({ count: sql<number>`COUNT(*)` })
-        .from(contact);
+        .from(contact)
+        .where(eq(contact.locationId, adminLocationId));
       totalContacts = totalContactsResult[0]?.count || 0;
 
       // Contacts growth percentage (current period vs previous period)
@@ -50,7 +72,10 @@ export async function GET(request: NextRequest) {
       const currentPeriodContactsResult = await db
         .select({ count: sql<number>`COUNT(*)` })
         .from(contact)
-        .where(gte(contact.createdAt, currentPeriodStart));
+        .where(and(
+          gte(contact.createdAt, currentPeriodStart),
+          eq(contact.locationId, adminLocationId)
+        ));
       const currentPeriodContacts = currentPeriodContactsResult[0]?.count || 0;
 
       const previousPeriodContactsResult = await db
@@ -58,7 +83,8 @@ export async function GET(request: NextRequest) {
         .from(contact)
         .where(and(
           gte(contact.createdAt, previousPeriodStart),
-          lt(contact.createdAt, previousPeriodEnd)
+          lt(contact.createdAt, previousPeriodEnd),
+          eq(contact.locationId, adminLocationId)
         ));
       const previousPeriodContacts = previousPeriodContactsResult[0]?.count || 0;
 
@@ -84,7 +110,7 @@ export async function GET(request: NextRequest) {
       )as SQL<unknown>;
     }
 
-    // Total pledges and amount
+    // Total pledges and amount (filter by admin's location)
     const pledgesResult = await db
       .select({
         count: sql<number>`COUNT(*)`,
@@ -92,12 +118,16 @@ export async function GET(request: NextRequest) {
         avgSize: sql<number>`COALESCE(AVG(${pledge.originalAmountUsd}), 0)`,
       })
       .from(pledge)
-      .where(pledgeWhereCondition);
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        pledgeWhereCondition,
+        eq(contact.locationId, adminLocationId)
+      ));
     const totalPledges = pledgesResult[0]?.count || 0;
     const totalPledgeAmount = pledgesResult[0]?.totalAmount || 0;
     const avgPledgeSize = pledgesResult[0]?.avgSize || 0;
 
-    // Total payments and amount (completed only)
+    // Total payments and amount (completed only, filter by admin's location)
     const paymentsResult = await db
       .select({
         count: sql<number>`COUNT(*)`,
@@ -105,7 +135,12 @@ export async function GET(request: NextRequest) {
         avgSize: sql<number>`COALESCE(AVG(${payment.amountUsd}), 0)`,
       })
       .from(payment)
-      .where(paymentWhereCondition);
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        paymentWhereCondition,
+        eq(contact.locationId, adminLocationId)
+      ));
     const totalPayments = paymentsResult[0]?.count || 0;
     const totalPaymentAmount = paymentsResult[0]?.totalAmount || 0;
     const avgPaymentSize = paymentsResult[0]?.avgSize || 0;

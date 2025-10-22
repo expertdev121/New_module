@@ -1,13 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, and, gte, lt, lte, SQL } from "drizzle-orm";
-import { pledge } from "@/lib/db/schema";
+import { sql, and, gte, lt, lte, SQL, eq } from "drizzle-orm";
+import { pledge, user, contact } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
 
     let whereCondition: SQL<unknown> | undefined = undefined;
 
@@ -20,23 +40,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fully paid: balanceUsd <= 0
+    // Fully paid: balanceUsd <= 0 (filter by admin's location)
     const fullyPaidResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(pledge)
-      .where(whereCondition ? and(whereCondition, sql`${pledge.balanceUsd} <= 0`) : sql`${pledge.balanceUsd} <= 0`);
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(whereCondition ? and(whereCondition, sql`${pledge.balanceUsd} <= 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.balanceUsd} <= 0`, eq(contact.locationId, adminLocationId)));
 
-    // Partially paid: totalPaidUsd > 0 AND balanceUsd > 0
+    // Partially paid: totalPaidUsd > 0 AND balanceUsd > 0 (filter by admin's location)
     const partiallyPaidResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(pledge)
-      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} > 0 AND ${pledge.balanceUsd} > 0`) : sql`${pledge.totalPaidUsd} > 0 AND ${pledge.balanceUsd} > 0`);
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} > 0 AND ${pledge.balanceUsd} > 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.totalPaidUsd} > 0 AND ${pledge.balanceUsd} > 0`, eq(contact.locationId, adminLocationId)));
 
-    // Unpaid: totalPaidUsd = 0 OR totalPaidUsd IS NULL
+    // Unpaid: totalPaidUsd = 0 OR totalPaidUsd IS NULL (filter by admin's location)
     const unpaidResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(pledge)
-      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} = 0 OR ${pledge.totalPaidUsd} IS NULL`) : sql`${pledge.totalPaidUsd} = 0 OR ${pledge.totalPaidUsd} IS NULL`);
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} = 0 OR ${pledge.totalPaidUsd} IS NULL`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.totalPaidUsd} = 0 OR ${pledge.totalPaidUsd} IS NULL`, eq(contact.locationId, adminLocationId)));
 
     const fullyPaid = fullyPaidResult[0]?.count || 0;
     const partiallyPaid = partiallyPaidResult[0]?.count || 0;

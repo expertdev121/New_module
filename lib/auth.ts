@@ -2,7 +2,7 @@ import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { DrizzleAdapter } from "@auth/drizzle-adapter";
 import { db } from "@/lib/db";
-import { user } from "@/lib/db/schema";
+import { user, contact } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
@@ -49,10 +49,20 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Your account has been suspended. Please contact an administrator.");
         }
 
+        // Find the contact associated with this user
+        const contacts = await db
+          .select({ id: contact.id })
+          .from(contact)
+          .where(eq(contact.email, foundUser.email))
+          .limit(1);
+
+        const contactId = contacts.length > 0 ? contacts[0].id : null;
+
         return {
           id: foundUser.id.toString(),
           email: foundUser.email,
           role: foundUser.role,
+          contactId: contactId?.toString(),
         };
       },
     }),
@@ -64,6 +74,7 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.role = user.role;
+        token.contactId = user.contactId;
       }
       return token;
     },
@@ -71,6 +82,7 @@ export const authOptions: NextAuthOptions = {
       if (token) {
         session.user.id = token.sub!;
         session.user.role = token.role as string;
+        session.user.contactId = token.contactId as string;
       }
       return session;
     },

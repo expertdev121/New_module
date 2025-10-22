@@ -339,9 +339,14 @@ export default function DashboardPage() {
     }
   };
 
+  const isAdmin = session.user.role === "admin";
+
   return (
     <div className="bg-gray-50">
-      <div className="p-8">
+      {isAdmin ? (
+        <div className="flex h-screen">
+          {/* <Sidebar /> */}
+          <main className="flex-1 p-8 overflow-y-auto">
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
@@ -808,7 +813,9 @@ export default function DashboardPage() {
               </Card>
             </TabsContent>
           </Tabs>
+          </main>
         </div>
+      ) : null}
     </div>
   );
 }

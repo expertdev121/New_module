@@ -1,13 +1,33 @@
 import { db } from "@/lib/db";
-import { payment, solicitor, contact } from "@/lib/db/schema";
+import { payment, solicitor, contact, user } from "@/lib/db/schema";
 import { sql, eq, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "10");
     const period = searchParams.get("period") || "all"; // 'month', 'quarter', 'year', 'all'
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
 
     let dateCondition = sql`TRUE`;
     const now = new Date();

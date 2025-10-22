@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,9 +27,22 @@ export default function LoginPage() {
       const result = await signIn("credentials", {
         email,
         password,
-        redirect: true,
-        callbackUrl: "/dashboard",
+        redirect: false,
       });
+
+      if (result?.ok) {
+        // Small delay to ensure session is updated
+        setTimeout(async () => {
+          const session = await getSession();
+          if (session?.user?.role === "admin") {
+            router.push("/dashboard");
+          } else if (session?.user?.contactId) {
+            router.push(`/contacts/${session.user.contactId}`);
+          } else {
+            router.push("/contacts/14066");
+          }
+        }, 100);
+      }
 
       if (result?.error) {
         if (result.error.includes("suspended")) {

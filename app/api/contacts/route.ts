@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { eq, sql, desc, asc, or, ilike } from "drizzle-orm";
+import { eq, sql, desc, asc, or, ilike, and, isNotNull } from "drizzle-orm";
 import type {
   Column,
   ColumnBaseConfig,
@@ -11,10 +11,13 @@ import {
   contact,
   pledge,
   NewContact,
+  user,
 } from "@/lib/db/schema";
 import { z } from "zod";
 import { contactFormSchema } from "@/lib/form-schemas/contact";
 import { ErrorHandler } from "@/lib/error-handler";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 interface ContactResponse {
   id: number;
@@ -51,6 +54,11 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const parsedParams = querySchema.safeParse({
       page: searchParams.get("page") ?? undefined,
@@ -69,6 +77,53 @@ export async function GET(request: NextRequest) {
 
     const { page, limit, search, sortBy, sortOrder } = parsedParams.data;
     const offset = (page - 1) * limit;
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
+    // Get user's contactId for non-admin users
+    let userContactId: number | null = null;
+    if (!isAdmin) {
+      const contactResult = await db
+        .select({ id: contact.id })
+        .from(contact)
+        .where(eq(contact.email, session.user.email))
+        .limit(1);
+      userContactId = contactResult.length > 0 ? contactResult[0].id : null;
+    }
+
+    // Apply role-based filtering
+    let baseWhereClause: SQL | undefined;
+
+    if (isAdmin) {
+      // Admin: only contacts with matching locationId and not null
+      if (currentUser.locationId) {
+        baseWhereClause = and(
+          eq(contact.locationId, currentUser.locationId),
+          isNotNull(contact.locationId)
+        );
+      } else {
+        // If admin has no locationId, they see no contacts
+        baseWhereClause = sql`FALSE`;
+      }
+    } else {
+      // Regular user: only their own contact
+      baseWhereClause = eq(contact.email, session.user.email);
+    }
 
     // ✅ Aggregate pledge totals per contact
     const pledgeSummary = db
@@ -96,7 +151,7 @@ export async function GET(request: NextRequest) {
           .split(/\s+/)
       : [];
 
-    const whereClause =
+    const searchWhereClause =
       terms.length > 0
         ? terms
             .map((term) =>
@@ -110,6 +165,11 @@ export async function GET(request: NextRequest) {
             )
             .reduce((acc, clause) => (acc ? or(acc, clause) : clause), undefined)
         : undefined;
+
+    // Combine base filtering with search
+    const whereClause = baseWhereClause && searchWhereClause
+      ? and(baseWhereClause, searchWhereClause)
+      : baseWhereClause || searchWhereClause;
 
     const selectedFields = {
       id: contact.id,
@@ -184,7 +244,7 @@ export async function GET(request: NextRequest) {
       })
       .from(contact)
       .where(whereClause);
-
+      
     const [contacts, totalCountResult] = await Promise.all([
       contactsQuery.execute(),
       countQuery.execute(),
@@ -193,39 +253,66 @@ export async function GET(request: NextRequest) {
     const totalCount = Number(totalCountResult[0]?.count || 0);
     const totalPages = Math.ceil(totalCount / limit);
 
-    // Calculate total pledged amount across all contacts
+    // Calculate total pledged amount across all contacts (filtered by location for admin)
+    let totalPledgedWhereClause: SQL | undefined;
+    if (isAdmin && currentUser.locationId) {
+      totalPledgedWhereClause = and(
+        eq(pledge.contactId, contact.id),
+        eq(contact.locationId, currentUser.locationId)
+      );
+    }
+
     const totalPledgedQuery = db
       .select({
         totalPledgedUsd: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`.as(
           "totalPledgedUsd"
         ),
       })
-      .from(pledge);
+      .from(pledge)
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(totalPledgedWhereClause);
 
     const totalPledgedResult = await totalPledgedQuery.execute();
     const totalPledgedAmount = Number(totalPledgedResult[0]?.totalPledgedUsd || 0);
 
-    // Calculate contacts with pledges
+    // Calculate contacts with pledges (filtered by location for admin)
+    let contactsWithPledgesWhereClause: SQL | undefined = sql`${pledge.originalAmountUsd} > 0`;
+    if (isAdmin && currentUser.locationId) {
+      contactsWithPledgesWhereClause = and(
+        sql`${pledge.originalAmountUsd} > 0`,
+        eq(contact.locationId, currentUser.locationId)
+      );
+    }
+
     const contactsWithPledgesQuery = db
       .select({
         count: sql<number>`COUNT(DISTINCT ${pledge.contactId})`.as("count"),
       })
       .from(pledge)
-      .where(sql`${pledge.originalAmountUsd} > 0`);
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(contactsWithPledgesWhereClause);
 
     const contactsWithPledgesResult = await contactsWithPledgesQuery.execute();
     const contactsWithPledges = Number(contactsWithPledgesResult[0]?.count || 0);
 
-    // Calculate recent contacts (last 30 days)
+    // Calculate recent contacts (last 30 days, filtered by location for admin)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    let recentContactsWhereClause: SQL | undefined = sql`${contact.createdAt} >= ${thirtyDaysAgo}`;
+    if (isAdmin && currentUser.locationId) {
+      recentContactsWhereClause = and(
+        sql`${contact.createdAt} >= ${thirtyDaysAgo}`,
+        eq(contact.locationId, currentUser.locationId)
+      );
+    }
 
     const recentContactsQuery = db
       .select({
         count: sql<number>`COUNT(*)`.as("count"),
       })
       .from(contact)
-      .where(sql`${contact.createdAt} >= ${thirtyDaysAgo}`);
+      .where(recentContactsWhereClause);
 
     const recentContactsResult = await recentContactsQuery.execute();
     const recentContacts = Number(recentContactsResult[0]?.count || 0);

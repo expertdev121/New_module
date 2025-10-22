@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql, eq, and, gte, lt, lte, SQL } from "drizzle-orm";
-import { contact, pledge, payment } from "@/lib/db/schema";
+import { contact, pledge, payment, user } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "5");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
 
     let pledgeWhereCondition: SQL<unknown> | undefined = undefined;
     let paymentWhereCondition: SQL<unknown> | undefined = undefined;
@@ -40,10 +60,13 @@ export async function GET(request: NextRequest) {
       .from(contact)
       .leftJoin(pledge, eq(pledge.contactId, contact.id))
       .leftJoin(payment, sql`(${payment.pledgeId} = ${pledge.id} AND ${payment.isThirdPartyPayment} = false) OR (${payment.payerContactId} = ${contact.id} AND ${payment.isThirdPartyPayment} = true)`)
-      .where(pledgeWhereCondition || paymentWhereCondition ? and(
-        pledgeWhereCondition || sql`1=1`,
-        paymentWhereCondition || sql`1=1`
-      ) : undefined)
+      .where(and(
+        eq(contact.locationId, adminLocationId),
+        pledgeWhereCondition || paymentWhereCondition ? and(
+          pledgeWhereCondition || sql`1=1`,
+          paymentWhereCondition || sql`1=1`
+        ) : sql`1=1`
+      ))
       .groupBy(contact.id, contact.firstName, contact.lastName)
       .having(sql`COUNT(DISTINCT ${pledge.id}) > 0 OR COALESCE(SUM(CASE WHEN ${payment.isThirdPartyPayment} = true AND ${payment.paymentStatus} = 'completed' THEN ${payment.amountUsd} ELSE 0 END), 0) > 0`)
       .orderBy(sql`(COALESCE(SUM(CASE WHEN ${payment.isThirdPartyPayment} = false AND ${payment.paymentStatus} = 'completed' THEN ${payment.amountUsd} ELSE 0 END), 0) + COALESCE(SUM(CASE WHEN ${payment.isThirdPartyPayment} = true AND ${payment.paymentStatus} = 'completed' THEN ${payment.amountUsd} ELSE 0 END), 0)) DESC`)
