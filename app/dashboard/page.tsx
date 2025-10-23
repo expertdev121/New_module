@@ -340,10 +340,11 @@ export default function DashboardPage() {
   };
 
   const isAdmin = session.user.role === "admin";
+  const isSuperAdmin = session.user.role === "super_admin";
 
   return (
     <div className="bg-gray-50">
-      {isAdmin ? (
+      {isAdmin || isSuperAdmin ? (
         <div className="flex h-screen">
           <main className="flex-1 p-8 overflow-y-auto">
           {/* Header */}

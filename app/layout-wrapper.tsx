@@ -17,7 +17,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   }
 
   // Admin layout with sidebar
-  if (session?.user?.role === "admin") {
+  if (session?.user?.role === "admin" || session?.user?.role === "super_admin") {
     return (
       <div className="flex h-screen">
         <Sidebar />
