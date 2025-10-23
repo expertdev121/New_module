@@ -6,11 +6,12 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Download, Users, DollarSign, Calendar, FileText, ArrowUpRight } from "lucide-react";
+import { Download, Users, DollarSign, Calendar, FileText, ArrowUpRight, Filter } from "lucide-react";
 import { DateRangePicker, RangeKeyDict } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -34,6 +35,7 @@ import {
   useDashboardTopDonors,
   useDashboardRecentActivity,
   useDashboardContactAnalytics,
+  useDashboardCampaigns,
 } from "@/lib/query/useDashboard";
 
 ChartJS.register(
@@ -65,6 +67,7 @@ const CHART_COLORS = {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
   const [appliedDateRange, setAppliedDateRange] = useState([
     {
       startDate: new Date(new Date().setMonth(new Date().getMonth() - 6)),
@@ -111,7 +114,14 @@ export default function DashboardPage() {
     isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
 
-  const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading || contactAnalyticsLoading;
+  const [selectedLocationId, setSelectedLocationId] = useState<string>("");
+  const { data: campaignsData, isLoading: campaignsLoading } = useDashboardCampaigns(
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined,
+    selectedLocationId || undefined
+  );
+
+  const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading || contactAnalyticsLoading || campaignsLoading;
 
   if (status === "loading") return <div className="flex items-center justify-center h-screen">Loading...</div>;
   if (!session) {
@@ -446,6 +456,7 @@ export default function DashboardPage() {
               <TabsTrigger value="pledges">Pledges</TabsTrigger>
               <TabsTrigger value="payments">Payments</TabsTrigger>
               <TabsTrigger value="contacts">Contacts</TabsTrigger>
+              <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -805,6 +816,145 @@ export default function DashboardPage() {
                         <div className="text-right">
                           <p className="font-semibold">{formatCurrency(contributor.pledgeAmount)}</p>
                           <p className="text-sm text-green-600">{formatCurrency(contributor.paymentAmount)} paid</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="campaigns" className="space-y-6">
+              {/* Location Filter */}
+              <div className="flex items-center gap-4 mb-6">
+                <Select value={selectedLocationId} onValueChange={setSelectedLocationId}>
+                  <SelectTrigger className="w-[200px]">
+                    <SelectValue placeholder="Select Location" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Locations</SelectItem>
+                    {/* Add location options here */}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Campaign Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Campaigns</CardTitle>
+                    <FileText className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{campaignsData?.totalCampaigns || 0}</div>
+                    <p className="text-xs text-gray-600 mt-1">Active campaigns</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Raised</CardTitle>
+                    <DollarSign className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(campaignsData?.totalRaised || 0)}</div>
+                    <p className="text-xs text-green-600 mt-1">From campaigns</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Average Donation</CardTitle>
+                    <Users className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(campaignsData?.averageDonation || 0)}</div>
+                    <p className="text-xs text-gray-600 mt-1">Per campaign</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Top Campaign</CardTitle>
+                    <ArrowUpRight className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{campaignsData?.topCampaign?.name || 'N/A'}</div>
+                    <p className="text-xs text-green-600 mt-1">{formatCurrency(campaignsData?.topCampaign?.amount || 0)} raised</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Campaign Performance Chart */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Campaign Performance</CardTitle>
+                  <CardDescription>Donation amounts by campaign</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[300px]">
+                    <Bar
+                      data={{
+                        labels: campaignsData?.campaigns?.map(c => c.name) || [],
+                        datasets: [
+                          {
+                            label: 'Amount Raised',
+                            data: campaignsData?.campaigns?.map(c => c.amount) || [],
+                            backgroundColor: CHART_COLORS.blue,
+                            borderColor: CHART_COLORS.blue,
+                            borderWidth: 1,
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                          legend: {
+                            display: false,
+                          },
+                        },
+                        scales: {
+                          y: {
+                            beginAtZero: true,
+                            ticks: {
+                              callback: function(tickValue: string | number) {
+                                if (typeof tickValue === 'number') {
+                                  return '$' + (tickValue / 1000) + 'k';
+                                }
+                                return tickValue;
+                              }
+                            }
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Top Campaigns List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Performing Campaigns</CardTitle>
+                  <CardDescription>Campaigns with highest donation amounts</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {campaignsData?.campaigns?.slice(0, 5).map((campaign, index) => (
+                      <div key={index} className="flex items-center justify-between border-b pb-3 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-semibold">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <p className="font-medium">{campaign.name}</p>
+                            <p className="text-sm text-gray-500">{campaign.donations} donations</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold">{formatCurrency(campaign.amount)}</p>
+                          <p className="text-sm text-green-600">{campaign.location}</p>
                         </div>
                       </div>
                     ))}
