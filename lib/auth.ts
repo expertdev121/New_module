@@ -72,7 +72,7 @@ export const authOptions: NextAuthOptions = {
           email: foundUser.email,
           role: foundUser.role,
           contactId: contactId?.toString(),
-          locationId: locationId,
+          locationId: locationId ?? undefined,
         };
       },
     }),

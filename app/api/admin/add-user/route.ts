@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { user, contact } from "@/lib/db/schema";
+import { user, contact, type NewUser, type NewContact } from "@/lib/db/schema";
 import { eq } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     const adminLocationId = adminUser.length > 0 ? adminUser[0].locationId : null;
 
     // Create user with the same locationId as the admin (only if admin has one)
-    const userData: any = {
+    const userData: NewUser = {
       email,
       passwordHash: hashedPassword,
       role,
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
     const firstName = emailParts[0] ? emailParts[0].charAt(0).toUpperCase() + emailParts[0].slice(1) : '';
     const lastName = emailParts[1] ? emailParts[1].charAt(0).toUpperCase() + emailParts[1].slice(1) : emailParts[0] ? emailParts[0].charAt(0).toUpperCase() + emailParts[0].slice(1) : '';
 
-    const contactData: any = {
+    const contactData: NewContact = {
       firstName,
       lastName,
       email,
