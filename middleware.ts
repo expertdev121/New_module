@@ -24,9 +24,21 @@ export default withAuth(
           return token.role === "admin" || token.role === "super_admin";
         }
 
-        // Contacts routes require admin or super_admin
+        // Contacts routes
         if (pathname.startsWith("/contacts")) {
-          return token.role === "admin" || token.role === "super_admin";
+          // Allow admin/super_admin to access all contact routes
+          if (token.role === "admin" || token.role === "super_admin") {
+            return true;
+          }
+
+          // Allow users to access their own contact page and sub-routes
+          const contactPathMatch = pathname.match(/^\/contacts\/(\d+)/);
+          if (contactPathMatch && token.contactId === contactPathMatch[1]) {
+            return true;
+          }
+
+          // Deny access to other contact routes for regular users
+          return false;
         }
 
         // Default: authenticated users can access

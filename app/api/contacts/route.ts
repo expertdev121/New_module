@@ -255,11 +255,16 @@ export async function GET(request: NextRequest) {
 
     // Calculate total pledged amount across all contacts (filtered by location for admin)
     let totalPledgedWhereClause: SQL | undefined;
-    if (isAdmin && currentUser.locationId) {
-      totalPledgedWhereClause = and(
-        eq(pledge.contactId, contact.id),
-        eq(contact.locationId, currentUser.locationId)
-      );
+    if (isAdmin) {
+      if (currentUser.locationId) {
+        totalPledgedWhereClause = and(
+          eq(pledge.contactId, contact.id),
+          eq(contact.locationId, currentUser.locationId)
+        );
+      } else {
+        // If admin has no locationId, no pledges should be counted
+        totalPledgedWhereClause = sql`FALSE`;
+      }
     }
 
     const totalPledgedQuery = db
@@ -276,12 +281,19 @@ export async function GET(request: NextRequest) {
     const totalPledgedAmount = Number(totalPledgedResult[0]?.totalPledgedUsd || 0);
 
     // Calculate contacts with pledges (filtered by location for admin)
-    let contactsWithPledgesWhereClause: SQL | undefined = sql`${pledge.originalAmountUsd} > 0`;
-    if (isAdmin && currentUser.locationId) {
-      contactsWithPledgesWhereClause = and(
-        sql`${pledge.originalAmountUsd} > 0`,
-        eq(contact.locationId, currentUser.locationId)
-      );
+    let contactsWithPledgesWhereClause: SQL | undefined;
+    if (isAdmin) {
+      if (currentUser.locationId) {
+        contactsWithPledgesWhereClause = and(
+          sql`${pledge.originalAmountUsd} > 0`,
+          eq(contact.locationId, currentUser.locationId)
+        );
+      } else {
+        // If admin has no locationId, no contacts with pledges should be counted
+        contactsWithPledgesWhereClause = sql`FALSE`;
+      }
+    } else {
+      contactsWithPledgesWhereClause = sql`${pledge.originalAmountUsd} > 0`;
     }
 
     const contactsWithPledgesQuery = db
