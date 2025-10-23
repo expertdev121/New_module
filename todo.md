@@ -1,14 +1,20 @@
-# TODO: Fix Select.Item Error and Super Admin Redirect
+# Admin and User Management Updates
 
-## Issues Identified
-1. **Select.Item Error**: In `app/admin/log-reports/page.tsx`, the Select component has a SelectItem with an empty string value (`value=""`), which is not allowed. This causes an error when visiting admin/log-reports.
-2. **Super Admin Redirect**: In `app/auth/login/page.tsx`, super admins are redirected to `/dashboard`, but according to the sidebar navigation, they should go to `/admin/manage-admins` since they don't have dashboard access in their navigation.
+## Admin Management
+- [ ] Add locationId field to add/edit admin form in `app/admin/manage-admins/page.tsx`
+- [ ] Update GET API to include locationId in response (`app/api/admin/manage-admins/route.ts`)
+- [ ] Update POST API to handle locationId (`app/api/admin/manage-admins/route.ts`)
+- [ ] Update PUT API to handle locationId (`app/api/admin/manage-admins/[id]/route.ts`)
 
-## Tasks
-- [x] Fix Select.Item in log-reports page: Change empty string value to "all"
-- [x] Fix super admin redirect: Change redirect to /admin/manage-admins
-- [x] Test the fixes by running the app
+## User Management
+- [ ] Add "Add User" form to users page (`app/admin/users/page.tsx`)
+- [ ] Add locationId column to users table (`components/admin/users-table.tsx`)
+- [ ] Add edit functionality to users table (password + locationId) (`components/admin/users-table.tsx`)
+- [ ] Update GET API to include locationId in response (`app/api/admin/users/route.ts`)
+- [ ] Update PUT API to handle locationId and password updates (`app/api/admin/users/[id]/route.ts`)
+- [ ] Add POST API for creating users (`app/api/admin/users/route.ts`)
 
-## Files to Edit
-- `app/admin/log-reports/page.tsx`
-- `app/auth/login/page.tsx`
+## Testing
+- [ ] Test add/edit functionality for admins
+- [ ] Test add/edit functionality for users
+- [ ] Verify locationId is properly stored/retrieved

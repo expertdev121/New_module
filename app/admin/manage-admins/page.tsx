@@ -17,6 +17,7 @@ interface AdminUser {
   email: string;
   role: string;
   status: string;
+  locationId: string | null;
   createdAt: string;
 }
 
@@ -30,6 +31,7 @@ export default function ManageAdminsPage() {
     password: "",
     role: "admin",
     status: "active",
+    locationId: "",
   });
   const { toast } = useToast();
 
@@ -86,7 +88,7 @@ export default function ManageAdminsPage() {
         });
         setDialogOpen(false);
         setEditingAdmin(null);
-        setFormData({ email: "", password: "", role: "admin", status: "active" });
+        setFormData({ email: "", password: "", role: "admin", status: "active", locationId: "" });
         fetchAdmins();
       } else {
         const error = await response.json();
@@ -112,6 +114,7 @@ export default function ManageAdminsPage() {
       password: "", // Don't populate password for security
       role: admin.role,
       status: admin.status,
+      locationId: admin.locationId || "",
     });
     setDialogOpen(true);
   };
@@ -148,7 +151,7 @@ export default function ManageAdminsPage() {
 
   const openCreateDialog = () => {
     setEditingAdmin(null);
-    setFormData({ email: "", password: "", role: "admin", status: "active" });
+    setFormData({ email: "", password: "", role: "admin", status: "active", locationId: "" });
     setDialogOpen(true);
   };
 
@@ -238,30 +241,32 @@ export default function ManageAdminsPage() {
                 required
               />
             </div>
-            {!editingAdmin && (
+            <div>
+              <Label htmlFor="password">
+                Password {editingAdmin ? "(leave blank to keep current)" : ""}
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                required={!editingAdmin}
+              />
+            </div>
+            {editingAdmin && (
               <div>
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  required
-                />
+                <Label htmlFor="role">Role</Label>
+                <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             )}
-            <div>
-              <Label htmlFor="role">Role</Label>
-              <Select value={formData.role} onValueChange={(value) => setFormData({ ...formData, role: value })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="admin">Admin</SelectItem>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div>
               <Label htmlFor="status">Status</Label>
               <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value })}>
@@ -273,6 +278,16 @@ export default function ManageAdminsPage() {
                   <SelectItem value="suspended">Suspended</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div>
+              <Label htmlFor="locationId">Location ID</Label>
+              <Input
+                id="locationId"
+                type="text"
+                value={formData.locationId}
+                onChange={(e) => setFormData({ ...formData, locationId: e.target.value })}
+                placeholder="Enter location ID (optional)"
+              />
             </div>
             <div className="flex justify-end space-x-2">
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>

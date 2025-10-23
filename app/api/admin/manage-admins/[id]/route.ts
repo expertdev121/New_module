@@ -17,7 +17,7 @@ export async function PUT(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { email, password, role, status } = await request.json();
+    const { email, password, role, status, locationId } = await request.json();
     const userId = parseInt(params.id);
 
     if (!email) {
@@ -40,6 +40,7 @@ export async function PUT(
       email,
       role: role || "admin",
       status: status || "active",
+      locationId: locationId || null,
     };
 
     // Only update password if provided

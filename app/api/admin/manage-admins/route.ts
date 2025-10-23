@@ -20,6 +20,7 @@ export async function GET() {
         email: user.email,
         role: user.role,
         status: user.status,
+        locationId: user.locationId,
         createdAt: user.createdAt,
       })
       .from(user)
@@ -41,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const { email, password, role, status } = await request.json();
+    const { email, password, role, status, locationId } = await request.json();
 
     if (!email || !password) {
       return NextResponse.json({ error: "Email and password are required" }, { status: 400 });
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
         passwordHash: hashedPassword,
         role: role || "admin",
         status: status || "active",
+        locationId: locationId || null,
       })
       .returning();
 
