@@ -58,11 +58,21 @@ export const authOptions: NextAuthOptions = {
 
         const contactId = contacts.length > 0 ? contacts[0].id : null;
 
+        // Get user's locationId
+        const userWithLocation = await db
+          .select({ locationId: user.locationId })
+          .from(user)
+          .where(eq(user.id, foundUser.id))
+          .limit(1);
+
+        const locationId = userWithLocation.length > 0 ? userWithLocation[0].locationId : null;
+
         return {
           id: foundUser.id.toString(),
           email: foundUser.email,
           role: foundUser.role,
           contactId: contactId?.toString(),
+          locationId: locationId,
         };
       },
     }),
@@ -75,6 +85,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.role = user.role;
         token.contactId = user.contactId;
+        token.locationId = user.locationId;
       }
       return token;
     },
@@ -83,6 +94,7 @@ export const authOptions: NextAuthOptions = {
         session.user.id = token.sub!;
         session.user.role = token.role as string;
         session.user.contactId = token.contactId as string;
+        session.user.locationId = token.locationId as string;
       }
       return session;
     },

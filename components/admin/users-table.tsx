@@ -17,8 +17,30 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { MoreHorizontal, UserCheck, UserX, Trash2, Edit } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 
 interface User {
   id: number;
@@ -38,6 +60,15 @@ interface UsersTableProps {
 export function UsersTable({ users, onUserUpdate }: UsersTableProps) {
   const [loading, setLoading] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editFormData, setEditFormData] = useState({
+    email: "",
+    role: "",
+    status: "",
+    password: "",
+  });
+  const { toast } = useToast();
 
   const handleStatusChange = async (userId: number, newStatus: "active" | "suspended") => {
     setLoading(userId);
@@ -67,8 +98,6 @@ export function UsersTable({ users, onUserUpdate }: UsersTableProps) {
   };
 
   const handleDelete = async (userId: number) => {
-    if (!confirm("Are you sure you want to delete this user?")) return;
-
     setLoading(userId);
     setError("");
 
@@ -86,6 +115,60 @@ export function UsersTable({ users, onUserUpdate }: UsersTableProps) {
       }
     } catch (err) {
       setError("An error occurred");
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const handleEdit = (user: User) => {
+    setEditingUser(user);
+    setEditFormData({
+      email: user.email,
+      role: user.role,
+      status: user.status,
+      password: "",
+    });
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+
+    setLoading(editingUser.id);
+
+    try {
+      const response = await fetch(`/api/admin/users/${editingUser.id}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: 'include',
+        body: JSON.stringify(editFormData),
+      });
+
+      if (response.ok) {
+        toast({
+          title: "Success",
+          description: "User updated successfully",
+        });
+        setEditDialogOpen(false);
+        setEditingUser(null);
+        onUserUpdate();
+      } else {
+        const data = await response.json();
+        toast({
+          title: "Error",
+          description: data.error || "Failed to update user",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: "An error occurred",
+        variant: "destructive",
+      });
     } finally {
       setLoading(null);
     }
@@ -149,6 +232,13 @@ export function UsersTable({ users, onUserUpdate }: UsersTableProps) {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={() => handleEdit(user)}
+                      disabled={loading === user.id}
+                    >
+                      <Edit className="mr-2 h-4 w-4" />
+                      Edit User
+                    </DropdownMenuItem>
                     {user.status === "active" ? (
                       <DropdownMenuItem
                         onClick={() => handleStatusChange(user.id, "suspended")}
@@ -166,14 +256,35 @@ export function UsersTable({ users, onUserUpdate }: UsersTableProps) {
                         Activate
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem
-                      onClick={() => handleDelete(user.id)}
-                      disabled={loading === user.id}
-                      className="text-red-600"
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" />
-                      Delete
-                    </DropdownMenuItem>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <DropdownMenuItem
+                          onSelect={(e) => e.preventDefault()}
+                          disabled={loading === user.id}
+                          className="text-red-600"
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete
+                        </DropdownMenuItem>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Delete User</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            Are you sure you want to delete this user? This action cannot be undone.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Cancel</AlertDialogCancel>
+                          <AlertDialogAction
+                            onClick={() => handleDelete(user.id)}
+                            className="bg-red-600 hover:bg-red-700"
+                          >
+                            Delete
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
@@ -181,6 +292,78 @@ export function UsersTable({ users, onUserUpdate }: UsersTableProps) {
           ))}
         </TableBody>
       </Table>
+
+      <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Edit User</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="email">Email</Label>
+              <Input
+                id="email"
+                type="email"
+                value={editFormData.email}
+                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="role">Role</Label>
+              <Select
+                value={editFormData.role}
+                onValueChange={(value) => setEditFormData({ ...editFormData, role: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select role" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select
+                value={editFormData.status}
+                onValueChange={(value) => setEditFormData({ ...editFormData, status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">New Password (optional)</Label>
+              <Input
+                id="password"
+                type="password"
+                value={editFormData.password}
+                onChange={(e) => setEditFormData({ ...editFormData, password: e.target.value })}
+                placeholder="Leave blank to keep current password"
+              />
+            </div>
+            <div className="flex justify-end space-x-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={loading === editingUser?.id}>
+                {loading === editingUser?.id ? "Updating..." : "Update User"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

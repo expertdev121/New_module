@@ -2,8 +2,8 @@ import { drizzle } from "drizzle-orm/neon-http";
 import { neon } from "@neondatabase/serverless";
 import * as schema from "./schema";
 
-if (!process.env.DATABASE_URL || "") {
-  throw new Error("DATABASE_URL is not set in the environment variables");
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = 'postgresql://levhatora_final_owner:npg_FmBlvp78SNqZ@ep-delicate-smoke-a9zveme7-pooler.gwc.azure.neon.tech/levhatora_final?sslmode=require&channel_binding=require';
 }
 
 const sql = neon(process.env.DATABASE_URL);
