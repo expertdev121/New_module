@@ -6,11 +6,12 @@ import { Sidebar } from "@/components/dashboard/sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Download, Users, DollarSign, Calendar, FileText, ArrowUpRight } from "lucide-react";
+import { Download, Users, DollarSign, Calendar, FileText, ArrowUpRight, Filter } from "lucide-react";
 import { DateRangePicker, RangeKeyDict } from 'react-date-range';
 import 'react-date-range/dist/styles.css';
 import 'react-date-range/dist/theme/default.css';
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -34,6 +35,7 @@ import {
   useDashboardTopDonors,
   useDashboardRecentActivity,
   useDashboardContactAnalytics,
+  useDashboardCampaigns,
 } from "@/lib/query/useDashboard";
 
 ChartJS.register(
@@ -65,6 +67,7 @@ const CHART_COLORS = {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
   const [appliedDateRange, setAppliedDateRange] = useState([
     {
       startDate: new Date(new Date().setMonth(new Date().getMonth() - 6)),
@@ -111,7 +114,14 @@ export default function DashboardPage() {
     isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined
   );
 
-  const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading || contactAnalyticsLoading;
+  const [selectedLocationId, setSelectedLocationId] = useState<string>("");
+  const { data: campaignsData, isLoading: campaignsLoading } = useDashboardCampaigns(
+    isDateRangeSelected ? appliedDateRange[0].startDate.toISOString().split('T')[0] : undefined,
+    isDateRangeSelected ? appliedDateRange[0].endDate.toISOString().split('T')[0] : undefined,
+    selectedLocationId || undefined
+  );
+
+  const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading || contactAnalyticsLoading || campaignsLoading;
 
   if (status === "loading") return <div className="flex items-center justify-center h-screen">Loading...</div>;
   if (!session) {
@@ -446,6 +456,7 @@ export default function DashboardPage() {
               <TabsTrigger value="pledges">Pledges</TabsTrigger>
               <TabsTrigger value="payments">Payments</TabsTrigger>
               <TabsTrigger value="contacts">Contacts</TabsTrigger>
+              <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
             </TabsList>
 
             <TabsContent value="overview" className="space-y-6">
@@ -805,6 +816,376 @@ export default function DashboardPage() {
                         <div className="text-right">
                           <p className="font-semibold">{formatCurrency(contributor.pledgeAmount)}</p>
                           <p className="text-sm text-green-600">{formatCurrency(contributor.paymentAmount)} paid</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="campaigns" className="space-y-6">
+              {/* Campaign Metrics */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Campaigns</CardTitle>
+                    <FileText className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{campaignsData?.totalCampaigns || 0}</div>
+                    <p className="text-xs text-gray-600 mt-1">Active campaigns</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Total Raised</CardTitle>
+                    <DollarSign className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(campaignsData?.totalRaised || 0)}</div>
+                    <p className="text-xs text-green-600 mt-1">From campaigns</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Average Donation</CardTitle>
+                    <Users className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCurrency(campaignsData?.averageDonation || 0)}</div>
+                    <p className="text-xs text-gray-600 mt-1">Per campaign</p>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <CardTitle className="text-sm font-medium text-gray-600">Top Campaign</CardTitle>
+                    <ArrowUpRight className="w-4 h-4 text-gray-400" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{campaignsData?.topCampaign?.name || 'N/A'}</div>
+                    <p className="text-xs text-green-600 mt-1">{formatCurrency(campaignsData?.topCampaign?.amount || 0)} raised</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Campaign Performance Charts - Enhanced */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Horizontal Bar Chart */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Campaign Performance Ranking</CardTitle>
+                    <CardDescription>Top campaigns by donation amount</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[400px]">
+                      <Bar
+                        data={{
+                          labels: campaignsData?.campaigns?.slice(0, 8).map(c => c.name) || [],
+                          datasets: [
+                            {
+                              label: 'Amount Raised',
+                              data: campaignsData?.campaigns?.slice(0, 8).map(c => c.amount) || [],
+                              backgroundColor: (context) => {
+                                const value = context.parsed.y;
+                                const max = Math.max(...(campaignsData?.campaigns?.map(c => c.amount) || [0]));
+                                const ratio = value / max;
+                                if (ratio > 0.7) return 'rgba(16, 185, 129, 0.8)';
+                                if (ratio > 0.4) return 'rgba(59, 130, 246, 0.8)';
+                                return 'rgba(99, 102, 241, 0.8)';
+                              },
+                              borderRadius: 8,
+                              borderSkipped: false,
+                            },
+                          ],
+                        }}
+                        options={{
+                          indexAxis: 'y',
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              display: false,
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context: TooltipItem<'bar'>) {
+                                  return 'Raised: ' + formatCurrency(context.parsed.x);
+                                }
+                              }
+                            }
+                          },
+                          scales: {
+                            x: {
+                              beginAtZero: true,
+                              grid: {
+                                display: true,
+                                color: 'rgba(0, 0, 0, 0.05)',
+                              },
+                              ticks: {
+                                callback: function(tickValue: string | number) {
+                                  if (typeof tickValue === 'number') {
+                                    return '$' + (tickValue / 1000) + 'k';
+                                  }
+                                  return tickValue;
+                                }
+                              }
+                            },
+                            y: {
+                              grid: {
+                                display: false,
+                              },
+                            }
+                          }
+                        }}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Donut Chart with Campaign Distribution */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Campaign Distribution</CardTitle>
+                    <CardDescription>Percentage share of total donations</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-[400px]">
+                      <Doughnut
+                        data={{
+                          labels: campaignsData?.campaigns?.slice(0, 6).map(c => c.name) || [],
+                          datasets: [
+                            {
+                              data: campaignsData?.campaigns?.slice(0, 6).map(c => c.amount) || [],
+                              backgroundColor: [
+                                'rgba(59, 130, 246, 0.9)',
+                                'rgba(16, 185, 129, 0.9)',
+                                'rgba(139, 92, 246, 0.9)',
+                                'rgba(245, 158, 11, 0.9)',
+                                'rgba(236, 72, 153, 0.9)',
+                                'rgba(20, 184, 166, 0.9)',
+                              ],
+                              borderWidth: 3,
+                              borderColor: '#fff',
+                              hoverOffset: 10,
+                            },
+                          ],
+                        }}
+                        options={{
+                          responsive: true,
+                          maintainAspectRatio: false,
+                          plugins: {
+                            legend: {
+                              position: 'bottom',
+                              labels: {
+                                padding: 15,
+                                usePointStyle: true,
+                                pointStyle: 'circle',
+                                font: {
+                                  size: 11,
+                                }
+                              }
+                            },
+                            tooltip: {
+                              callbacks: {
+                                label: function(context: TooltipItem<'doughnut'>) {
+                                  const label = context.label || '';
+                                  const value = context.parsed;
+                                  const total = (context.dataset.data as number[]).reduce((a, b) => (Number(a) || 0) + (Number(b) || 0), 0);
+                                  const percentage = total > 0 ? ((Number(value) / total) * 100).toFixed(1) : '0.0';
+                                  return [label, formatCurrency(Number(value) || 0) + ' (' + percentage + '%)'];
+                                }
+                              }
+                            }
+                          },
+                          cutout: '70%',
+                        }}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Combined Bar Chart with Donations Count */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Campaign Performance Overview</CardTitle>
+                  <CardDescription>Amount raised vs number of donations</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[350px]">
+                    <Bar
+                      data={{
+                        labels: campaignsData?.campaigns?.slice(0, 10).map(c => c.name) || [],
+                        datasets: [
+                          {
+                            label: 'Amount Raised',
+                            data: campaignsData?.campaigns?.slice(0, 10).map(c => c.amount) || [],
+                            backgroundColor: 'rgba(59, 130, 246, 0.8)',
+                            borderRadius: 6,
+                            borderSkipped: false,
+                            yAxisID: 'y',
+                          },
+                          {
+                            label: 'Number of Donations',
+                            data: campaignsData?.campaigns?.slice(0, 10).map(c => c.donations) || [],
+                            backgroundColor: 'rgba(16, 185, 129, 0.8)',
+                            borderRadius: 6,
+                            borderSkipped: false,
+                            yAxisID: 'y1',
+                          },
+                        ],
+                      }}
+                      options={{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {
+                          mode: 'index',
+                          intersect: false,
+                        },
+                        plugins: {
+                          legend: {
+                            position: 'top',
+                            labels: {
+                              usePointStyle: true,
+                              padding: 15,
+                            }
+                          },
+                          tooltip: {
+                            callbacks: {
+                              label: function(context: TooltipItem<'bar'>) {
+                                const label = context.dataset.label || '';
+                                if (context.parsed && context.parsed.y !== undefined && typeof context.parsed.y === 'number') {
+                                  if (context.datasetIndex === 0) {
+                                    return label + ': ' + formatCurrency(context.parsed.y);
+                                  }
+                                  return label + ': ' + context.parsed.y;
+                                }
+                                return label;
+                              }
+                            }
+                          }
+                        },
+                        scales: {
+                          y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            beginAtZero: true,
+                            grid: {
+                              color: 'rgba(0, 0, 0, 0.05)',
+                            },
+                              ticks: {
+                                callback: function(tickValue: string | number) {
+                                  if (typeof tickValue === 'number') {
+                                    return '$' + (tickValue / 1000) + 'k';
+                                  }
+                                  return tickValue;
+                                }
+                              }
+                          },
+                          y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            beginAtZero: true,
+                            grid: {
+                              drawOnChartArea: false,
+                            },
+                          },
+                          x: {
+                            grid: {
+                              display: false,
+                            },
+                          }
+                        }
+                      }}
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Top Campaigns List */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Performing Campaigns</CardTitle>
+                  <CardDescription>Campaigns with highest donation amounts</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {campaignsData?.campaigns?.slice(0, 5).map((campaign, index) => (
+                      <div key={index} className="flex items-center justify-between border-b pb-3 last:border-0">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-semibold">
+                            {index + 1}
+                          </div>
+                          <div>
+                            <p className="font-medium">{campaign.name}</p>
+                            <p className="text-sm text-gray-500">{campaign.donations} donations</p>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-semibold">{formatCurrency(campaign.amount)}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Campaign Contributors */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Campaign Contributors</CardTitle>
+                  <CardDescription>Contacts who have contributed to campaigns</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    {campaignsData?.details?.reduce((acc: { campaignCode: string; contributors: { contactName: string; paymentAmount: number; paymentDate: string; paymentMethod: string }[] }[], detail) => {
+                      const existingCampaign = acc.find(c => c.campaignCode === detail.campaignCode);
+                      if (!existingCampaign) {
+                        acc.push({
+                          campaignCode: detail.campaignCode,
+                          contributors: [{
+                            contactName: detail.contactName,
+                            paymentAmount: detail.paymentAmount,
+                            paymentDate: detail.paymentDate,
+                            paymentMethod: detail.paymentMethod
+                          }]
+                        });
+                      } else {
+                        existingCampaign.contributors.push({
+                          contactName: detail.contactName,
+                          paymentAmount: detail.paymentAmount,
+                          paymentDate: detail.paymentDate,
+                          paymentMethod: detail.paymentMethod
+                        });
+                      }
+                      return acc;
+                    }, []).slice(0, 3).map((campaignDetail, index: number) => (
+                      <div key={index} className="border rounded-lg p-4">
+                        <h4 className="font-semibold text-lg mb-3">{campaignDetail.campaignCode}</h4>
+                        <div className="space-y-2">
+                          {campaignDetail.contributors.slice(0, 5).map((contributor, contribIndex: number) => (
+                            <div key={contribIndex} className="flex items-center justify-between py-2 border-b border-gray-100 last:border-0">
+                              <div className="flex items-center gap-3">
+                                <div className="w-6 h-6 rounded-full bg-green-100 text-green-600 flex items-center justify-center text-xs font-semibold">
+                                  {contribIndex + 1}
+                                </div>
+                                <div>
+                                  <p className="font-medium text-sm">{contributor.contactName}</p>
+                                  <p className="text-xs text-gray-500">{contributor.paymentMethod} • {new Date(contributor.paymentDate).toLocaleDateString()}</p>
+                                </div>
+                              </div>
+                              <p className="font-semibold text-green-600">{formatCurrency(contributor.paymentAmount)}</p>
+                            </div>
+                          ))}
+                          {campaignDetail.contributors.length > 5 && (
+                            <p className="text-xs text-gray-500 mt-2">+{campaignDetail.contributors.length - 5} more contributors</p>
+                          )}
                         </div>
                       </div>
                     ))}

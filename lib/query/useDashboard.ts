@@ -89,6 +89,40 @@ export interface ContactAnalyticsData {
   };
 }
 
+export interface CampaignData {
+  campaignCode: string;
+  totalPledges: number;
+  totalPayments: number;
+  totalAmount: number;
+  numberOfContacts: number;
+}
+
+export interface CampaignDetail {
+  campaignCode: string;
+  contactName: string;
+  paymentAmount: number;
+  paymentDate: string;
+  paymentMethod: string;
+}
+
+export interface CampaignSummary {
+  name: string;
+  amount: number;
+  donations: number;
+}
+
+export interface CampaignsData {
+  totalCampaigns: number;
+  totalRaised: number;
+  averageDonation: number;
+  topCampaign: {
+    name: string;
+    amount: number;
+  };
+  campaigns: CampaignSummary[];
+  details: CampaignDetail[];
+}
+
 export const useDashboardOverview = (timeRange?: string, startDate?: string, endDate?: string) => {
   return useQuery<OverviewData, Error>({
     queryKey: ["dashboard", "overview", timeRange, startDate, endDate],
@@ -227,6 +261,29 @@ export const useDashboardContactAnalytics = (startDate?: string, endDate?: strin
       const response = await fetch(`/api/dashboard/contact-analytics?${params.toString()}`);
       if (!response.ok) {
         throw new Error(`Failed to fetch contact analytics: ${response.statusText}`);
+      }
+      return response.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: 2,
+  });
+};
+
+export const useDashboardCampaigns = (startDate?: string, endDate?: string, locationId?: string) => {
+  return useQuery<CampaignsData, Error>({
+    queryKey: ["dashboard", "campaigns", startDate, endDate, locationId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (startDate && endDate) {
+        params.append("startDate", startDate);
+        params.append("endDate", endDate);
+      }
+      if (locationId) {
+        params.append("locationId", locationId);
+      }
+      const response = await fetch(`/api/dashboard/campaigns?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch campaigns: ${response.statusText}`);
       }
       return response.json();
     },
