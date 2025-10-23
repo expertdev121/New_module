@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
 
-    let whereConditions = [];
+    const whereConditions = [];
 
     if (action) {
       whereConditions.push(eq(auditLog.action, action));

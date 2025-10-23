@@ -11,7 +11,7 @@ import { DeleteConfirmationDialog } from "../ui/delete-confirmation-dialog";
 import { useDeleteContact } from "@/lib/mutation/useDeleteContact";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { signOut } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 
 interface ContactWithRoles extends Contact {
   contactRoles: ContactRole[];
@@ -46,6 +46,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const deleteContactMutation = useDeleteContact();
+  const { data: session } = useSession();
 
   const paymentPercentage =
     financialSummary.totalPledgedUsd > 0
@@ -95,15 +96,17 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <LogOut className="h-4 w-4" />
             Sign Out
           </Button>
-          <Button
-            variant="destructive"
-            onClick={handleDeleteClick}
-            disabled={deleteContactMutation.isPending}
-            className="flex items-center gap-2"
-          >
-            <Trash2 className="h-4 w-4" />
-            {deleteContactMutation.isPending ? "Deleting..." : "Delete Contact"}
-          </Button>
+          {session?.user?.role === "admin" && (
+            <Button
+              variant="destructive"
+              onClick={handleDeleteClick}
+              disabled={deleteContactMutation.isPending}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteContactMutation.isPending ? "Deleting..." : "Delete Contact"}
+            </Button>
+          )}
         </div>
       </div>
 

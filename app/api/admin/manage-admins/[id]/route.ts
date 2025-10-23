@@ -8,7 +8,7 @@ import bcrypt from "bcryptjs";
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,7 +18,8 @@ export async function PUT(
     }
 
     const { email, password, role, status, locationId } = await request.json();
-    const userId = parseInt(params.id);
+    const resolvedParams = await params;
+    const userId = parseInt(resolvedParams.id);
 
     if (!email) {
       return NextResponse.json({ error: "Email is required" }, { status: 400 });
@@ -36,10 +37,16 @@ export async function PUT(
     }
 
     // Prepare update data
-    const updateData: any = {
+    const updateData: {
+      email: string;
+      role: "user" | "admin" | "super_admin";
+      status: "active" | "suspended";
+      locationId: string | null;
+      passwordHash?: string;
+    } = {
       email,
-      role: role || "admin",
-      status: status || "active",
+      role: (role as "user" | "admin" | "super_admin") || "admin",
+      status: (status as "active" | "suspended") || "active",
       locationId: locationId || null,
     };
 
@@ -68,7 +75,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -77,7 +84,8 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
 
-    const userId = parseInt(params.id);
+    const resolvedParams = await params;
+    const userId = parseInt(resolvedParams.id);
 
     // Check if user exists and is not a super_admin
     const userToDelete = await db

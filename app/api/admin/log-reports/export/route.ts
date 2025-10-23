@@ -8,7 +8,6 @@ import { eq, and, gte, lte, like } from "drizzle-orm";
 export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session || session.user.role !== "super_admin") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
@@ -19,20 +18,17 @@ export async function GET(request: NextRequest) {
     const dateFrom = searchParams.get("dateFrom");
     const dateTo = searchParams.get("dateTo");
 
-    let whereConditions = [];
+    const whereConditions = [];
 
     if (action) {
       whereConditions.push(eq(auditLog.action, action));
     }
-
     if (userEmail) {
       whereConditions.push(like(auditLog.userEmail, `%${userEmail}%`));
     }
-
     if (dateFrom) {
       whereConditions.push(gte(auditLog.timestamp, new Date(dateFrom)));
     }
-
     if (dateTo) {
       // Add one day to include the end date
       const endDate = new Date(dateTo);
@@ -57,10 +53,13 @@ export async function GET(request: NextRequest) {
 
     // Create CSV content
     const csvHeaders = "ID,User ID,User Email,Action,Details,IP Address,User Agent,Timestamp\n";
-    const csvRows = logs.map(log =>
-      `"${log.id}","${log.userId}","${log.userEmail}","${log.action}","${log.details.replace(/"/g, '""')}","${log.ipAddress}","${log.userAgent.replace(/"/g, '""')}","${log.timestamp.toISOString()}"`
-    ).join("\n");
-
+    const csvRows = logs.map(log => {
+      const details = log.details ? log.details.replace(/"/g, '""') : '';
+      const userAgent = log.userAgent ? log.userAgent.replace(/"/g, '""') : '';
+      
+      return `"${log.id}","${log.userId}","${log.userEmail}","${log.action}","${details}","${log.ipAddress}","${userAgent}","${log.timestamp.toISOString()}"`;
+    }).join("\n");
+    
     const csvContent = csvHeaders + csvRows;
 
     // Return CSV file
