@@ -109,7 +109,6 @@ export interface CampaignSummary {
   name: string;
   amount: number;
   donations: number;
-  location: string;
 }
 
 export interface CampaignsData {

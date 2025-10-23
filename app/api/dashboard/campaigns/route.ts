@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     const adminLocationId = userResult[0].locationId;
 
-    let whereConditions = [eq(contact.locationId, adminLocationId)];
+    const whereConditions = [eq(contact.locationId, adminLocationId)];
 
     if (startDate && endDate) {
       whereConditions.push(gte(payment.paymentDate, startDate));
@@ -45,9 +45,8 @@ export async function GET(request: NextRequest) {
     const campaignsData = await db
       .select({
         name: pledge.campaignCode,
-        amount: sql<number>`sum(${payment.amountUsd})`,
+        amount: sql<number>`coalesce(sum(${payment.amountUsd}), 0)`,
         donations: sql<number>`count(${payment.id})`,
-        location: sql<string>`'N/A'`, // Placeholder since location table doesn't exist
       })
       .from(payment)
       .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
@@ -55,15 +54,18 @@ export async function GET(request: NextRequest) {
       .where(and(...whereConditions))
       .groupBy(pledge.campaignCode)
       .having(sql`${pledge.campaignCode} is not null`)
-      .orderBy(sql`sum(${payment.amountUsd}) desc`);
+      .orderBy(sql`coalesce(sum(${payment.amountUsd}), 0) desc`);
 
     // Calculate totals
     const totalCampaigns = campaignsData.length;
-    const totalRaised = campaignsData.reduce((sum, campaign) => sum + (campaign.amount || 0), 0);
+    const totalRaised = campaignsData.reduce((sum, campaign) => {
+      const amount = Number(campaign.amount) || 0;
+      return sum + amount;
+    }, 0);
     const averageDonation = totalCampaigns > 0 ? totalRaised / totalCampaigns : 0;
     const topCampaign = campaignsData.length > 0 ? {
       name: campaignsData[0].name,
-      amount: campaignsData[0].amount || 0,
+      amount: Number(campaignsData[0].amount) || 0,
     } : { name: 'N/A', amount: 0 };
 
     // Get detailed payments for each campaign
