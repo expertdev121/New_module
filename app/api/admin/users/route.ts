@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
+import { eq } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -52,6 +53,7 @@ export async function GET() {
         updatedAt: user.updatedAt,
       })
       .from(user)
+      .where(eq(user.role, "user")) // Only show users with role "user"
       .orderBy(user.createdAt);
 
     console.log(`Successfully fetched ${users.length} users`);

@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import { useQueryState } from "nuqs";
 import { z } from "zod";
+import { useSession } from "next-auth/react";
 import {
   Table,
   TableBody,
@@ -80,6 +81,7 @@ interface PaymentPlansTableProps {
 export default function PaymentPlansTable({
   contactId,
 }: PaymentPlansTableProps) {
+  const { data: session } = useSession();
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [pledgeId] = useQueryState("pledgeId", {
     parse: (value) => {
@@ -420,13 +422,15 @@ export default function PaymentPlansTable({
               </SelectContent>
             </Select>
 
-            <PaymentPlanDialog
-              mode="create"
-              pledgeId={pledgeId ?? undefined}
-              contactId={contactId}
-              showPledgeSelector={!pledgeId}
-              onSuccess={handleSuccess}
-            />
+            {session?.user?.role === 'admin' && (
+              <PaymentPlanDialog
+                mode="create"
+                pledgeId={pledgeId ?? undefined}
+                contactId={contactId}
+                showPledgeSelector={!pledgeId}
+                onSuccess={handleSuccess}
+              />
+            )}
           </div>
 
           <div className="border rounded-lg overflow-hidden">

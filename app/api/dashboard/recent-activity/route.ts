@@ -1,14 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql, eq, desc, and, gte, lt, lte, SQL } from "drizzle-orm";
-import { contact, payment, pledge } from "@/lib/db/schema";
+import { contact, payment, pledge, user } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get("limit") || "5");
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
 
     let paymentWhereCondition: SQL<unknown> = eq(payment.paymentStatus, "completed");
     let pledgeWhereCondition: SQL<unknown> | undefined = undefined;
@@ -27,7 +47,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Recent payments
+    // Recent payments (filter by admin's location)
     const recentPayments = await db
       .select({
         type: sql<string>`'payment'`,
@@ -40,11 +60,14 @@ export async function GET(request: NextRequest) {
       .from(payment)
       .leftJoin(pledge, eq(payment.pledgeId, pledge.id))
       .leftJoin(contact, sql`COALESCE(${payment.payerContactId}, ${pledge.contactId}) = ${contact.id}`)
-      .where(paymentWhereCondition)
+      .where(and(
+        paymentWhereCondition,
+        eq(contact.locationId, adminLocationId)
+      ))
       .orderBy(desc(payment.paymentDate))
       .limit(limit);
 
-    // Recent pledges
+    // Recent pledges (filter by admin's location)
     const recentPledges = await db
       .select({
         type: sql<string>`'pledge'`,
@@ -56,7 +79,10 @@ export async function GET(request: NextRequest) {
       })
       .from(pledge)
       .innerJoin(contact, eq(pledge.contactId, contact.id))
-      .where(pledgeWhereCondition)
+      .where(and(
+        pledgeWhereCondition || sql`1=1`,
+        eq(contact.locationId, adminLocationId)
+      ))
       .orderBy(desc(pledge.pledgeDate))
       .limit(limit);
 

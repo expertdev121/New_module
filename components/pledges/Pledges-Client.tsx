@@ -57,6 +57,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useDeletePledge, PledgeQueryParams } from "@/lib/query/pledge/usePledgeQuery";
 import { formatDate } from "@/lib/utils";
+import { useSession } from "next-auth/react";
 
 const QueryParamsSchema = z.object({
   contactId: z.number().positive(),
@@ -141,6 +142,7 @@ export default function PledgesTable() {
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingPledge, setEditingPledge] = useState<PledgeFormData | null>(null);
 
+  const { data: session } = useSession();
   const { mutate: deletePledge, isPending: isDeleting } = useDeletePledge();
 
   const [categoryId] = useQueryState("categoryId", {
@@ -420,11 +422,13 @@ export default function PledgesTable() {
                 <SelectItem value="unpaid">$ Unpaid</SelectItem>
               </SelectContent>
             </Select>
-            <PledgeDialog
-              contactId={contactId as number}
-              onPledgeCreated={handlePledgeCreated}
-              categories={categories}
-            />
+            {session?.user?.role !== "user" && (
+              <PledgeDialog
+                contactId={contactId as number}
+                onPledgeCreated={handlePledgeCreated}
+                categories={categories}
+              />
+            )}
           </div>
 
           {/* Table */}
@@ -602,18 +606,20 @@ export default function PledgesTable() {
                                     View Payments
                                   </Link>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  className="text-red-600 focus:text-red-600"
-                                  onClick={() =>
-                                    handleDeletePledge(
-                                      pledge.id,
-                                      pledge.description || "Untitled Pledge"
-                                    )
-                                  }
-                                  disabled={isDeleting}
-                                >
-                                  {isDeleting ? "Deleting..." : "Delete Pledge"}
-                                </DropdownMenuItem>
+                                {session?.user?.role !== "user" && (
+                                  <DropdownMenuItem
+                                    className="text-red-600 focus:text-red-600"
+                                    onClick={() =>
+                                      handleDeletePledge(
+                                        pledge.id,
+                                        pledge.description || "Untitled Pledge"
+                                      )
+                                    }
+                                    disabled={isDeleting}
+                                  >
+                                    {isDeleting ? "Deleting..." : "Delete Pledge"}
+                                  </DropdownMenuItem>
+                                )}
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -731,12 +737,14 @@ export default function PledgesTable() {
                               {/* Action Buttons */}
                               <div className="mt-6 pt-4 flex gap-2 border-t justify-between">
                                 <div className="flex gap-2">
-                                  <PaymentDialogClient
-                                    pledgeId={pledge.id}
-                                    amount={Number.parseFloat(calculateBalance(pledge).toString())}
-                                    currency={pledge.currency}
-                                    description={pledge.description ?? ""}
-                                  />
+                                  {session?.user?.role !== "user" && (
+                                    <PaymentDialogClient
+                                      pledgeId={pledge.id}
+                                      amount={Number.parseFloat(calculateBalance(pledge).toString())}
+                                      currency={pledge.currency}
+                                      description={pledge.description ?? ""}
+                                    />
+                                  )}
                                   <LinkButton
                                     href={`/contacts/${contactId}/payments?pledgeId=${pledge.id}`}
                                     variant="outline"
@@ -748,15 +756,19 @@ export default function PledgesTable() {
                                 </div>
 
                                 <div className="flex gap-2">
-                                  <PaymentPlanDialog pledgeId={pledge.id} />
-                                  <Button
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleEditClick(pledgeData)}
-                                  >
-                                    <Edit className="mr-2 h-4 w-4" />
-                                    Edit Pledge
-                                  </Button>
+                                  {session?.user?.role !== "user" && (
+                                    <PaymentPlanDialog pledgeId={pledge.id} />
+                                  )}
+                                  {session?.user?.role !== "user" && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleEditClick(pledgeData)}
+                                    >
+                                      <Edit className="mr-2 h-4 w-4" />
+                                      Edit Pledge
+                                    </Button>
+                                  )}
                                 </div>
                               </div>
                             </TableCell>

@@ -1,15 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql, eq, and, gte, lte, desc, count, sum, type SQL } from "drizzle-orm";
-import { contact, pledge, payment, relationships } from "@/lib/db/schema";
+import { contact, pledge, payment, relationships, user } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
     const page = parseInt(searchParams.get("page") || "1");
     const limit = parseInt(searchParams.get("limit") || "10");
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
 
     let dateFilter: SQL | undefined = undefined;
     if (startDate && endDate) {
@@ -26,7 +46,7 @@ export async function GET(request: NextRequest) {
         count: sql<number>`COUNT(*)`,
       })
       .from(contact)
-      .where(dateFilter)
+      .where(and(dateFilter, eq(contact.locationId, adminLocationId)))
       .groupBy(contact.gender);
 
     const genderData = {
@@ -43,7 +63,8 @@ export async function GET(request: NextRequest) {
       .from(contact)
       .where(and(
         sql`${contact.title} IS NOT NULL`,
-        dateFilter
+        dateFilter,
+        eq(contact.locationId, adminLocationId)
       ))
       .groupBy(contact.title)
       .orderBy(desc(sql<number>`COUNT(*)`))
@@ -82,7 +103,8 @@ export async function GET(request: NextRequest) {
         .from(contact)
         .where(and(
           gte(contact.createdAt, start),
-          lte(contact.createdAt, end)
+          lte(contact.createdAt, end),
+          eq(contact.locationId, adminLocationId)
         ))
         .groupBy(sql`DATE_TRUNC('month', ${contact.createdAt})`)
         .orderBy(sql`DATE_TRUNC('month', ${contact.createdAt})`);
@@ -109,7 +131,7 @@ export async function GET(request: NextRequest) {
           count: sql<number>`COUNT(*)`,
         })
         .from(contact)
-        .where(gte(contact.createdAt, twelveMonthsAgo))
+        .where(and(gte(contact.createdAt, twelveMonthsAgo), eq(contact.locationId, adminLocationId)))
         .groupBy(sql`DATE_TRUNC('month', ${contact.createdAt})`)
         .orderBy(sql`DATE_TRUNC('month', ${contact.createdAt})`);
 
@@ -126,21 +148,27 @@ export async function GET(request: NextRequest) {
     const totalContacts = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(contact)
-      .where(dateFilter);
+      .where(and(dateFilter, eq(contact.locationId, adminLocationId)));
 
     const contactsWithPledges = await db
       .select({ count: sql<number>`COUNT(DISTINCT ${pledge.contactId})` })
       .from(pledge)
-      .where(dateFilter ? and(
-        gte(pledge.pledgeDate, startDate!),
-        lte(pledge.pledgeDate, endDate!)
-      ) : undefined);
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        eq(contact.locationId, adminLocationId),
+        dateFilter ? and(
+          gte(pledge.pledgeDate, startDate!),
+          lte(pledge.pledgeDate, endDate!)
+        ) : undefined
+      ));
 
     const contactsWithPayments = await db
       .select({ count: sql<number>`COUNT(DISTINCT ${payment.payerContactId})` })
       .from(payment)
+      .innerJoin(contact, eq(payment.payerContactId, contact.id))
       .where(and(
         eq(payment.paymentStatus, 'completed'),
+        eq(contact.locationId, adminLocationId),
         dateFilter ? and(
           gte(payment.paymentDate, startDate!),
           lte(payment.paymentDate, endDate!)
@@ -160,7 +188,8 @@ export async function GET(request: NextRequest) {
         count: sql<number>`COUNT(*)`,
       })
       .from(relationships)
-      .where(eq(relationships.isActive, true))
+      .innerJoin(contact, eq(relationships.contactId, contact.id))
+      .where(and(eq(relationships.isActive, true), eq(contact.locationId, adminLocationId)))
       .groupBy(relationships.relationshipType)
       .orderBy(desc(sql<number>`COUNT(*)`))
       .limit(10);
@@ -187,7 +216,7 @@ export async function GET(request: NextRequest) {
         eq(contact.id, payment.payerContactId),
         eq(payment.paymentStatus, 'completed')
       ))
-      .where(dateFilter)
+      .where(and(dateFilter, eq(contact.locationId, adminLocationId)))
       .groupBy(contact.id, contact.firstName, contact.lastName)
       .orderBy(desc(sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`))
       .limit(limit)
@@ -210,7 +239,7 @@ export async function GET(request: NextRequest) {
         eq(contact.id, payment.payerContactId),
         eq(payment.paymentStatus, 'completed')
       ))
-      .where(dateFilter);
+      .where(and(dateFilter, eq(contact.locationId, adminLocationId)));
 
     return NextResponse.json({
       genderData,

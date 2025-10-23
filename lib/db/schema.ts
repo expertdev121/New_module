@@ -260,7 +260,7 @@ export const installmentStatusEnum = pgEnum("installment_status", [
   "cancelled",
 ]);
 
-export const roleEnum = pgEnum("role", ["admin", "user"]);
+export const roleEnum = pgEnum("role", ["admin", "user", "super_admin"]);
 
 export const userStatusEnum = pgEnum("user_status", ["active", "suspended"]);
 
@@ -268,6 +268,7 @@ export const user = pgTable("user", {
   id: serial("id").primaryKey(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  locationId: text("location_id"),
   role: roleEnum("role").notNull().default("user"),
   status: userStatusEnum("status").notNull().default("active"),
   isActive: boolean("is_active").default(true).notNull(),
@@ -1001,18 +1002,15 @@ export type NewBonusCalculation = typeof bonusCalculation.$inferInsert;
 
 export const auditLog = pgTable("audit_log", {
   id: serial("id").primaryKey(),
-  tableName: text("table_name").notNull(),
-  recordId: integer("record_id").notNull(),
-  action: text("action").notNull(),
-  fieldName: text("field_name"),
-  oldValue: text("old_value"),
-  newValue: text("new_value"),
-  changedBy: integer("changed_by").references(() => contact.id, {
+  userId: integer("user_id").references(() => user.id, {
     onDelete: "set null",
   }),
-  changedAt: timestamp("changed_at").defaultNow().notNull(),
+  userEmail: text("user_email").notNull(),
+  action: text("action").notNull(),
+  details: text("details"),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
 });
 
 export type AuditLog = typeof auditLog.$inferSelect;
@@ -1030,7 +1028,6 @@ export const contactRelations = relations(contact, ({ many }) => ({
     relationName: "relationTarget",
   }),
   pledges: many(pledge),
-  auditLogs: many(auditLog),
   solicitor: many(solicitor),
   paymentsAsPayer: many(payment, {
     relationName: "payerPayments",
@@ -1273,8 +1270,8 @@ export const currencyConversionLogRelations = relations(
 export const exchangeRateRelations = relations(exchangeRate, ({ }) => ({}));
 
 export const auditLogRelations = relations(auditLog, ({ one }) => ({
-  changedByContact: one(contact, {
-    fields: [auditLog.changedBy],
-    references: [contact.id],
+  user: one(user, {
+    fields: [auditLog.userId],
+    references: [user.id],
   }),
 }));

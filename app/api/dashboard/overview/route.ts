@@ -1,34 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { sql, eq, and, gte, lt, lte, SQL } from "drizzle-orm";
-import { contact, pledge, payment, paymentPlan, installmentSchedule } from "@/lib/db/schema";
+import { contact, pledge, payment, paymentPlan, installmentSchedule, user } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get("period") || "1m"; // Default to 1 month
+    const period = searchParams.get("period") || "1m"; 
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
 
     let contactsGrowthPercentage = 0;
     let totalContacts = 0;
 
+    // Total contacts (always for the location, not filtered by date range)
+    const totalContactsResult = await db
+      .select({ count: sql<number>`COUNT(*)` })
+      .from(contact)
+      .where(eq(contact.locationId, adminLocationId));
+    totalContacts = totalContactsResult[0]?.count || 0;
+
     if (startDate && endDate) {
-      // For custom dates, calculate total contacts and growth within the date range
-      const start = new Date(startDate);
-      const end = new Date(endDate);
-      const periodDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-
-      // Total contacts within the date range
-      const totalContactsResult = await db
-        .select({ count: sql<number>`COUNT(*)` })
-        .from(contact)
-        .where(and(
-          gte(contact.createdAt, start),
-          lte(contact.createdAt, end)
-        ));
-      totalContacts = totalContactsResult[0]?.count || 0;
-
       // For custom dates, we can't easily calculate growth percentage, so set to 0
       contactsGrowthPercentage = 0;
     } else {
@@ -38,7 +50,8 @@ export async function GET(request: NextRequest) {
       // Total contacts
       const totalContactsResult = await db
         .select({ count: sql<number>`COUNT(*)` })
-        .from(contact);
+        .from(contact)
+        .where(eq(contact.locationId, adminLocationId));
       totalContacts = totalContactsResult[0]?.count || 0;
 
       // Contacts growth percentage (current period vs previous period)
@@ -50,7 +63,10 @@ export async function GET(request: NextRequest) {
       const currentPeriodContactsResult = await db
         .select({ count: sql<number>`COUNT(*)` })
         .from(contact)
-        .where(gte(contact.createdAt, currentPeriodStart));
+        .where(and(
+          gte(contact.createdAt, currentPeriodStart),
+          eq(contact.locationId, adminLocationId)
+        ));
       const currentPeriodContacts = currentPeriodContactsResult[0]?.count || 0;
 
       const previousPeriodContactsResult = await db
@@ -58,7 +74,8 @@ export async function GET(request: NextRequest) {
         .from(contact)
         .where(and(
           gte(contact.createdAt, previousPeriodStart),
-          lt(contact.createdAt, previousPeriodEnd)
+          lt(contact.createdAt, previousPeriodEnd),
+          eq(contact.locationId, adminLocationId)
         ));
       const previousPeriodContacts = previousPeriodContactsResult[0]?.count || 0;
 
@@ -84,7 +101,7 @@ export async function GET(request: NextRequest) {
       )as SQL<unknown>;
     }
 
-    // Total pledges and amount
+    // Total pledges and amount (filter by admin's location)
     const pledgesResult = await db
       .select({
         count: sql<number>`COUNT(*)`,
@@ -92,12 +109,16 @@ export async function GET(request: NextRequest) {
         avgSize: sql<number>`COALESCE(AVG(${pledge.originalAmountUsd}), 0)`,
       })
       .from(pledge)
-      .where(pledgeWhereCondition);
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        pledgeWhereCondition,
+        eq(contact.locationId, adminLocationId)
+      ));
     const totalPledges = pledgesResult[0]?.count || 0;
     const totalPledgeAmount = pledgesResult[0]?.totalAmount || 0;
     const avgPledgeSize = pledgesResult[0]?.avgSize || 0;
 
-    // Total payments and amount (completed only)
+    // Total payments and amount (completed only, filter by admin's location)
     const paymentsResult = await db
       .select({
         count: sql<number>`COUNT(*)`,
@@ -105,7 +126,12 @@ export async function GET(request: NextRequest) {
         avgSize: sql<number>`COALESCE(AVG(${payment.amountUsd}), 0)`,
       })
       .from(payment)
-      .where(paymentWhereCondition);
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        paymentWhereCondition,
+        eq(contact.locationId, adminLocationId)
+      ));
     const totalPayments = paymentsResult[0]?.count || 0;
     const totalPaymentAmount = paymentsResult[0]?.totalAmount || 0;
     const avgPaymentSize = paymentsResult[0]?.avgSize || 0;
@@ -114,23 +140,37 @@ export async function GET(request: NextRequest) {
     const activePlansResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(paymentPlan)
-      .where(eq(paymentPlan.planStatus, "active"));
+      .innerJoin(pledge, eq(paymentPlan.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        eq(paymentPlan.planStatus, "active"),
+        eq(contact.locationId, adminLocationId)
+      ));
     const activePlans = activePlansResult[0]?.count || 0;
 
     // Scheduled payments (pending installments)
     const scheduledPaymentsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(installmentSchedule)
-      .where(eq(installmentSchedule.status, "pending"));
+      .innerJoin(paymentPlan, eq(installmentSchedule.paymentPlanId, paymentPlan.id))
+      .innerJoin(pledge, eq(paymentPlan.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(and(
+        eq(installmentSchedule.status, "pending"),
+        eq(contact.locationId, adminLocationId)
+      ));
     const scheduledPayments = scheduledPaymentsResult[0]?.count || 0;
 
     // Unscheduled payments (completed payments not linked to installments)
     const unscheduledPaymentsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(payment)
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
       .where(and(
         eq(payment.paymentStatus, "completed"),
-        sql`${payment.installmentScheduleId} IS NULL`
+        sql`${payment.installmentScheduleId} IS NULL`,
+        eq(contact.locationId, adminLocationId)
       ));
     const unscheduledPayments = unscheduledPaymentsResult[0]?.count || 0;
 
@@ -138,9 +178,12 @@ export async function GET(request: NextRequest) {
     const thirdPartyPaymentsResult = await db
       .select({ count: sql<number>`COUNT(*)` })
       .from(payment)
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
       .where(and(
         eq(payment.paymentStatus, "completed"),
-        eq(payment.isThirdPartyPayment, true)
+        eq(payment.isThirdPartyPayment, true),
+        eq(contact.locationId, adminLocationId)
       ));
     const thirdPartyPayments = thirdPartyPaymentsResult[0]?.count || 0;
 

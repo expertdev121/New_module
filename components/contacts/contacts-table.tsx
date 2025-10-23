@@ -44,7 +44,7 @@ const QueryParamsSchema = z.object({
   sortOrder: z.enum(["asc", "desc"]).default("asc"),
 });
 
-export default function ContactsTable() {
+export default function ContactsTable({ isAdmin }: { isAdmin: boolean }) {
   const [page, setPage] = useQueryState("page", {
     parse: (value) => parseInt(value) || 1,
     serialize: (value) => value.toString(),
@@ -133,6 +133,20 @@ export default function ContactsTable() {
   };
 
   if (error) {
+    // Check if it's a 401 or specific error indicating no contact data
+    const isNoDataError = error.message?.includes("No contacts found") ||
+                         data?.contacts?.length === 0;
+
+    if (isNoDataError) {
+      return (
+        <Alert className="mx-4 my-6">
+          <AlertDescription>
+            Your data is not present. Please contact the admin.
+          </AlertDescription>
+        </Alert>
+      );
+    }
+
     return (
       <Alert className="mx-4 my-6">
         <AlertDescription>
@@ -144,13 +158,15 @@ export default function ContactsTable() {
 
   return (
     <div className="py-4">
-      <ContactsSummaryCards
-        data={summaryData}
-        showViewAll={true}
-        pledgesHref="/pledges"
-        pledgersHref="/student-roles"
-        recentHref="/contact-roles"
-      />
+      {isAdmin && (
+        <ContactsSummaryCards
+          data={summaryData}
+          showViewAll={true}
+          pledgesHref="/pledges"
+          pledgersHref="/student-roles"
+          recentHref="/contact-roles"
+        />
+      )}
       <p className="my-2 text-muted-foreground">
         View and manage your contacts
       </p>
@@ -259,7 +275,7 @@ export default function ContactsTable() {
                   colSpan={6}
                   className="text-center py-8 text-gray-500"
                 >
-                  No contacts found
+                  Your data is not present. Please contact the admin.
                 </TableCell>
               </TableRow>
             ) : (

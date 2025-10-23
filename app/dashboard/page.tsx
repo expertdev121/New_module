@@ -118,7 +118,7 @@ export default function DashboardPage() {
     router.push("/auth/login");
     return null;
   }
-  if (session.user.role !== "admin") {
+  if (session.user.role !== "admin" && session.user.role !== "super_admin") {
     router.push("/contacts");
     return null;
   }
@@ -339,9 +339,14 @@ export default function DashboardPage() {
     }
   };
 
+  const isAdmin = session.user.role === "admin";
+  const isSuperAdmin = session.user.role === "super_admin";
+
   return (
     <div className="bg-gray-50">
-      <div className="p-8">
+      {isAdmin || isSuperAdmin ? (
+        <div className="flex h-screen">
+          <main className="flex-1 p-8 overflow-y-auto">
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
@@ -808,7 +813,9 @@ export default function DashboardPage() {
               </Card>
             </TabsContent>
           </Tabs>
+          </main>
         </div>
+      ) : null}
     </div>
   );
 }

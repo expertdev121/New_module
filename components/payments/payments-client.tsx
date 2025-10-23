@@ -3,6 +3,7 @@
 import React, { useState, Dispatch, SetStateAction } from "react";
 import { useQueryState } from "nuqs";
 import { z } from "zod";
+import { useSession } from "next-auth/react";
 import {
   Table,
   TableBody,
@@ -150,6 +151,7 @@ interface PaymentsTableProps {
 }
 
 export default function PaymentsTable({ contactId }: PaymentsTableProps) {
+  const { data: session } = useSession();
   const [selectedPayment, setSelectedPayment] = useState<EditPayment | null>(
     null
   );
@@ -690,14 +692,16 @@ export default function PaymentsTable({ contactId }: PaymentsTableProps) {
               </SelectContent>
             </Select>
 
-            <PaymentFormDialog
-              pledgeId={pledgeId ?? undefined}
-              contactId={contactId}
-              showPledgeSelector={true}
-              amount={0}
-              currency="USD"
-              description=""
-            />
+            {session?.user?.role === 'admin' && (
+              <PaymentFormDialog
+                pledgeId={pledgeId ?? undefined}
+                contactId={contactId}
+                showPledgeSelector={true}
+                amount={0}
+                currency="USD"
+                description=""
+              />
+            )}
             <FactsDialog />
           </div>
 

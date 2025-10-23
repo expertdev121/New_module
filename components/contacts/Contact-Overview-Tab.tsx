@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Grid2x2, Trash2 } from "lucide-react";
+import { User, MapPin, Grid2x2, Trash2, LogOut } from "lucide-react";
 import { Contact, ContactRole, StudentRole } from "@/lib/db/schema";
 import ContactCategoriesCard from "./Contact-Category";
 import { Category } from "@/lib/query/useContactCategories";
@@ -11,6 +11,7 @@ import { DeleteConfirmationDialog } from "../ui/delete-confirmation-dialog";
 import { useDeleteContact } from "@/lib/mutation/useDeleteContact";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
 
 interface ContactWithRoles extends Contact {
   contactRoles: ContactRole[];
@@ -45,6 +46,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
   const router = useRouter();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const deleteContactMutation = useDeleteContact();
+  const { data: session } = useSession();
 
   const paymentPercentage =
     financialSummary.totalPledgedUsd > 0
@@ -85,15 +87,27 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             Contact Details
           </p>
         </div>
-        <Button
-          variant="destructive"
-          onClick={handleDeleteClick}
-          disabled={deleteContactMutation.isPending}
-          className="flex items-center gap-2"
-        >
-          <Trash2 className="h-4 w-4" />
-          {deleteContactMutation.isPending ? "Deleting..." : "Delete Contact"}
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => signOut({ callbackUrl: "/auth/login" })}
+            className="flex items-center gap-2"
+          >
+            <LogOut className="h-4 w-4" />
+            Sign Out
+          </Button>
+          {session?.user?.role === "admin" && (
+            <Button
+              variant="destructive"
+              onClick={handleDeleteClick}
+              disabled={deleteContactMutation.isPending}
+              className="flex items-center gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleteContactMutation.isPending ? "Deleting..." : "Delete Contact"}
+            </Button>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

@@ -1,17 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql } from "drizzle-orm";
-import { solicitor, payment, bonusCalculation } from "@/lib/db/schema";
+import { sql, eq } from "drizzle-orm";
+import { solicitor, payment, bonusCalculation, user, contact, pledge } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   console.log(request);
   try {
+    const session = await getServerSession(authOptions);
+    if (!session || (session.user.role !== "admin" && session.user.role !== "super_admin")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
     const solicitorStats = await db
       .select({
         status: solicitor.status,
         count: sql<number>`COUNT(*)`,
       })
       .from(solicitor)
+      .innerJoin(contact, eq(solicitor.contactId, contact.id))
+      .where(eq(contact.locationId, adminLocationId))
       .groupBy(solicitor.status);
 
     const paymentStats = await db
@@ -21,7 +42,10 @@ export async function GET(request: NextRequest) {
         totalAmount: sql<number>`COALESCE(SUM(${payment.amountUsd}), 0)`,
         assignedAmount: sql<number>`COALESCE(SUM(${payment.amountUsd}) FILTER (WHERE ${payment.solicitorId} IS NOT NULL), 0)`,
       })
-      .from(payment);
+      .from(payment)
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(eq(contact.locationId, adminLocationId));
 
     const bonusStats = await db
       .select({
@@ -31,7 +55,11 @@ export async function GET(request: NextRequest) {
         totalCalculations: sql<number>`COUNT(*)`,
         unpaidCalculations: sql<number>`COUNT(*) FILTER (WHERE ${bonusCalculation.isPaid} = false)`,
       })
-      .from(bonusCalculation);
+      .from(bonusCalculation)
+      .innerJoin(payment, eq(bonusCalculation.paymentId, payment.id))
+      .innerJoin(pledge, eq(payment.pledgeId, pledge.id))
+      .innerJoin(contact, eq(pledge.contactId, contact.id))
+      .where(eq(contact.locationId, adminLocationId));
 
     const activeSolicitors =
       solicitorStats.find((s) => s.status === "active")?.count || 0;

@@ -7,6 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, Home, RefreshCw } from "lucide-react";
 import { useContactQuery } from "@/lib/query/useContactDetails";
 import { useParams } from "next/navigation";
+import { useSession } from "next-auth/react";
 import type React from "react";
 import Link from "next/link";
 
@@ -18,6 +19,9 @@ export default function SettingsLayout({
   const { contactId } = useParams<{ contactId: string }>();
   const contactIdNum = parseInt(contactId, 10);
   const isValidId = !isNaN(contactIdNum);
+  const { data: session } = useSession();
+  const userRole = session?.user?.role;
+  const isAdmin = userRole === "admin" || userRole === "super_admin";
 
   return (
     <div className="container mx-auto py-8 max-w-7xl">
@@ -43,21 +47,25 @@ export default function SettingsLayout({
               <TabLink href={`/contacts/${contactId}/payments`}>
                 Payments
               </TabLink>
-              <TabLink href={`/contacts/${contactId}/solicitor`}>
-                Solicitor
-              </TabLink>
-              <TabLink href={`/contacts/${contactId}/contact-roles`}>
-                Contact Roles
-              </TabLink>
-              <TabLink href={`/contacts/${contactId}/student-roles`}>
-                Enrollment
-              </TabLink>
-              <TabLink href={`/contacts/${contactId}/relationships`}>
-                Relationships
-              </TabLink>
-              <TabLink href={`/contacts/${contactId}/tags`}>
-                Tags
-              </TabLink>
+              {isAdmin && (
+                <>
+                  <TabLink href={`/contacts/${contactId}/solicitor`}>
+                    Solicitor
+                  </TabLink>
+                  <TabLink href={`/contacts/${contactId}/contact-roles`}>
+                    Contact Roles
+                  </TabLink>
+                  <TabLink href={`/contacts/${contactId}/student-roles`}>
+                    Enrollment
+                  </TabLink>
+                  <TabLink href={`/contacts/${contactId}/relationships`}>
+                    Relationships
+                  </TabLink>
+                  <TabLink href={`/contacts/${contactId}/tags`}>
+                    Tags
+                  </TabLink>
+                </>
+              )}
             </nav>
           </div>
           <div className="p-6">{children}</div>
