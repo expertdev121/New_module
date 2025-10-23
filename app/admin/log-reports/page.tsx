@@ -39,7 +39,7 @@ export default function LogReportsPage() {
   const fetchLogs = async () => {
     try {
       const queryParams = new URLSearchParams();
-      if (filters.action) queryParams.append("action", filters.action);
+      if (filters.action && filters.action !== "all") queryParams.append("action", filters.action);
       if (filters.userEmail) queryParams.append("userEmail", filters.userEmail);
       if (filters.dateFrom) queryParams.append("dateFrom", filters.dateFrom);
       if (filters.dateTo) queryParams.append("dateTo", filters.dateTo);
@@ -69,7 +69,7 @@ export default function LogReportsPage() {
   const handleExport = async () => {
     try {
       const queryParams = new URLSearchParams();
-      if (filters.action) queryParams.append("action", filters.action);
+      if (filters.action && filters.action !== "all") queryParams.append("action", filters.action);
       if (filters.userEmail) queryParams.append("userEmail", filters.userEmail);
       if (filters.dateFrom) queryParams.append("dateFrom", filters.dateFrom);
       if (filters.dateTo) queryParams.append("dateTo", filters.dateTo);
@@ -146,7 +146,7 @@ export default function LogReportsPage() {
                   <SelectValue placeholder="All actions" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All actions</SelectItem>
+                  <SelectItem value="all">All actions</SelectItem>
                   <SelectItem value="login">Login</SelectItem>
                   <SelectItem value="logout">Logout</SelectItem>
                   <SelectItem value="create">Create</SelectItem>
@@ -208,7 +208,7 @@ export default function LogReportsPage() {
                       {log.action}
                     </Badge>
                   </TableCell>
-                  <TableCell className="max-w-xs truncate" title={log.details}>
+                  <TableCell className="max-w-xs truncate" title={log.details ?? undefined}>
                     {log.details}
                   </TableCell>
                   <TableCell>{log.ipAddress}</TableCell>
