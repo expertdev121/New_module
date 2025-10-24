@@ -279,6 +279,23 @@ export const user = pgTable("user", {
 export type User = typeof user.$inferSelect;
 export type NewUser = typeof user.$inferInsert;
 
+export const campaignStatusEnum = pgEnum("campaign_status", ["active", "inactive", "completed"]);
+
+export const campaign = pgTable("campaign", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  status: campaignStatusEnum("status").notNull().default("active"),
+  locationId: text("location_id"),
+  createdBy: integer("created_by").references(() => user.id, { onDelete: "set null" }),
+  updatedBy: integer("updated_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type Campaign = typeof campaign.$inferSelect;
+export type NewCampaign = typeof campaign.$inferInsert;
+
 export const contact = pgTable("contact", {
   id: serial("id").primaryKey(),
   ghlContactId: text("ghl_contact_id"),
@@ -302,6 +319,7 @@ export const paymentMethods = pgTable("payment_methods", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
+  locationId: text("location_id"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -317,6 +335,7 @@ export const paymentMethodDetails = pgTable("payment_method_details", {
     .notNull(),
   key: text("key").notNull(),
   value: text("value"),
+  locationId: text("location_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -350,6 +369,7 @@ export const studentRoles = pgTable(
     program: programEnum("program").notNull(),
     track: trackEnum("track").notNull(),
     trackDetail: trackDetailEnum("track_detail"),
+    locationId: text("location_id"),
     status: statusEnum("status").notNull(),
     machzor: machzorEnum("machzor"),
     startDate: date("start_date"),
@@ -404,6 +424,7 @@ export const relationships = pgTable(
     relationshipType: relationshipEnum("relationship_type").notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     notes: text("notes"),
+    locationId: text("location_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -470,6 +491,7 @@ export const tag = pgTable("tag", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   description: text("description"),
+  locationId: text("location_id"),
   showOnPayment: boolean("show_on_payment").default(true).notNull(),
   showOnPledge: boolean("show_on_pledge").default(true).notNull(),
   isActive: boolean("is_active").default(true).notNull(),
@@ -688,6 +710,7 @@ export const solicitor = pgTable(
     commissionRate: numeric("commission_rate", { precision: 5, scale: 2 }),
     hireDate: date("hire_date"),
     terminationDate: date("termination_date"),
+    locationId: text("location_id"),
     notes: text("notes"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -1273,5 +1296,24 @@ export const auditLogRelations = relations(auditLog, ({ one }) => ({
   user: one(user, {
     fields: [auditLog.userId],
     references: [user.id],
+  }),
+}));
+
+export const userRelations = relations(user, ({ many }) => ({
+  auditLogs: many(auditLog),
+  createdCampaigns: many(campaign, { relationName: "createdBy" }),
+  updatedCampaigns: many(campaign, { relationName: "updatedBy" }),
+}));
+
+export const campaignRelations = relations(campaign, ({ one }) => ({
+  createdBy: one(user, {
+    fields: [campaign.createdBy],
+    references: [user.id],
+    relationName: "createdBy",
+  }),
+  updatedBy: one(user, {
+    fields: [campaign.updatedBy],
+    references: [user.id],
+    relationName: "updatedBy",
   }),
 }));

@@ -1,25 +1,38 @@
-# TODO: Add Campaigns Tab to Dashboard
+# Campaign Management Implementation Plan
 
-## Overview
-Add a new "Campaigns" tab to the dashboard that displays campaign-based payment data with location filtering.
+## Current Status
+- [x] Plan approved by user
+- [ ] Add campaigns table to schema
+- [ ] Create API endpoints for campaigns CRUD operations
+- [ ] Create admin UI component for managing campaigns
+- [ ] Update dashboard campaigns API to use new campaigns table
+- [ ] Update dashboard page campaigns tab
+- [ ] Generate and run database migration
+- [ ] Test complete CRUD functionality
+- [ ] Verify location-based filtering works for admins
 
-## Tasks
-- [ ] Add "Campaigns" tab to the TabsList in app/dashboard/page.tsx
-- [ ] Create campaigns section with summary cards (total campaigns, total payments, total amount, total contacts)
-- [ ] Add campaign details table showing campaign code, pledges, payments, amount, contacts
-- [ ] Add detailed payments per campaign with contact names, amounts, dates, methods
-- [ ] Add location ID filter dropdown (need to fetch available locations)
-- [ ] Use existing useDashboardCampaigns hook with location filtering
+## Schema Changes
+- Add campaigns table with: name, description, status, location_id, created_by, updated_by, timestamps
+- Add relations to user table for created_by/updated_by
 
-## Implementation Details
-- API endpoint: `/api/dashboard/campaigns` (already exists)
-- Hook: `useDashboardCampaigns` (already exists with locationId support)
-- Location filtering: Need to create a way to fetch available locationIds for the dropdown
-- Data structure: CampaignsData interface with campaigns array and details array
+## API Endpoints
+- GET /api/admin/campaigns - List campaigns with location filtering
+- POST /api/admin/campaigns - Create new campaign
+- PUT /api/admin/campaigns/[id] - Update campaign
+- DELETE /api/admin/campaigns/[id] - Delete campaign
 
-## Next Steps
-1. Update dashboard page to include campaigns tab
-2. Implement location filter dropdown
-3. Create campaign summary cards
-4. Add campaign details table
-5. Add detailed payments section
+## UI Components
+- Admin campaigns management page with table and dialogs
+- Form validation and error handling
+- Location-based access control
+
+## Dashboard Updates
+- Update campaigns API to use campaigns table instead of pledge campaign codes
+- Maintain backward compatibility if needed
+- Update dashboard UI to work with new data structure
+
+## Testing
+- CRUD operations work correctly
+- Location filtering for admins
+- Dashboard displays campaign data properly
+- Migration runs successfully

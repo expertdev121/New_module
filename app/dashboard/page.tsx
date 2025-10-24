@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useSession } from "next-auth/react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -38,6 +38,7 @@ import {
   useDashboardCampaigns,
 } from "@/lib/query/useDashboard";
 
+
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -67,6 +68,7 @@ const CHART_COLORS = {
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [appliedDateRange, setAppliedDateRange] = useState([
     {
@@ -81,6 +83,9 @@ export default function DashboardPage() {
   const [isDateRangeSelected, setIsDateRangeSelected] = useState(true);
 
   const [loading, setLoading] = useState(false);
+
+  // Get tab from URL params
+  const activeTab = searchParams.get("tab") || "overview";
 
   // Data queries
   const { data: overviewData, isLoading: overviewLoading } = useDashboardOverview(
@@ -356,7 +361,7 @@ export default function DashboardPage() {
     <div className="bg-gray-50">
       {isAdmin || isSuperAdmin ? (
         <div className="flex h-screen">
-          <main className="flex-1 p-8 overflow-y-auto">
+          <main className="flex-1 p-8">
           {/* Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
@@ -450,7 +455,15 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <Tabs defaultValue="overview" className="space-y-6">
+          <Tabs
+            value={activeTab}
+            onValueChange={(value) => {
+              const params = new URLSearchParams(searchParams);
+              params.set("tab", value);
+              router.replace(`/dashboard?${params.toString()}`);
+            }}
+            className="space-y-6"
+          >
             <TabsList>
               <TabsTrigger value="overview">Overview</TabsTrigger>
               <TabsTrigger value="pledges">Pledges</TabsTrigger>
@@ -1193,6 +1206,8 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             </TabsContent>
+
+
           </Tabs>
           </main>
         </div>
