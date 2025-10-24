@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sql, desc, asc, or, ilike, and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -17,6 +19,32 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const { searchParams } = new URL(request.url);
     const parsedParams = querySchema.safeParse({
       page: searchParams.get("page") ?? undefined,
@@ -56,6 +84,9 @@ export async function GET(request: NextRequest) {
     }
     if (isActive !== undefined)
       conditions.push(eq(category.isActive, isActive));
+
+    // Filter by admin's location ID
+    conditions.push(eq(category.locationId, adminLocationId));
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
     let orderByClause;
@@ -150,6 +181,32 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const body = await request.json();
     const validatedData = categorySchema.parse(body);
 
@@ -173,6 +230,7 @@ export async function POST(request: NextRequest) {
 
     const newCategory: NewCategory = {
       ...validatedData,
+      locationId: adminLocationId, // Set location ID to admin's location ID
     };
 
     const result = await db.insert(category).values(newCategory).returning();

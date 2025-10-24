@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { categoryGroup, category, categoryItem, NewCategoryGroup } from "@/lib/db/schema";
 import { eq, or, ilike, and } from "drizzle-orm";
@@ -8,6 +10,32 @@ import { categoryGroupSchema } from "@/lib/form-schemas/category-group";
 
 export async function GET(request: NextRequest) {
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
 
@@ -22,6 +50,9 @@ export async function GET(request: NextRequest) {
         )
       );
     }
+
+    // Filter by admin's location ID
+    conditions.push(eq(categoryGroup.locationId, adminLocationId));
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -57,6 +88,32 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const body = await request.json();
     const validatedData = categoryGroupSchema.parse(body);
 
@@ -84,6 +141,7 @@ export async function POST(request: NextRequest) {
 
     const newGroup: NewCategoryGroup = {
       ...validatedData,
+      locationId: adminLocationId, // Set location ID to admin's location ID
     };
 
     const result = await db.insert(categoryGroup).values(newGroup).returning();

@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { category, categoryItem } from "@/lib/db/schema";
 import { eq, and, sql } from "drizzle-orm";
@@ -58,6 +60,29 @@ export async function PUT(
   }
 
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return Response.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return Response.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
     const body = await request.json();
     const validatedData = categoryUpdateSchema.parse(body);
 
