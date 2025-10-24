@@ -447,7 +447,7 @@ export type NewRelationship = typeof relationships.$inferInsert;
 
 export const category = pgTable("category", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
+  name: text("name").notNull(),
   description: text("description"),
   locationId: text("location_id"),
   isActive: boolean("is_active").default(true).notNull(),
@@ -493,7 +493,7 @@ export type NewCategoryGroup = typeof categoryGroup.$inferInsert;
 
 export const tag = pgTable("tag", {
   id: serial("id").primaryKey(),
-  name: text("name").notNull().unique(),
+  name: text("name").notNull(),
   description: text("description"),
   locationId: text("location_id"),
   showOnPayment: boolean("show_on_payment").default(true).notNull(),

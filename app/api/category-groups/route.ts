@@ -88,10 +88,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Get session without passing request
     const session = await getServerSession(authOptions);
 
-    // Check if session exists and user is authenticated
     if (!session || !session.user) {
       return NextResponse.json(
         { error: "Unauthorized - No session found" },
@@ -99,24 +97,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has admin role
-    const userRole = session.user.role;
-    if (userRole !== "admin") {
+    if (session.user.role !== "admin") {
       return NextResponse.json(
         {
           error: "Forbidden: Admin access required",
-          userRole: userRole
+          userRole: session.user.role,
         },
         { status: 403 }
       );
     }
 
-    // Get the admin's location ID
     const adminLocationId = session.user.locationId;
-
     const body = await request.json();
     const validatedData = categoryGroupSchema.parse(body);
 
+    // ✅ Duplicate check scoped to location
     const existingGroup = await db
       .select()
       .from(categoryGroup)
@@ -124,7 +119,8 @@ export async function POST(request: NextRequest) {
         and(
           eq(categoryGroup.name, validatedData.name),
           eq(categoryGroup.categoryId, validatedData.categoryId),
-          eq(categoryGroup.categoryItemId, validatedData.categoryItemId)
+          eq(categoryGroup.categoryItemId, validatedData.categoryItemId),
+          eq(categoryGroup.locationId, adminLocationId) // <-- location scoped
         )
       )
       .limit(1);
@@ -133,7 +129,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Duplicate category group",
-          message: `Category group with name '${validatedData.name}' already exists for this category and item combination`,
+          message: `Category group '${validatedData.name}' already exists for this category and item in your location`,
         },
         { status: 409 }
       );
@@ -141,7 +137,7 @@ export async function POST(request: NextRequest) {
 
     const newGroup: NewCategoryGroup = {
       ...validatedData,
-      locationId: adminLocationId, // Set location ID to admin's location ID
+      locationId: adminLocationId,
     };
 
     const result = await db.insert(categoryGroup).values(newGroup).returning();

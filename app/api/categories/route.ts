@@ -181,10 +181,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    // Get session without passing request
     const session = await getServerSession(authOptions);
 
-    // Check if session exists and user is authenticated
     if (!session || !session.user) {
       return NextResponse.json(
         { error: "Unauthorized - No session found" },
@@ -192,29 +190,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user has admin role
-    const userRole = session.user.role;
-    if (userRole !== "admin") {
+    if (session.user.role !== "admin") {
       return NextResponse.json(
         {
           error: "Forbidden: Admin access required",
-          userRole: userRole
+          userRole: session.user.role,
         },
         { status: 403 }
       );
     }
 
-    // Get the admin's location ID
     const adminLocationId = session.user.locationId;
-
     const body = await request.json();
     const validatedData = categorySchema.parse(body);
 
+    // ✅ Check for duplicate name within the same admin's location
     const existingCategory = await db
       .select()
       .from(category)
       .where(
-        and(eq(category.name, validatedData.name), eq(category.isActive, true))
+        and(
+          eq(category.name, validatedData.name),
+          eq(category.locationId, adminLocationId),
+          eq(category.isActive, true)
+        )
       )
       .limit(1);
 
@@ -222,7 +221,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Duplicate category",
-          message: `Category with name '${validatedData.name}' already exists`,
+          message: `Category '${validatedData.name}' already exists in this location`,
         },
         { status: 409 }
       );
@@ -230,7 +229,7 @@ export async function POST(request: NextRequest) {
 
     const newCategory: NewCategory = {
       ...validatedData,
-      locationId: adminLocationId, // Set location ID to admin's location ID
+      locationId: adminLocationId,
     };
 
     const result = await db.insert(category).values(newCategory).returning();
@@ -259,3 +258,4 @@ export async function POST(request: NextRequest) {
     return ErrorHandler.handle(error);
   }
 }
+

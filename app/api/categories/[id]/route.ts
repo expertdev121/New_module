@@ -32,10 +32,36 @@ export async function GET(
   }
 
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return Response.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return Response.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const items = await db
       .select({ name: categoryItem.name })
       .from(categoryItem)
-      .where(eq(categoryItem.categoryId, categoryId))
+      .where(and(eq(categoryItem.categoryId, categoryId), eq(categoryItem.locationId, adminLocationId)))
       .orderBy(categoryItem.name);
 
     return Response.json(items.map(item => item.name)); // Return array of names
@@ -60,10 +86,9 @@ export async function PUT(
   }
 
   try {
-    // Get session without passing request
+    // Get session
     const session = await getServerSession(authOptions);
 
-    // Check if session exists and user is authenticated
     if (!session || !session.user) {
       return Response.json(
         { error: "Unauthorized - No session found" },
@@ -71,22 +96,23 @@ export async function PUT(
       );
     }
 
-    // Check if user has admin role
-    const userRole = session.user.role;
-    if (userRole !== "admin") {
+    if (session.user.role !== "admin") {
       return Response.json(
         {
           error: "Forbidden: Admin access required",
-          userRole: userRole
+          userRole: session.user.role,
         },
         { status: 403 }
       );
     }
 
+    const adminLocationId = session.user.locationId;
+
+    // Parse and validate request body
     const body = await request.json();
     const validatedData = categoryUpdateSchema.parse(body);
 
-    // Check for duplicate name if name is provided
+    // Check for duplicate name within the same location
     if (validatedData.name !== undefined) {
       const existingCategory = await db
         .select()
@@ -94,6 +120,7 @@ export async function PUT(
         .where(
           and(
             eq(category.name, validatedData.name),
+            eq(category.locationId, adminLocationId),
             eq(category.isActive, true),
             sql`${category.id} != ${categoryId}`
           )
@@ -104,7 +131,7 @@ export async function PUT(
         return Response.json(
           {
             error: "Duplicate category",
-            message: `Category with name '${validatedData.name}' already exists`,
+            message: `Category '${validatedData.name}' already exists in this location`,
           },
           { status: 409 }
         );
@@ -114,20 +141,33 @@ export async function PUT(
     // Build update object with only provided fields
     const updateData: CategoryUpdateData = { updatedAt: new Date() };
     if (validatedData.name !== undefined) updateData.name = validatedData.name;
-    if (validatedData.description !== undefined) updateData.description = validatedData.description;
-    if (validatedData.isActive !== undefined) updateData.isActive = validatedData.isActive;
+    if (validatedData.description !== undefined)
+      updateData.description = validatedData.description;
+    if (validatedData.isActive !== undefined)
+      updateData.isActive = validatedData.isActive;
 
     const result = await db
       .update(category)
       .set(updateData)
-      .where(eq(category.id, categoryId))
+      .where(
+        and(
+          eq(category.id, categoryId),
+          eq(category.locationId, adminLocationId) // Ensure admin only updates their location's category
+        )
+      )
       .returning();
 
     if (result.length === 0) {
-      return Response.json({ error: "Category not found" }, { status: 404 });
+      return Response.json(
+        { error: "Category not found or not accessible" },
+        { status: 404 }
+      );
     }
 
-    return Response.json({ message: "Category updated successfully", category: result[0] });
+    return Response.json({
+      message: "Category updated successfully",
+      category: result[0],
+    });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return Response.json(

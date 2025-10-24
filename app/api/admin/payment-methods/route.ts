@@ -6,7 +6,6 @@ import { db } from '@/lib/db';
 import { sql, eq, and } from "drizzle-orm";
 import { paymentMethods, PaymentMethod, NewPaymentMethod } from '@/lib/db/schema';
 
-// List all payment methods
 export async function GET() {
   try {
     // Get session without passing request
@@ -53,99 +52,85 @@ export async function GET() {
   }
 }
 
-// Add a new payment method
 export async function POST(req: NextRequest) {
   try {
-    // Get session without passing request
     const session = await getServerSession(authOptions);
-
-    // Check if session exists and user is authenticated
     if (!session || !session.user) {
-      return NextResponse.json(
-        { error: "Unauthorized - No session found" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized - No session found" }, { status: 401 });
+    }
+    if (session.user.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    // Check if user has admin role
-    const userRole = session.user.role;
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        {
-          error: "Forbidden: Admin access required",
-          userRole: userRole
-        },
-        { status: 403 }
-      );
+    const adminLocationId = session.user.locationId;
+    const data = await req.json();
+    const { name, description, isActive } = data;
+
+    if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+
+    // Check for duplicate name within the same location
+    const existing = await db
+      .select()
+      .from(paymentMethods)
+      .where(and(eq(paymentMethods.name, name), eq(paymentMethods.locationId, adminLocationId)))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return NextResponse.json({ error: `Payment method '${name}' already exists for your location` }, { status: 409 });
     }
 
-    // Get the admin's location ID
+    const [created] = await db
+      .insert(paymentMethods)
+      .values({ name, description, isActive, locationId: adminLocationId })
+      .returning();
+
+    return NextResponse.json({ message: "Payment method created successfully", method: created }, { status: 201 });
+  } catch (error) {
+    console.error("Error creating payment method:", error);
+    return NextResponse.json({
+      error: "Failed to create payment method",
+      message: error instanceof Error ? error.message : "Unknown error",
+    }, { status: 500 });
+  }
+}
+
+export async function PUT(req: NextRequest) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user) {
+      return NextResponse.json({ error: "Unauthorized - No session found" }, { status: 401 });
+    }
+    if (session.user.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
+    }
+
     const adminLocationId = session.user.locationId;
 
     const data = await req.json();
-    const { name, description, isActive } = data;
-    if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
-    const [created] = await db.insert(paymentMethods).values({ name, description, isActive, locationId: adminLocationId }).returning();
-    return NextResponse.json(created);
-  } catch (error) {
-    console.error("Error creating payment method:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to create payment method",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
-  }
-}
-
-// Update a payment method
-export async function PUT(req: NextRequest) {
-  try {
-    // Get session without passing request
-    const session = await getServerSession(authOptions);
-
-    // Check if session exists and user is authenticated
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: "Unauthorized - No session found" },
-        { status: 401 }
-      );
-    }
-
-    // Check if user has admin role
-    const userRole = session.user.role;
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        {
-          error: "Forbidden: Admin access required",
-          userRole: userRole
-        },
-        { status: 403 }
-      );
-    }
-
-    const data = await req.json();
     const { id, name, description, isActive } = data;
+
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
-    const [updated] = await db.update(paymentMethods)
+    if (!name) return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+
+    // Update only if the payment method belongs to the admin's location
+    const [updated] = await db
+      .update(paymentMethods)
       .set({ name, description, isActive, updatedAt: new Date() })
-      .where(eq(paymentMethods.id, id)).returning();
-    if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(updated);
+      .where(and(eq(paymentMethods.id, id), eq(paymentMethods.locationId, adminLocationId)))
+      .returning();
+
+    if (!updated) return NextResponse.json({ error: 'Payment method not found or not accessible' }, { status: 404 });
+
+    return NextResponse.json({ message: "Payment method updated successfully", method: updated });
   } catch (error) {
     console.error("Error updating payment method:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to update payment method",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: "Failed to update payment method",
+      message: error instanceof Error ? error.message : "Unknown error",
+    }, { status: 500 });
   }
 }
 
-// Delete a payment method
 export async function DELETE(req: NextRequest) {
   try {
     // Get session without passing request

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { sql, desc, asc, or, ilike, and, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -19,6 +21,32 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const { searchParams } = new URL(request.url);
     const parsedParams = querySchema.safeParse({
       page: searchParams.get("page") ?? undefined,
@@ -61,6 +89,9 @@ export async function GET(request: NextRequest) {
     if (isActive !== undefined) conditions.push(eq(tag.isActive, isActive));
     if (showOnPayment !== undefined) conditions.push(eq(tag.showOnPayment, showOnPayment));
     if (showOnPledge !== undefined) conditions.push(eq(tag.showOnPledge, showOnPledge));
+
+    // Add location ID filter for admin users
+    conditions.push(eq(tag.locationId, adminLocationId));
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -153,6 +184,32 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const body = await request.json();
     const validatedData = tagSchema.parse(body);
 
@@ -160,7 +217,7 @@ export async function POST(request: NextRequest) {
       .select()
       .from(tag)
       .where(
-        and(eq(tag.name, validatedData.name), eq(tag.isActive, true))
+        and(eq(tag.name, validatedData.name), eq(tag.isActive, true), eq(tag.locationId, adminLocationId))
       )
       .limit(1);
 
@@ -176,6 +233,7 @@ export async function POST(request: NextRequest) {
 
     const newTag: NewTag = {
       ...validatedData,
+      locationId: adminLocationId,
     };
 
     const result = await db.insert(tag).values(newTag).returning();

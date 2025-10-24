@@ -162,16 +162,16 @@ export default function ManageAdminsPage() {
   return (
     <div className="container mx-auto p-6">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold">Manage Admins</h1>
+        <h1 className="text-3xl font-bold">Manage organization</h1>
         <Button onClick={openCreateDialog}>
           <Plus className="mr-2 h-4 w-4" />
-          Add Admin
+          Add organization
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>Admin Users</CardTitle>
+          <CardTitle>organization Users</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
@@ -228,7 +228,7 @@ export default function ManageAdminsPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingAdmin ? "Edit Admin" : "Add Admin"}</DialogTitle>
+            <DialogTitle>{editingAdmin ? "Edit organization" : "Add organization"}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
@@ -261,7 +261,7 @@ export default function ManageAdminsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="admin">organization</SelectItem>
                     <SelectItem value="super_admin">Super Admin</SelectItem>
                   </SelectContent>
                 </Select>

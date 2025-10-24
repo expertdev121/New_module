@@ -96,7 +96,7 @@ export function Sidebar() {
             <Button
               key={item.path}
               variant={isActive(item.path) ? "default" : "ghost"}
-              className="w-full justify-start"
+              className={`w-full justify-start ${isActive(item.path) ? "text-white" : "text-gray-800"}`}
               onClick={() => router.push(item.path)}
             >
               <item.icon className="mr-2 h-4 w-4" />

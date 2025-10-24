@@ -3525,7 +3525,7 @@ export default function EditPaymentDialog({
             </Card>
 
             {/* Solicitor Section */}
-            <Card>
+            {/* <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   Solicitor Information
@@ -3614,7 +3614,7 @@ export default function EditPaymentDialog({
                   </div>
                 </CardContent>
               )}
-            </Card>
+            </Card> */}
 
             {/* Notes */}
             <FormField

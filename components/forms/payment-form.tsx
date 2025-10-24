@@ -870,7 +870,7 @@ export default function PaymentDialog({
             </Card>
 
             {/* Solicitor Section */}
-            <div className="flex items-center space-x-2">
+            {/* <div className="flex items-center space-x-2">
               <Switch
                 id="show-solicitor-section"
                 checked={showSolicitorSection}
@@ -984,7 +984,7 @@ export default function PaymentDialog({
                   />
                 </CardContent>
               </Card>
-            )}
+            )} */}
 
             {/* Split Payment Toggle */}
             {/* <div className="flex items-center space-x-2">

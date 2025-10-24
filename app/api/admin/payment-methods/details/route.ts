@@ -68,96 +68,88 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// Add a new payment method detail
 export async function POST(req: NextRequest) {
   try {
-    // Get session without passing request
     const session = await getServerSession(authOptions);
-
-    // Check if session exists and user is authenticated
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: "Unauthorized - No session found" },
-        { status: 401 }
-      );
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized - No session found" }, { status: 401 });
+    }
+    if (session.user.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    // Check if user has admin role
-    const userRole = session.user.role;
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        {
-          error: "Forbidden: Admin access required",
-          userRole: userRole
-        },
-        { status: 403 }
-      );
-    }
-
-    // Get the admin's location ID
     const adminLocationId = session.user.locationId;
-
     const data = await req.json();
     const { paymentMethodId, key, value } = data;
-    if (!paymentMethodId || !key) return NextResponse.json({ error: 'paymentMethodId and key are required' }, { status: 400 });
-    const [created] = await db.insert(paymentMethodDetails).values({ paymentMethodId, key, value, locationId: adminLocationId }).returning();
-    return NextResponse.json(created);
+
+    if (!paymentMethodId || !key) {
+      return NextResponse.json({ error: 'paymentMethodId and key are required' }, { status: 400 });
+    }
+
+    // Optional: prevent duplicates for the same paymentMethodId and key
+    const existing = await db
+      .select()
+      .from(paymentMethodDetails)
+      .where(and(
+        eq(paymentMethodDetails.paymentMethodId, paymentMethodId),
+        eq(paymentMethodDetails.key, key),
+        eq(paymentMethodDetails.locationId, adminLocationId)
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      return NextResponse.json({ error: `Detail with key '${key}' already exists for this payment method` }, { status: 409 });
+    }
+
+    const [created] = await db
+      .insert(paymentMethodDetails)
+      .values({ paymentMethodId, key, value, locationId: adminLocationId })
+      .returning();
+
+    return NextResponse.json({ message: "Payment method detail created successfully", detail: created }, { status: 201 });
   } catch (error) {
     console.error("Error creating payment method detail:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to create payment method detail",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: "Failed to create payment method detail",
+      message: error instanceof Error ? error.message : "Unknown error",
+    }, { status: 500 });
   }
 }
 
-// Update a payment method detail
 export async function PUT(req: NextRequest) {
   try {
-    // Get session without passing request
     const session = await getServerSession(authOptions);
-
-    // Check if session exists and user is authenticated
-    if (!session || !session.user) {
-      return NextResponse.json(
-        { error: "Unauthorized - No session found" },
-        { status: 401 }
-      );
+    if (!session?.user) {
+      return NextResponse.json({ error: "Unauthorized - No session found" }, { status: 401 });
+    }
+    if (session.user.role !== "admin") {
+      return NextResponse.json({ error: "Forbidden: Admin access required" }, { status: 403 });
     }
 
-    // Check if user has admin role
-    const userRole = session.user.role;
-    if (userRole !== "admin") {
-      return NextResponse.json(
-        {
-          error: "Forbidden: Admin access required",
-          userRole: userRole
-        },
-        { status: 403 }
-      );
-    }
-
+    const adminLocationId = session.user.locationId;
     const data = await req.json();
     const { id, key, value } = data;
+
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
-    const [updated] = await db.update(paymentMethodDetails)
+
+    const [updated] = await db
+      .update(paymentMethodDetails)
       .set({ key, value, updatedAt: new Date() })
-      .where(eq(paymentMethodDetails.id, id))
+      .where(and(
+        eq(paymentMethodDetails.id, id),
+        eq(paymentMethodDetails.locationId, adminLocationId)
+      ))
       .returning();
-    if (!updated) return NextResponse.json({ error: 'Not found' }, { status: 404 });
-    return NextResponse.json(updated);
+
+    if (!updated) return NextResponse.json({ error: 'Detail not found or not accessible' }, { status: 404 });
+
+    return NextResponse.json({ message: "Payment method detail updated successfully", detail: updated });
   } catch (error) {
     console.error("Error updating payment method detail:", error);
-    return NextResponse.json(
-      {
-        error: "Failed to update payment method detail",
-        message: error instanceof Error ? error.message : "Unknown error",
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: "Failed to update payment method detail",
+      message: error instanceof Error ? error.message : "Unknown error",
+    }, { status: 500 });
   }
 }
 
