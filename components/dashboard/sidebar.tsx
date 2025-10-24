@@ -1,14 +1,15 @@
 "use client";
 
 import { signOut, useSession } from "next-auth/react";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText } from "lucide-react";
+import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText, Target } from "lucide-react";
 
 export function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const handleSignOut = async () => {
     await signOut({ callbackUrl: "/" });
@@ -54,6 +55,11 @@ export function Sidebar() {
           icon: Users,
         },
         {
+          path: "/admin/campaigns",
+          label: "Manage Campaigns",
+          icon: Target,
+        },
+        {
           path: "/admin/add-user",
           label: "Add User",
           icon: UserPlus,
@@ -90,7 +96,7 @@ export function Sidebar() {
             <Button
               key={item.path}
               variant={isActive(item.path) ? "default" : "ghost"}
-              className="w-full justify-start"
+              className={`w-full justify-start ${isActive(item.path) ? "text-white" : "text-gray-800"}`}
               onClick={() => router.push(item.path)}
             >
               <item.icon className="mr-2 h-4 w-4" />

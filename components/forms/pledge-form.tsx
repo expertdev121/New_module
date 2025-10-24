@@ -54,6 +54,7 @@ import {
   useUpdatePledgeMutation,
 } from "@/lib/query/pledge/usePledgeQuery";
 import { useTagsQuery } from "@/lib/query/tags/useTagsQuery";
+import { useCampaigns } from "@/lib/query/useCampaigns";
 import PaymentDialog from "./payment-form";
 import { getCategoryItems } from "@/lib/data/categories";
 import {
@@ -207,11 +208,11 @@ export default function PledgeDialog({
   onOpenChange: controlledOnOpenChange,
   categories = [],
 }: PledgeDialogProps) {
-  
+
   // ENHANCED: Normalize pledge data structure
   const pledgeData = React.useMemo(() => {
     if (!rawPledgeData) return null;
-    
+
     // Handle full API response structure (has pledge, tags, category at root)
     if (rawPledgeData.pledge && rawPledgeData.tags !== undefined) {
       return {
@@ -220,11 +221,11 @@ export default function PledgeDialog({
         tags: rawPledgeData.tags || [],
       };
     }
-    
+
     // Handle direct pledge data structure
     return rawPledgeData;
   }, [rawPledgeData]);
-  
+
   const [internalOpen, setInternalOpen] = useState(false);
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [createdPledge, setCreatedPledge] = useState<any>(null);
@@ -233,7 +234,7 @@ export default function PledgeDialog({
   const [categoryPopoverOpen, setCategoryPopoverOpen] = useState(false);
   const [itemSelectionPopoverOpen, setItemSelectionPopoverOpen] = useState(false);
   const [tagPopoverOpen, setTagPopoverOpen] = useState(false);
-  
+
   // State for category items
   const [categoryItems, setCategoryItems] = useState<string[]>([]);
   const [loadingCategoryItems, setLoadingCategoryItems] = useState(false);
@@ -258,11 +259,15 @@ export default function PledgeDialog({
   });
   const availableTags: Tag[] = tagsData?.tags || [];
 
+  // Campaigns query - fetch campaigns for admin's location
+  const { data: campaignsData, isLoading: isLoadingCampaigns } = useCampaigns();
+  const availableCampaigns = campaignsData || [];
+
   // ENHANCED getDefaultValues with better debugging
   const getDefaultValues = useCallback((): PledgeFormData => {
     if (isEditMode && pledgeData) {
       const extractedTagIds = pledgeData.tags?.map((tag: { id: number; name: string }) => tag.id) || [];
-      
+
       const values = {
         contactId: pledgeData.contactId || contactId,
         categoryId: pledgeData.category?.id,
@@ -277,7 +282,7 @@ export default function PledgeDialog({
         notes: pledgeData.notes || "",
         tagIds: extractedTagIds,
       };
-      
+
       return values;
     }
 
@@ -295,7 +300,7 @@ export default function PledgeDialog({
       notes: "",
       tagIds: [],
     };
-    
+
     return defaultValues;
   }, [isEditMode, pledgeData, contactId, defaultCategoryId]);
 
@@ -315,18 +320,18 @@ export default function PledgeDialog({
   // ENHANCED Selected tags objects with better fallback logic
   const selectedTags = (() => {
     // First try to get tags from available tags (normal flow)
-    const tagsFromAvailable = availableTags.filter((tag: Tag) => 
+    const tagsFromAvailable = availableTags.filter((tag: Tag) =>
       (watchedTagIds?.includes(tag.id) || selectedTagIds.includes(tag.id))
     );
-    
+
     // If no tags found in available tags but we have pledge data tags, use those
     if (tagsFromAvailable.length === 0 && isEditMode && pledgeData?.tags) {
-      const tagsFromPledge = pledgeData.tags.filter((pledgeTag: any) => 
+      const tagsFromPledge = pledgeData.tags.filter((pledgeTag: any) =>
         (watchedTagIds?.includes(pledgeTag.id) || selectedTagIds.includes(pledgeTag.id))
       );
       return tagsFromPledge;
     }
-    
+
     return tagsFromAvailable;
   })();
 
@@ -365,50 +370,50 @@ export default function PledgeDialog({
         try {
           const categoryId = pledgeData.category?.id || defaultCategoryId;
           const pledgeTagIds = pledgeData.tags?.map((tag: any) => tag.id) || [];
-          
+
           // Set component state
           setSelectedCategoryId(categoryId);
           setSelectedTagIds(pledgeTagIds);
-          
+
           // Get default values and reset form
           const values = getDefaultValues();
           form.reset(values);
-          
+
           // Wait a bit then force set the values
           await new Promise(resolve => setTimeout(resolve, 100));
-          
+
           // Force set category
           if (categoryId) {
             form.setValue("categoryId", categoryId, { shouldValidate: true, shouldDirty: true });
             await fetchCategoryItems(categoryId);
           }
-          
+
           // Force set tags
           if (pledgeTagIds.length > 0) {
             form.setValue("tagIds", pledgeTagIds, { shouldValidate: true, shouldDirty: true });
           }
-          
+
           // Trigger validation
           await form.trigger();
-          
+
           setIsFormInitialized(true);
-          
+
         } catch (error) {
           console.error("Initialization error:", error);
         }
       }, 200);
-      
+
     } else if (open && !isEditMode) {
       // Create mode
       const defaultValues = getDefaultValues();
       form.reset(defaultValues);
       setSelectedCategoryId(defaultCategoryId);
       setSelectedTagIds([]);
-      
+
       if (defaultCategoryId) {
         fetchCategoryItems(defaultCategoryId);
       }
-      
+
     } else if (!open) {
       // Dialog closed
       setIsFormInitialized(false);
@@ -522,7 +527,7 @@ export default function PledgeDialog({
     const newTagIds = currentTagIds.includes(tagId)
       ? currentTagIds.filter((id: number) => id !== tagId)
       : [...currentTagIds, tagId];
-    
+
     form.setValue("tagIds", newTagIds, { shouldValidate: true });
     setSelectedTagIds(newTagIds);
   };
@@ -530,7 +535,7 @@ export default function PledgeDialog({
   const handleTagRemove = (tagId: number) => {
     const currentTagIds = form.getValues("tagIds") || [];
     const newTagIds = currentTagIds.filter((id: number) => id !== tagId);
-    
+
     form.setValue("tagIds", newTagIds, { shouldValidate: true });
     setSelectedTagIds(newTagIds);
   };
@@ -652,16 +657,16 @@ export default function PledgeDialog({
   // Get contact name for dialog description
   const getContactDisplayName = () => {
     if (contactName) return contactName;
-    
+
     // If we have pledge data with contact information, extract the name
     if (isEditMode && rawPledgeData?.contact?.fullName) {
       return rawPledgeData.contact.fullName;
     }
-    
+
     if (isEditMode && rawPledgeData?.contact?.firstName && rawPledgeData?.contact?.lastName) {
       return `${rawPledgeData.contact.firstName} ${rawPledgeData.contact.lastName}`;
     }
-    
+
     return `contact ID ${contactId}`;
   };
 
@@ -771,24 +776,72 @@ export default function PledgeDialog({
                     <FormField
                       control={form.control}
                       name="campaignCode"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Campaign Code</FormLabel>
-                          <FormControl>
-                            <Input
-                              {...field}
-                              placeholder="Enter campaign code (optional)"
-                              className={cn(
-                                form.formState.errors.campaignCode && "border-red-500"
-                              )}
-                            />
-                          </FormControl>
-                          <FormDescription>
-                            Optional campaign code for donation tracking.
-                          </FormDescription>
-                          <FormMessage />
-                        </FormItem>
-                      )}
+                      render={({ field }) => {
+                        // Get current campaignCode from field value
+                        const currentCampaignCode = field.value;
+
+                        // Check if current campaign exists in available campaigns
+                        const campaignExists = currentCampaignCode &&
+                          availableCampaigns.some(campaign => campaign.name === currentCampaignCode);
+
+                        // In edit mode, if campaign doesn't exist in list, add it as an option
+                        const shouldShowCurrentCampaign = isEditMode &&
+                          currentCampaignCode &&
+                          !campaignExists &&
+                          currentCampaignCode !== "";
+
+                        return (
+                          <FormItem>
+                            <FormLabel>Campaign</FormLabel>
+                            <Select
+                              onValueChange={(value) => {
+                                field.onChange(value === "none" ? "" : value);
+                                form.trigger("campaignCode");
+                              }}
+                              value={field.value || "none"}
+                              disabled={isLoadingCampaigns}
+                            >
+                              <FormControl>
+                                <SelectTrigger
+                                  className={cn(
+                                    form.formState.errors.campaignCode && "border-red-500"
+                                  )}
+                                >
+                                  <SelectValue
+                                    placeholder={
+                                      isLoadingCampaigns ? "Loading campaigns..." : "Select campaign (optional)"
+                                    }
+                                  />
+                                </SelectTrigger>
+                              </FormControl>
+                              <SelectContent>
+                                <SelectItem value="none">None</SelectItem>
+
+                                {/* Show current campaign first if it doesn't exist in available list */}
+                                {shouldShowCurrentCampaign && (
+                                  <SelectItem
+                                    value={currentCampaignCode}
+                                    className="text-amber-600"
+                                  >
+                                    {currentCampaignCode} (not in current campaigns)
+                                  </SelectItem>
+                                )}
+
+                                {/* Show all available campaigns */}
+                                {availableCampaigns.map((campaign) => (
+                                  <SelectItem key={campaign.id} value={campaign.name}>
+                                    {campaign.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <FormDescription>
+                              Optional campaign for donation tracking.
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        );
+                      }}
                     />
                   )}
 

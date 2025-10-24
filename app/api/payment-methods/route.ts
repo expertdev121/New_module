@@ -1,26 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { eq } from "drizzle-orm";
-import { paymentMethods, paymentMethodDetails } from '@/lib/db/schema';
+import { eq, and } from "drizzle-orm";
+import { paymentMethods, paymentMethodDetails, user } from '@/lib/db/schema';
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
-// List all active payment methods with their details
+// List all active payment methods with their details (filtered by location)
 export async function GET() {
   try {
-    // Get all active payment methods
+    const session = await getServerSession(authOptions);
+    if (!session || session.user.role !== "admin") {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get admin's locationId
+    const userResult = await db
+      .select({ locationId: user.locationId })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (!userResult.length || !userResult[0].locationId) {
+      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    }
+
+    const adminLocationId = userResult[0].locationId;
+
+    // Get all active payment methods for admin's location only
     const methods = await db
       .select()
       .from(paymentMethods)
-      .where(eq(paymentMethods.isActive, true))
+      .where(
+        and(
+          eq(paymentMethods.isActive, true),
+          eq(paymentMethods.locationId, adminLocationId)
+        )
+      )
       .orderBy(paymentMethods.name);
 
-    // Get all details for active payment methods
-    const details = await db
-      .select()
-      .from(paymentMethodDetails);
+    // Get all details for these payment methods
+    const methodIds = methods.map(m => m.id);
+    
+    let details: typeof paymentMethodDetails.$inferSelect[] = [];
+    if (methodIds.length > 0) {
+      // Get details for all payment methods in one query
+      const allDetails = await db
+        .select()
+        .from(paymentMethodDetails);
+      
+      // Filter to only include details for the filtered payment methods
+      details = allDetails.filter(detail => methodIds.includes(detail.paymentMethodId));
+    }
 
-    // Combine methods with their details
+    // Combine methods with their details (matching your schema structure)
     const methodsWithDetails = methods.map(method => ({
-      ...method,
+      id: method.id,
+      name: method.name,
+      description: method.description,
+      isActive: method.isActive,
+      createdAt: method.createdAt,
+      updatedAt: method.updatedAt,
       details: details.filter(detail => detail.paymentMethodId === method.id)
     }));
 

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { categoryItem, category, NewCategoryItem } from "@/lib/db/schema";
 import { eq, or, ilike, and } from "drizzle-orm";
@@ -8,6 +10,32 @@ import { categoryItemSchema } from "@/lib/form-schemas/category-item";
 
 export async function GET(request: NextRequest) {
   try {
+    // Get session without passing request
+    const session = await getServerSession(authOptions);
+
+    // Check if session exists and user is authenticated
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    // Check if user has admin role
+    const userRole = session.user.role;
+    if (userRole !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: userRole
+        },
+        { status: 403 }
+      );
+    }
+
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+
     const { searchParams } = new URL(request.url);
     const search = searchParams.get("search") || "";
 
@@ -25,12 +53,21 @@ export async function GET(request: NextRequest) {
       .from(categoryItem)
       .leftJoin(category, eq(categoryItem.categoryId, category.id));
 
-    const whereClause = search
-      ? or(
+    const conditions = [];
+
+    if (search) {
+      conditions.push(
+        or(
           ilike(categoryItem.name, `%${search}%`),
           ilike(category.name, `%${search}%`)
         )
-      : undefined;
+      );
+    }
+
+    // Filter by admin's location ID
+    conditions.push(eq(categoryItem.locationId, adminLocationId));
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
     const items = await (whereClause
       ? query.where(whereClause).orderBy(categoryItem.name)
@@ -51,14 +88,39 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+
+    if (!session || !session.user) {
+      return NextResponse.json(
+        { error: "Unauthorized - No session found" },
+        { status: 401 }
+      );
+    }
+
+    if (session.user.role !== "admin") {
+      return NextResponse.json(
+        {
+          error: "Forbidden: Admin access required",
+          userRole: session.user.role,
+        },
+        { status: 403 }
+      );
+    }
+
+    const adminLocationId = session.user.locationId;
     const body = await request.json();
     const validatedData = categoryItemSchema.parse(body);
 
+    // ✅ Duplicate check scoped to location
     const existingItem = await db
       .select()
       .from(categoryItem)
       .where(
-        and(eq(categoryItem.name, validatedData.name), eq(categoryItem.categoryId, validatedData.categoryId))
+        and(
+          eq(categoryItem.name, validatedData.name),
+          eq(categoryItem.categoryId, validatedData.categoryId),
+          eq(categoryItem.locationId, adminLocationId) // <-- location scoped
+        )
       )
       .limit(1);
 
@@ -66,7 +128,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: "Duplicate category item",
-          message: `Category item with name '${validatedData.name}' already exists in this category`,
+          message: `Category item '${validatedData.name}' already exists in this category for your location`,
         },
         { status: 409 }
       );
@@ -74,6 +136,7 @@ export async function POST(request: NextRequest) {
 
     const newItem: NewCategoryItem = {
       ...validatedData,
+      locationId: adminLocationId,
     };
 
     const result = await db.insert(categoryItem).values(newItem).returning();

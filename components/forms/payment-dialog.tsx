@@ -2566,7 +2566,7 @@ export default function PaymentFormDialog({
             </Card>
 
             {/* Solicitor Section */}
-            <Card>
+            {/* <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-lg">Solicitor & Commission</CardTitle>
                 <Switch
@@ -2685,7 +2685,7 @@ export default function PaymentFormDialog({
                   </div>
                 </CardContent>
               )}
-            </Card>
+            </Card> */}
 
             {/* Notes */}
             <Card>

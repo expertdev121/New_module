@@ -282,9 +282,40 @@ export default function PledgesTable() {
     setPledgeToDelete(null);
   };
 
-  const handleEditClick = (pledgeData: PledgeFormData) => {
-    setEditingPledge(pledgeData);
-    setEditDialogOpen(true);
+  // FIXED: Fetch full pledge data from API instead of using table data
+  const handleEditClick = async (pledgeId: number) => {
+    try {
+      // Fetch full pledge details from API to get all data including campaignCode
+      const response = await fetch(`/api/pledges/${pledgeId}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch pledge details');
+      }
+      
+      const fullPledgeData = await response.json();
+      
+      // Map the full API response to form data structure
+      const formData: PledgeFormData = {
+        id: fullPledgeData.pledge.id,
+        contactId: fullPledgeData.contact?.id || (contactId as number),
+        categoryId: fullPledgeData.category?.id,
+        description: fullPledgeData.pledge.description || "",
+        pledgeDate: fullPledgeData.pledge.pledgeDate,
+        currency: fullPledgeData.pledge.currency,
+        originalAmount: fullPledgeData.pledge.originalAmount,
+        originalAmountUsd: fullPledgeData.pledge.originalAmountUsd,
+        exchangeRate: fullPledgeData.pledge.exchangeRate,
+        campaignCode: fullPledgeData.pledge.campaignCode || undefined,
+        notes: fullPledgeData.pledge.notes || undefined,
+      };
+      
+      console.log('Full pledge data for edit:', formData);
+      
+      setEditingPledge(formData);
+      setEditDialogOpen(true);
+    } catch (error) {
+      console.error('Error fetching pledge details:', error);
+      alert('Failed to load pledge details. Please try again.');
+    }
   };
 
   const handleEditDialogChange = (open: boolean) => {
@@ -763,7 +794,7 @@ export default function PledgesTable() {
                                     <Button
                                       variant="outline"
                                       size="sm"
-                                      onClick={() => handleEditClick(pledgeData)}
+                                      onClick={() => handleEditClick(pledge.id)}
                                     >
                                       <Edit className="mr-2 h-4 w-4" />
                                       Edit Pledge
