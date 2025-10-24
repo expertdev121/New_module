@@ -299,7 +299,7 @@ export type NewCampaign = typeof campaign.$inferInsert;
 export const contact = pgTable("contact", {
   id: serial("id").primaryKey(),
   ghlContactId: text("ghl_contact_id"),
-    locationId: text("location_id"),
+  locationId: text("location_id"),
   firstName: text("first_name").notNull(),
   displayName: text("display_name"),
   lastName: text("last_name").notNull(),
@@ -399,6 +399,7 @@ export const contactRoles = pgTable(
     startDate: date("start_date"),
     endDate: date("end_date"),
     notes: text("notes"),
+    locationId: text("location_id"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -448,6 +449,7 @@ export const category = pgTable("category", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   description: text("description"),
+  locationId: text("location_id"),
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
@@ -464,6 +466,7 @@ export const categoryItem = pgTable("category_item", {
     .notNull()
     .references(() => category.id, { onDelete: "cascade" }),
   isActive: boolean("is_active").default(true).notNull(),
+  locationId: text("location_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -474,6 +477,7 @@ export type NewCategoryItem = typeof categoryItem.$inferInsert;
 export const categoryGroup = pgTable("category_group", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
+  locationId: text("location_id"),
   categoryId: integer("category_id")
     .notNull()
     .references(() => category.id, { onDelete: "cascade" }),
@@ -856,7 +860,7 @@ export const payment = pgTable(
     receivedDate: date("received_date"),
     checkDate: date("check_date"),
     account: text("account"),
-    
+
     // UPDATED: Changed from enum to text field to preserve data
     paymentMethod: text("payment_method"),
     methodDetail: text("method_detail"),

@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { user } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export async function GET() {
   try {
@@ -42,6 +42,10 @@ export async function GET() {
 
     console.log("User authenticated as admin - fetching users");
 
+    // Get the admin's location ID
+    const adminLocationId = session.user.locationId;
+    console.log("Admin location ID:", adminLocationId);
+
     const users = await db
       .select({
         id: user.id,
@@ -53,7 +57,7 @@ export async function GET() {
         updatedAt: user.updatedAt,
       })
       .from(user)
-      .where(eq(user.role, "user")) // Only show users with role "user"
+      .where(and(eq(user.role, "user"), eq(user.locationId, adminLocationId))) // Filter by role "user" and admin's location ID
       .orderBy(user.createdAt);
 
     console.log(`Successfully fetched ${users.length} users`);
