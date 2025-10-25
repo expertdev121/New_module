@@ -19,6 +19,9 @@ export function Sidebar() {
     if (path === "/contacts") {
       return pathname.startsWith("/contacts");
     }
+    if (path === "/pledges") {
+      return pathname.startsWith("/pledges");
+    }
     return pathname === path;
   };
 
@@ -53,6 +56,11 @@ export function Sidebar() {
           path: "/contacts",
           label: "Financial module",
           icon: Users,
+        },
+        {
+          path: "/pledges",
+          label: "Committed Donations",
+          icon: FileText,
         },
         {
           path: "/admin/campaigns",

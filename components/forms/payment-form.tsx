@@ -411,7 +411,7 @@ export default function PaymentDialog({
         <DialogHeader>
           <DialogTitle>Add Payment</DialogTitle>
           <DialogDescription>
-            Record a payment for pledge: {pledgeDescription || `#${pledgeId ?? "-"}`}
+            Record a payment for Committed Donation: {pledgeDescription || `#${pledgeId ?? "-"}`}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>

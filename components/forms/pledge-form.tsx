@@ -678,11 +678,11 @@ export default function PledgeDialog({
         )}
         <DialogContent className="sm:max-w-[650px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isEditMode ? "Edit Pledge" : "Create Pledge"}</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit Committed Donation" : "Create Committed Donation"}</DialogTitle>
             <DialogDescription>
               {isEditMode
-                ? `Edit pledge for ${getContactDisplayName()}.`
-                : `Add a new pledge for ${getContactDisplayName()}.`}
+                ? `Edit committed donation for ${getContactDisplayName()}.`
+                : `Add a new committed donation for ${getContactDisplayName()}.`}
             </DialogDescription>
           </DialogHeader>
 
