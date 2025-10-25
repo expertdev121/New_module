@@ -230,7 +230,7 @@ export default function ManageAdminsPage() {
           <DialogHeader>
             <DialogTitle>{editingAdmin ? "Edit organization" : "Add organization"}</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4 mx-auto max-w-md">
             <div>
               <Label htmlFor="email">Email</Label>
               <Input
@@ -261,7 +261,7 @@ export default function ManageAdminsPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="admin">organization</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
                     <SelectItem value="super_admin">Super Admin</SelectItem>
                   </SelectContent>
                 </Select>
