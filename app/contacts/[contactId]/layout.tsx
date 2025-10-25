@@ -49,6 +49,15 @@ export default function SettingsLayout({
               </TabLink>
               {isAdmin && (
                 <>
+                  <TabLink href={`/contacts/${contactId}/solicitor`}>
+                    Solicitor
+                  </TabLink>
+                  <TabLink href={`/contacts/${contactId}/contact-roles`}>
+                    Contact Roles
+                  </TabLink>
+                  <TabLink href={`/contacts/${contactId}/student-roles`}>
+                    Enrollment
+                  </TabLink>
                   <TabLink href={`/contacts/${contactId}/relationships`}>
                     Relationships
                   </TabLink>
