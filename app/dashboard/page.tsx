@@ -126,6 +126,11 @@ export default function DashboardPage() {
     selectedLocationId || undefined
   );
 
+  // Pagination states
+  const [contributorsPage, setContributorsPage] = useState(1);
+  const [campaignsPage, setCampaignsPage] = useState(1);
+  const itemsPerPage = 10;
+
   const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading || contactAnalyticsLoading || campaignsLoading;
 
   if (status === "loading") return <div className="flex items-center justify-center h-screen">Loading...</div>;
@@ -360,10 +365,9 @@ export default function DashboardPage() {
   return (
     <div className="bg-gray-50">
       {isAdmin || isSuperAdmin ? (
-        <div className="flex h-screen">
-          <main className="flex-1 p-8 overflow-y-auto">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-8">
+        <>
+          {/* Header */}
+          <div className="flex justify-between items-center mb-8">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
                 <p className="text-gray-500 mt-1">Welcome back, {session.user.email}</p>
@@ -1146,11 +1150,11 @@ export default function DashboardPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {campaignsData?.campaigns?.slice(0, 5).map((campaign, index) => (
+                      {campaignsData?.campaigns?.slice((campaignsPage - 1) * itemsPerPage, campaignsPage * itemsPerPage).map((campaign, index) => (
                         <div key={index} className="flex items-center justify-between border-b pb-3 last:border-0">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-semibold">
-                              {index + 1}
+                              {(campaignsPage - 1) * itemsPerPage + index + 1}
                             </div>
                             <div>
                               <p className="font-medium">{campaign.name}</p>
@@ -1163,6 +1167,35 @@ export default function DashboardPage() {
                         </div>
                       ))}
                     </div>
+                    {/* Pagination for Top Campaigns */}
+                    {campaignsData?.campaigns && campaignsData.campaigns.length > itemsPerPage && (
+                      <div className="flex items-center justify-between mt-6">
+                        <div className="text-sm text-gray-600">
+                          Showing {(campaignsPage - 1) * itemsPerPage + 1} to {Math.min(campaignsPage * itemsPerPage, campaignsData.campaigns.length)} of {campaignsData.campaigns.length} campaigns
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCampaignsPage(campaignsPage - 1)}
+                            disabled={campaignsPage === 1}
+                          >
+                            Previous
+                          </Button>
+                          <span className="text-sm text-gray-600">
+                            Page {campaignsPage} of {Math.ceil((campaignsData.campaigns.length || 0) / itemsPerPage)}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCampaignsPage(campaignsPage + 1)}
+                            disabled={campaignsPage >= Math.ceil((campaignsData.campaigns.length || 0) / itemsPerPage)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1224,8 +1257,7 @@ export default function DashboardPage() {
                 </Card>
               </TabsContent>
             </Tabs>
-          </main>
-        </div>
+        </>
       ) : null}
     </div>
   );
