@@ -1,11 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { eq, desc, isNull, isNotNull, and } from "drizzle-orm";
-import { payment, contact, pledge, category, solicitor } from "@/lib/db/schema";
+import { payment, contact, pledge, category, solicitor, user } from "@/lib/db/schema";
 import { alias } from "drizzle-orm/pg-core";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const { searchParams } = new URL(request.url);
     const assigned = searchParams.get("assigned");
     const solicitorId = searchParams.get("solicitorId");
@@ -19,6 +43,11 @@ export async function GET(request: NextRequest) {
 
     if (solicitorId) {
       whereConditions.push(eq(payment.solicitorId, parseInt(solicitorId)));
+    }
+
+    // Add locationId filtering for admins
+    if (isAdmin && currentUser.locationId) {
+      whereConditions.push(eq(contact.locationId, currentUser.locationId));
     }
     const solicitorContact = alias(contact, "s_contact");
     const payments = await db
