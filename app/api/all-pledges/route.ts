@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
-import { pledge, category, contact } from "@/lib/db/schema";
-import { sql, eq, and, or, gte, lte, ilike, SQL } from "drizzle-orm";
+import { pledge, category, contact, user } from "@/lib/db/schema";
+import { sql, eq, and, or, gte, lte, ilike, SQL, isNotNull } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,6 +17,7 @@ export async function GET(request: NextRequest) {
   const endDate = searchParams.get("endDate");
   const status = searchParams.get("status");
   const search = searchParams.get("search");
+  const locationId = searchParams.get("locationId");
 
   if (isNaN(page) || page < 1) {
     return NextResponse.json({ error: "Invalid page number" }, { status: 400 });
@@ -31,6 +34,35 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId for admin filtering
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
+    const conditions: SQL<unknown>[] = [];
+
+    // For admin users, always filter by their locationId
+    if (isAdmin && currentUser.locationId) {
+      conditions.push(eq(contact.locationId, currentUser.locationId));
+    }
+
     let query = db
       .select({
         id: pledge.id,
@@ -50,10 +82,10 @@ export async function GET(request: NextRequest) {
         contactName: sql<string>`CONCAT(${contact.firstName}, ' ', ${contact.lastName})`,
         contactEmail: contact.email,
         progressPercentage: sql<number>`
-          CASE 
-            WHEN ${pledge.originalAmount}::numeric > 0 
+          CASE
+            WHEN ${pledge.originalAmount}::numeric > 0
             THEN ROUND((${pledge.totalPaid}::numeric / ${pledge.originalAmount}::numeric) * 100, 1)
-            ELSE 0 
+            ELSE 0
           END
         `,
       })
@@ -62,10 +94,11 @@ export async function GET(request: NextRequest) {
       .leftJoin(contact, eq(pledge.contactId, contact.id))
       .$dynamic();
 
-    const conditions: SQL<unknown>[] = [];
-
     if (categoryId) {
       conditions.push(eq(pledge.categoryId, categoryId));
+    }
+    if (locationId) {
+      conditions.push(eq(contact.locationId, locationId));
     }
     if (startDate) {
       conditions.push(gte(pledge.pledgeDate, startDate));

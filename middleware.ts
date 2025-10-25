@@ -31,6 +31,11 @@ export default withAuth(
             return true;
           }
 
+          // Allow users to access the main contacts page
+          if (pathname === "/contacts") {
+            return true;
+          }
+
           // Allow users to access their own contact page and sub-routes
           const contactPathMatch = pathname.match(/^\/contacts\/(\d+)/);
           if (contactPathMatch && token.contactId === contactPathMatch[1]) {
