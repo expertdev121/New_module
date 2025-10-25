@@ -57,11 +57,11 @@ export function Sidebar() {
           label: "Financial module",
           icon: Users,
         },
-        {
-          path: "/pledges",
-          label: "Committed Donations",
-          icon: FileText,
-        },
+        // {
+        //   path: "/pledges",
+        //   label: "Committed Donations",
+        //   icon: FileText,
+        // },
         {
           path: "/admin/campaigns",
           label: "Manage Campaigns",

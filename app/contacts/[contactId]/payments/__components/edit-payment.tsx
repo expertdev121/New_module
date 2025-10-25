@@ -243,9 +243,9 @@ const usePledgeWithContact = (pledgeId?: number | null) =>
   useQuery<{ pledge: Pledge; contact: Contact }>({
     queryKey: ["pledge-with-contact", pledgeId],
     queryFn: async () => {
-      if (!pledgeId) throw new Error("Pledge ID is required");
+      if (!pledgeId) throw new Error("Committed Donations ID is required");
       const response = await fetch(`/api/pledges/${pledgeId}`);
-      if (!response.ok) throw new Error("Failed to fetch pledge");
+      if (!response.ok) throw new Error("Failed to fetch Committed Donations");
       return response.json();
     },
     enabled: !!pledgeId,
@@ -343,9 +343,9 @@ const editPaymentSchema = z
     amount: z.number().positive("Amount must be positive").optional(),
     currency: z.enum([...supportedCurrencies] as [string, ...string[]]).optional(),
     amountUsd: z.number().positive("Amount in USD must be positive").optional(),
-    amountInPledgeCurrency: z.number().positive("Amount in pledge currency must be positive").optional(),
+    amountInPledgeCurrency: z.number().positive("Amount in Committed Donations currency must be positive").optional(),
     exchangeRate: z.number().positive("Exchange rate must be positive").optional(),
-    exchangeRateToPledgeCurrency: z.number().positive("Exchange rate to pledge currency must be positive").optional(),
+    exchangeRateToPledgeCurrency: z.number().positive("Exchange rate to Committed Donations currency must be positive").optional(),
     paymentDate: z.string().min(1, "Payment date is required").optional(),
     receivedDate: z.string().optional().nullable(),
     methodDetail: z.string().optional().nullable(),
@@ -363,7 +363,7 @@ const editPaymentSchema = z
     bonusAmount: z.number().min(0).optional().nullable(),
     bonusRuleId: z.number().positive("Bonus rule ID must be positive").optional().nullable(),
     notes: z.string().optional().nullable(),
-    pledgeId: z.number().positive("Pledge ID must be positive").optional().nullable(),
+    pledgeId: z.number().positive("Committed Donation ID must be positive").optional().nullable(),
     paymentPlanId: z.number().positive("Payment plan ID must be positive").optional().nullable(),
     isSplitPayment: z.boolean().optional(),
 
@@ -986,7 +986,7 @@ export default function EditPaymentDialog({
     if (isExistingThirdPartyPayment && selectedThirdPartyContact && payment.pledgeId) {
       const currentPledgeId = form.watch('pledgeId');
       if (!currentPledgeId || currentPledgeId !== payment.pledgeId) {
-        console.log('Setting pledge for third-party payment:', payment.pledgeId);
+        console.log('Setting Committed Donation for third-party payment:', payment.pledgeId);
         console.log('Selected third-party contact:', selectedThirdPartyContact.fullName || `${selectedThirdPartyContact.firstName} ${selectedThirdPartyContact.lastName}`);
         form.setValue('pledgeId', payment.pledgeId);
       }
@@ -1182,7 +1182,7 @@ export default function EditPaymentDialog({
         if (!pledgeId) return null;
 
         const response = await fetch(`/api/pledges/${pledgeId}`);
-        if (!response.ok) throw new Error('Failed to fetch pledge contact');
+        if (!response.ok) throw new Error('Failed to fetch Committed Donations contact');
 
         const data = await response.json();
         return {
@@ -1801,7 +1801,7 @@ export default function EditPaymentDialog({
       } else {
         // For non-split payments, ensure a pledge is selected
         if (!data.pledgeId) {
-          toast.error("Please select a pledge for the payment");
+          toast.error("Please select a Committed Donation for the payment");
           return;
         }
 
@@ -1997,7 +1997,7 @@ export default function EditPaymentDialog({
         <div className="space-y-3">
           {watchedAllocations && watchedAllocations.length > 0 && (
             <div>
-              <p className="text-sm font-medium text-amber-800 mb-2">Option 1: Select a pledge to apply the full amount</p>
+              <p className="text-sm font-medium text-amber-800 mb-2">Option 1: Select a Committed Donation to apply the full amount</p>
               <div className="space-y-2">
                 {watchedAllocations.map((allocation, index) => {
                   const pledgeOption = pledgeOptions.find(p => p.value === allocation.pledgeId);
@@ -2032,9 +2032,9 @@ export default function EditPaymentDialog({
           )}
 
           <div>
-            <p className="text-sm font-medium text-amber-800 mb-2">Option 2: Undo split and choose pledge later</p>
+            <p className="text-sm font-medium text-amber-800 mb-2">Option 2: Undo split and choose Committed Donation later</p>
             <p className="text-xs text-amber-700 mb-3">
-              This will remove all allocations and allow you to select a new pledge for the entire payment amount.
+              This will remove all allocations and allow you to select a new Committed Donation for the entire payment amount.
             </p>
             <Button
               type="button"
@@ -2093,7 +2093,7 @@ export default function EditPaymentDialog({
                     </span>
                   )}
                   <span className="block mt-1 text-sm text-muted-foreground">
-                    This payment will appear in your account but apply to their pledge balance
+                    This payment will appear in your account but apply to their Committed Donation balance
                   </span>
                 </div>
               ) : showMultiContactSection ? (
@@ -2116,7 +2116,7 @@ export default function EditPaymentDialog({
                         {watchedAllocations.slice(0, 3).map((alloc, index) => (
                           <div key={alloc.pledgeId || index} className="flex justify-between text-xs text-purple-600">
                             <span>
-                              Pledge #{alloc.pledgeId}
+                              Committed Donation #{alloc.pledgeId}
                             </span>
                             <span>{formatCurrency(alloc.allocatedAmount || 0, alloc.currency || payment.currency)}</span>
                           </div>
@@ -2604,12 +2604,12 @@ export default function EditPaymentDialog({
                   <div className="space-y-4 p-4 bg-green-50 rounded-lg border border-green-200">
                     <div className="text-sm text-green-700">
                       <p className="font-medium mb-1">Multi-Contact Payment Allocation</p>
-                      <p>Allocate this payment across multiple contacts and their pledges.</p>
+                      <p>Allocate this payment across multiple contacts and their Committed Donation.</p>
                       {isLoadingExistingContacts && (
                         <p className="text-xs text-blue-600 mt-1">Loading existing contact data...</p>
                       )}
                       {isLoadingMultiContactPledges && (
-                        <p className="text-xs text-blue-600 mt-1">Loading pledge data...</p>
+                        <p className="text-xs text-blue-600 mt-1">Loading Committed Donation data...</p>
                       )}
                     </div>
 
@@ -2722,7 +2722,7 @@ export default function EditPaymentDialog({
                             {allocation.pledgeId > 0 && (
                               <div>
                                 <label className="text-sm font-medium mb-2 block">
-                                  Amount in Pledge Currency
+                                  Amount in Committed Donation Currency
                                 </label>
                                 <Input
                                   type="text"
@@ -2906,7 +2906,7 @@ export default function EditPaymentDialog({
                             name={`allocations.${index}.pledgeId`}
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Pledge</FormLabel>
+                                <FormLabel>Committed Donation</FormLabel>
                                 <Select
                                   onValueChange={(value) => field.onChange(parseInt(value))}
                                   value={field.value?.toString() || ""}
@@ -2914,7 +2914,7 @@ export default function EditPaymentDialog({
                                 >
                                   <FormControl>
                                     <SelectTrigger>
-                                      <SelectValue placeholder="Select pledge..." />
+                                      <SelectValue placeholder="Select Committed Donation..." />
                                     </SelectTrigger>
                                   </FormControl>
                                   <SelectContent>
@@ -3063,10 +3063,10 @@ export default function EditPaymentDialog({
                               return (
                                 <div className="text-sm space-y-1">
                                   <div className="font-medium text-blue-800 mb-2">
-                                    Pledge Balance: {pledgeOption?.label || `Pledge #${watchedAllocations[index].pledgeId}`}
+                                    Committed Donation Balance: {pledgeOption?.label || `Pledge #${watchedAllocations[index].pledgeId}`}
                                   </div>
                                   <div className="flex justify-between">
-                                    <span>Amount in Pledge Currency ({pledgeCurrency}):</span>
+                                    <span>Amount in Committed Donation Currency ({pledgeCurrency}):</span>
                                     <span className="font-medium">
                                       {pledgeCurrency} {amountInPledgeCurrency.toLocaleString()}
                                     </span>
@@ -3129,7 +3129,7 @@ export default function EditPaymentDialog({
             {!watchedIsSplitPayment && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Pledge Assignment</CardTitle>
+                  <CardTitle>Committed Donation Assignment</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <FormField
@@ -3137,7 +3137,7 @@ export default function EditPaymentDialog({
                     name="pledgeId"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Pledge</FormLabel>
+                        <FormLabel>Committed Donation</FormLabel>
                         <Select
                           onValueChange={(value) => field.onChange(value === NO_SELECTION ? null : parseInt(value))}
                           value={field.value?.toString() || NO_SELECTION}
@@ -3171,7 +3171,7 @@ export default function EditPaymentDialog({
                         onCheckedChange={handleSplitPaymentToggle}
                       />
                       <label htmlFor="split-payment" className="text-sm font-medium">
-                        Split this payment across multiple pledges
+                        Split this payment across multiple Committed Donation
                       </label>
                     </div>
                   )}
@@ -3189,11 +3189,11 @@ export default function EditPaymentDialog({
                             </span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Pledge Currency:</span>
+                            <span>Committed Donation Currency:</span>
                             <span className="font-medium">{selectedPledgeCurrency}</span>
                           </div>
                           <div className="flex justify-between">
-                            <span>Amount in Pledge Currency:</span>
+                            <span>Amount in Committed Donation Currency:</span>
                             <span className="font-medium">
                               {formatCurrency(form.watch("amountInPledgeCurrency") || 0, selectedPledgeCurrency)}
                             </span>
@@ -3525,7 +3525,7 @@ export default function EditPaymentDialog({
             </Card>
 
             {/* Solicitor Section */}
-            {/* <Card>
+            <Card>
               <CardHeader>
                 <CardTitle className="flex items-center justify-between">
                   Solicitor Information
@@ -3614,7 +3614,7 @@ export default function EditPaymentDialog({
                   </div>
                 </CardContent>
               )}
-            </Card> */}
+            </Card>
 
             {/* Notes */}
             <FormField
