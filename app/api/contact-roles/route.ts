@@ -3,8 +3,10 @@ import { db } from "@/lib/db";
 import { sql, desc, asc, or, ilike, and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
-import { contactRoles, NewContactRole } from "@/lib/db/schema";
+import { contactRoles, NewContactRole, user } from "@/lib/db/schema";
 import { contactRoleSchema } from "@/lib/form-schemas/contact-role";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 const querySchema = z.object({
   page: z.coerce.number().min(1).default(1),
@@ -19,6 +21,28 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const { searchParams } = new URL(request.url);
     const parsedParams = querySchema.safeParse({
       page: searchParams.get("page") ?? undefined,
@@ -70,6 +94,11 @@ export async function GET(request: NextRequest) {
     if (isActive !== undefined)
       conditions.push(eq(contactRoles.isActive, isActive));
     if (contactId) conditions.push(eq(contactRoles.contactId, contactId));
+
+    // Add locationId filtering for admins
+    if (isAdmin && currentUser.locationId) {
+      conditions.push(eq(contactRoles.locationId, currentUser.locationId));
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
     let orderByClause;

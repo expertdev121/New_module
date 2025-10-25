@@ -147,7 +147,6 @@ export async function GET(request: NextRequest) {
     // Add locationId filtering for admins
     if (isAdmin && currentUser.locationId) {
       conditions.push(eq(studentRoles.locationId, currentUser.locationId));
-      conditions.push(isNotNull(studentRoles.locationId));
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
