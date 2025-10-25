@@ -98,20 +98,11 @@ export default function CategoriesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          onClick={() => router.push("/dashboard")}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold">Manage Categories</h1>
-          <p className="text-muted-foreground">
-            View and manage categories, items, and groups
-          </p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold">Manage Categories</h1>
+        <p className="text-muted-foreground">
+          View and manage categories, items, and groups
+        </p>
       </div>
 
       <Card>

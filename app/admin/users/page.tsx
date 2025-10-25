@@ -64,20 +64,11 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="outline"
-          onClick={() => router.push("/dashboard")}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
-        <div>
-          <h1 className="text-3xl font-bold">Manage Users</h1>
-          <p className="text-muted-foreground">
-            View and manage all user accounts
-          </p>
-        </div>
+      <div>
+        <h1 className="text-3xl font-bold">Manage Users</h1>
+        <p className="text-muted-foreground">
+          View and manage all user accounts
+        </p>
       </div>
 
       <Card>
