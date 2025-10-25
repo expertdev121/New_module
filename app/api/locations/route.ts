@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
       locationConditions.push(eq(contact.locationId, currentUser.locationId));
     }
 
-    let query = db
+    const query = db
       .select({
         locationId: sql<string>`DISTINCT ${contact.locationId}`.as("locationId"),
       })
