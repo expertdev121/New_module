@@ -4,7 +4,7 @@ import { signOut, useSession } from "next-auth/react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText, Target } from "lucide-react";
+import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText, Target, Tag } from "lucide-react";
 
 export function Sidebar() {
   const router = useRouter();
@@ -86,6 +86,11 @@ export function Sidebar() {
           path: "/admin/payment-methods",
           label: "Payment Methods",
           icon: CreditCard,
+        },
+        {
+          path: "/admin/tags",
+          label: "Manage Tags",
+          icon: Tag,
         },
       ];
     }

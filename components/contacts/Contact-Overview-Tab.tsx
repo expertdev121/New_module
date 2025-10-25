@@ -53,7 +53,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
       ? Math.round(
         parseFloat(((financialSummary.totalPaidUsd /
           financialSummary.totalPledgedUsd) *
-        100).toFixed(2))
+          100).toFixed(2))
       )
       : 0;
 
@@ -88,14 +88,17 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            onClick={() => signOut({ callbackUrl: "/auth/login" })}
-            className="flex items-center gap-2"
-          >
-            <LogOut className="h-4 w-4" />
-            Sign Out
-          </Button>
+          {session?.user?.role === "user" && (
+            <Button
+              variant="outline"
+              onClick={() => signOut({ callbackUrl: "/auth/login" })}
+              className="flex items-center gap-2"
+            >
+              <LogOut className="h-4 w-4" />
+              Sign Out
+            </Button>
+          )}
+
           {session?.user?.role === "admin" && (
             <Button
               variant="destructive"

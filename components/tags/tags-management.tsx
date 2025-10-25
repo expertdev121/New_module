@@ -84,7 +84,7 @@ function useTagsQuery({
 export { useTagsQuery };
 
 interface TagsManagementProps {
-  contactId: number;
+  contactId?: number;
   // Add additional props if needed for contact-specific filtering
   showContactSpecific?: boolean;
 }
