@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, desc, asc, or, ilike, and, eq } from "drizzle-orm";
+import { sql, desc, asc, or, ilike, and, eq, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { ErrorHandler } from "@/lib/error-handler";
-import { relationships, contact } from "@/lib/db/schema";
+import { relationships, contact, user } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 // --- DB enum values ---
 const dbRelationshipEnumValues = [
@@ -240,6 +242,28 @@ const querySchema = z.object({
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const { searchParams } = new URL(request.url);
     const parsedParams = querySchema.safeParse({
       page: searchParams.get("page") ?? undefined,
@@ -291,6 +315,12 @@ export async function GET(request: NextRequest) {
       if (typeof isActive === "boolean") conditions.push(eq(relationships.isActive, isActive));
       if (relatedContactId)
         conditions.push(or(eq(relationships.relatedContactId, relatedContactId), eq(relationships.contactId, relatedContactId)));
+
+      // Add locationId filtering for admins
+      if (isAdmin && currentUser.locationId) {
+        conditions.push(eq(relationships.locationId, currentUser.locationId));
+        conditions.push(isNotNull(relationships.locationId));
+      }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
@@ -395,6 +425,12 @@ export async function GET(request: NextRequest) {
     if (relationshipType) conditions.push(eq(relationships.relationshipType, relationshipType));
     if (typeof isActive === "boolean") conditions.push(eq(relationships.isActive, isActive));
     if (relatedContactId) conditions.push(eq(relationships.relatedContactId, relatedContactId));
+
+    // Add locationId filtering for admins
+    if (isAdmin && currentUser.locationId) {
+      conditions.push(eq(relationships.locationId, currentUser.locationId));
+      conditions.push(isNotNull(relationships.locationId));
+    }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 

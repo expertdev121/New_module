@@ -102,14 +102,14 @@ const pledgeSchema = z.object({
   contactId: z.number().positive("Contact ID is required"),
   categoryId: z.number().positive("Please select a category").optional(),
   description: z.string().min(1, "Description is required"),
-  pledgeDate: z.string().min(1, "Pledge date is required"),
+  pledgeDate: z.string().min(1, "Committed Donation date is required"),
   currency: z.enum(supportedCurrencies, {
     errorMap: () => ({ message: "Please select a valid currency" }),
   }),
   originalAmount: z
     .number()
-    .positive("Pledge amount must be greater than 0")
-    .min(0.01, "Pledge amount must be at least 0.01"),
+    .positive("Committed Donation amount must be greater than 0")
+    .min(0.01, "Committed Donation amount must be at least 0.01"),
   originalAmountUsd: z
     .number()
     .positive("USD amount must be greater than 0")
@@ -553,7 +553,7 @@ export default function PledgeDialog({
       }
 
       if (isEditMode && !pledgeData?.id) {
-        toast.error("Pledge ID is missing - cannot update");
+        toast.error("Committed Donation ID is missing - cannot update");
         return;
       }
 
@@ -579,7 +579,7 @@ export default function PledgeDialog({
         };
 
         const result = await updatePledgeMutation.mutateAsync(updateData);
-        toast.success("Pledge updated successfully!");
+        toast.success("Committed Donation updated successfully!");
         setOpen(false);
         if (onPledgeUpdated) onPledgeUpdated(pledgeData!.id!);
       } else {
@@ -588,14 +588,14 @@ export default function PledgeDialog({
             ...submissionData,
             shouldRedirectToPay: true,
           });
-          toast.success("Pledge created successfully!");
+          toast.success("Committed Donation created successfully!");
           resetForm();
           setOpen(false);
           setCreatedPledge(result.pledge);
           setPaymentDialogOpen(true);
         } else {
           const result = await createPledgeMutation.mutateAsync(submissionData);
-          toast.success("Pledge created successfully!");
+          toast.success("Committed Donation created successfully!");
           resetForm();
           setOpen(false);
           if (onPledgeCreated) onPledgeCreated(result.pledge.id);
@@ -603,7 +603,7 @@ export default function PledgeDialog({
       }
     } catch (error) {
       const action = isEditMode ? "update" : "create";
-      toast.error(error instanceof Error ? error.message : `Failed to ${action} pledge`);
+      toast.error(error instanceof Error ? error.message : `Failed to ${action} Committed Donation`);
     }
   };
 
@@ -678,11 +678,11 @@ export default function PledgeDialog({
         )}
         <DialogContent className="sm:max-w-[650px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isEditMode ? "Edit Pledge" : "Create Pledge"}</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit Committed Donation" : "Create Committed Donation"}</DialogTitle>
             <DialogDescription>
               {isEditMode
-                ? `Edit pledge for ${getContactDisplayName()}.`
-                : `Add a new pledge for ${getContactDisplayName()}.`}
+                ? `Edit committed donation for ${getContactDisplayName()}.`
+                : `Add a new committed donation for ${getContactDisplayName()}.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -695,8 +695,8 @@ export default function PledgeDialog({
               {/* Pledge Details Card */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Pledge Details</CardTitle>
-                  <CardDescription>Basic information about the pledge</CardDescription>
+                  <CardTitle>Committed Donation Details</CardTitle>
+                  <CardDescription>Basic information about the Committed Donation</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Category */}
@@ -1033,7 +1033,7 @@ export default function PledgeDialog({
                           </PopoverContent>
                         </Popover>
                         <FormDescription>
-                          Select tags to categorize this pledge for better organization and filtering.
+                          Select tags to categorize this Committed Donation for better organization and filtering.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1046,7 +1046,7 @@ export default function PledgeDialog({
                     name="pledgeDate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Pledge Date *</FormLabel>
+                        <FormLabel>Committed Donation Date *</FormLabel>
                         <FormControl>
                           <Input
                             type="date"
@@ -1078,7 +1078,7 @@ export default function PledgeDialog({
                 <CardHeader>
                   <CardTitle>Amount & Currency</CardTitle>
                   <CardDescription>
-                    Enter the pledge amount and currency details
+                    Enter the Committed Donation amount and currency details
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1169,7 +1169,7 @@ export default function PledgeDialog({
                     name="originalAmount"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Pledge Amount ({watchedCurrency}) *</FormLabel>
+                        <FormLabel>Committed Donation Amount ({watchedCurrency}) *</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -1197,7 +1197,7 @@ export default function PledgeDialog({
                     name="originalAmountUsd"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Pledge Amount (USD)</FormLabel>
+                        <FormLabel>Committed Donation Amount (USD)</FormLabel>
                         <FormControl>
                           <Input
                             type="text"
@@ -1272,7 +1272,7 @@ export default function PledgeDialog({
                       disabled={isSubmitting || isLoadingRates}
                       className="bg-green-600 hover:bg-green-700"
                     >
-                      {isSubmitting ? "Creating..." : "Create Pledge + Pay"}
+                      {isSubmitting ? "Creating..." : "Create Committed Donation + Pay"}
                     </Button>
                   </>
                 )}

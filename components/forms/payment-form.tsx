@@ -411,7 +411,7 @@ export default function PaymentDialog({
         <DialogHeader>
           <DialogTitle>Add Payment</DialogTitle>
           <DialogDescription>
-            Record a payment for pledge: {pledgeDescription || `#${pledgeId ?? "-"}`}
+            Record a payment for Committed Donation: {pledgeDescription || `#${pledgeId ?? "-"}`}
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -420,19 +420,19 @@ export default function PaymentDialog({
             {pledgeId && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Pledge Details</CardTitle>
+                  <CardTitle>Committed Donation Details</CardTitle>
                 </CardHeader>
                 <CardContent className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="text-sm font-medium">Pledge Amount</label>
+                    <label className="text-sm font-medium">Committed Donation Amount</label>
                     <Input value={`${pledgeAmount} ${pledgeCurrency}`} readOnly />
                   </div>
                   <div>
-                    <label className="text-sm font-medium">Pledge Exchange Rate</label>
+                    <label className="text-sm font-medium">Committed Donation Exchange Rate</label>
                     <Input value={`1 ${pledgeCurrency} = ${(1 / pledgeExchangeRate).toFixed(6)} USD`} readOnly />
                   </div>
                   <div className="md:col-span-2">
-                    <label className="text-sm font-medium">Pledge Amount (USD)</label>
+                    <label className="text-sm font-medium">Committed Donation Amount (USD)</label>
                     <Input value={pledgeUsdAmount} readOnly />
                   </div>
                 </CardContent>
@@ -1050,7 +1050,7 @@ export default function PaymentDialog({
                             name={`allocations.${index}.pledgeId`}
                             render={({ field }) => (
                               <FormItem>
-                                <FormLabel>Pledge ID *</FormLabel>
+                                <FormLabel>Committed Donation ID *</FormLabel>
                                 <FormControl>
                                   <Input
                                     type="number"

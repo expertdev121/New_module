@@ -173,7 +173,7 @@ export default function CampaignManagement() {
                         </DialogHeader>
                         <div className="space-y-4">
                             <div>
-                                <Label htmlFor="name">Campaign Name *</Label>
+                                <Label htmlFor="name" className="mb-2">Campaign Name *</Label>
                                 <Input
                                     id="name"
                                     value={formData.name}
@@ -182,7 +182,7 @@ export default function CampaignManagement() {
                                 />
                             </div>
                             <div>
-                                <Label htmlFor="description">Description</Label>
+                                <Label htmlFor="description" className="mb-2">Description</Label>
                                 <Textarea
                                     id="description"
                                     value={formData.description}
@@ -192,7 +192,7 @@ export default function CampaignManagement() {
                                 />
                             </div>
                             <div>
-                                <Label htmlFor="status">Status</Label>
+                                <Label htmlFor="status" className="mb-2">Status</Label>
                                 <Select
                                     value={formData.status}
                                     onValueChange={(value: "active" | "inactive" | "completed") =>
@@ -322,7 +322,7 @@ export default function CampaignManagement() {
                     </DialogHeader>
                     <div className="space-y-4">
                         <div>
-                            <Label htmlFor="edit-name">Campaign Name *</Label>
+                            <Label htmlFor="edit-name" className="mb-2">Campaign Name *</Label>
                             <Input
                                 id="edit-name"
                                 value={formData.name}
@@ -331,7 +331,7 @@ export default function CampaignManagement() {
                             />
                         </div>
                         <div>
-                            <Label htmlFor="edit-description">Description</Label>
+                            <Label htmlFor="edit-description" className="mb-2">Description</Label>
                             <Textarea
                                 id="edit-description"
                                 value={formData.description}
@@ -341,7 +341,7 @@ export default function CampaignManagement() {
                             />
                         </div>
                         <div>
-                            <Label htmlFor="edit-status">Status</Label>
+                            <Label htmlFor="edit-status" className="mb-2">Status</Label>
                             <Select
                                 value={formData.status}
                                 onValueChange={(value: "active" | "inactive" | "completed") =>

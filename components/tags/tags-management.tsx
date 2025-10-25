@@ -84,7 +84,7 @@ function useTagsQuery({
 export { useTagsQuery };
 
 interface TagsManagementProps {
-  contactId: number;
+  contactId?: number;
   // Add additional props if needed for contact-specific filtering
   showContactSpecific?: boolean;
 }
@@ -210,7 +210,7 @@ export function TagsManagement({ contactId, showContactSpecific = false }: TagsM
           <TableHeader>
             <TableRow>
               <TableHead>Name</TableHead>
-              <TableHead>Description</TableHead>
+              {/* <TableHead>Description</TableHead> */}
               <TableHead>Visibility</TableHead>
               <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
@@ -249,9 +249,9 @@ export function TagsManagement({ contactId, showContactSpecific = false }: TagsM
               tags.map((tag) => (
                 <TableRow key={tag.id}>
                   <TableCell className="font-medium">{tag.name}</TableCell>
-                  <TableCell className="max-w-xs truncate">
+                  {/* <TableCell className="max-w-xs truncate">
                     {tag.description || "-"}
-                  </TableCell>
+                  </TableCell> */}
                   <TableCell>
                     <div className="flex gap-1 flex-wrap">
                       {tag.showOnPayment && (

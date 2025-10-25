@@ -424,7 +424,7 @@ export default function PledgesTable() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="Search pledges..."
+                placeholder="Search committed donations..."
                 value={search || ""}
                 onChange={(e) => setSearch(e.target.value || null)}
                 className="pl-10"
@@ -469,16 +469,16 @@ export default function PledgesTable() {
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Pledge Date
+                    Committed Donation Date
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Pledge Detail
+                    Committed Donation Detail
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900 text-center">
-                    Pledge Amount
+                    Committed Donation Amount
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900 text-center">
-                    Plg Amount (USD)
+                    Committed Donation Amount (USD)
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900 text-center">
                     Paid
@@ -526,7 +526,7 @@ export default function PledgesTable() {
                 ) : data?.pledges.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={13} className="text-center py-8 text-gray-500">
-                      No pledges found
+                      No committed donations found
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -664,12 +664,12 @@ export default function PledgesTable() {
                                 {/* Column 1 */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
-                                    Pledge Details
+                                    Committed Donation Details
                                   </h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Pledge Amount:
+                                        Committed Donation Amount:
                                       </span>
                                       <span className="font-medium">
                                         {formatCurrency(pledge.originalAmount, pledge.currency).symbol}
@@ -708,7 +708,7 @@ export default function PledgesTable() {
                                   <h4 className="font-semibold text-gray-900">USD Amounts</h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">Pledge Amount:</span>
+                                      <span className="text-gray-600">Committed Donation Amount:</span>
                                       <span className="font-medium">
                                         {formatUSDAmount(pledge.originalAmountUsd)}
                                       </span>

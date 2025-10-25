@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { sql, and, gte, lt, lte, SQL, eq } from "drizzle-orm";
+import { sql, and, gte, lte, SQL, eq } from "drizzle-orm";
 import { pledge, user, contact } from "@/lib/db/schema";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -16,18 +16,25 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get("startDate");
     const endDate = searchParams.get("endDate");
 
-    // Get admin's locationId
-    const userResult = await db
-      .select({ locationId: user.locationId })
-      .from(user)
-      .where(eq(user.email, session.user.email))
-      .limit(1);
+    const isSuperAdmin = session.user.role === "super_admin";
 
-    if (!userResult.length || !userResult[0].locationId) {
-      return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+    let locationFilter: SQL<unknown> | undefined = undefined;
+
+    // Only filter by location for regular admins, not super admins
+    if (!isSuperAdmin) {
+      // Get admin's locationId
+      const userResult = await db
+        .select({ locationId: user.locationId })
+        .from(user)
+        .where(eq(user.email, session.user.email))
+        .limit(1);
+
+      if (!userResult.length || !userResult[0].locationId) {
+        return NextResponse.json({ error: "Admin location not found" }, { status: 400 });
+      }
+
+      locationFilter = eq(contact.locationId, userResult[0].locationId);
     }
-
-    const adminLocationId = userResult[0].locationId;
 
     let whereCondition: SQL<unknown> | undefined = undefined;
 
@@ -40,26 +47,63 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fully paid: originalAmountUsd - totalPaidUsd <= 0 (filter by admin's location)
-    const fullyPaidResult = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(pledge)
-      .innerJoin(contact, eq(pledge.contactId, contact.id))
-      .where(whereCondition ? and(whereCondition, sql`${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} <= 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} <= 0`, eq(contact.locationId, adminLocationId)));
+    // Build where conditions dynamically
+    const buildWhereCondition = (statusCondition: SQL<unknown>) => {
+      const conditions = [statusCondition];
+      if (whereCondition) conditions.push(whereCondition);
+      if (locationFilter) conditions.push(locationFilter);
+      return and(...conditions);
+    };
 
-    // Partially paid: totalPaidUsd > 0 AND originalAmountUsd - totalPaidUsd > 0 (filter by admin's location)
-    const partiallyPaidResult = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(pledge)
-      .innerJoin(contact, eq(pledge.contactId, contact.id))
-      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} > 0 AND ${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} > 0`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.totalPaidUsd} > 0 AND ${pledge.originalAmountUsd} - ${pledge.totalPaidUsd} > 0`, eq(contact.locationId, adminLocationId)));
+    console.log("Building queries with filters:", {
+      hasWhereCondition: !!whereCondition,
+      hasLocationFilter: !!locationFilter,
+      isSuperAdmin
+    });
 
-    // Unpaid: totalPaidUsd = 0 OR totalPaidUsd IS NULL (filter by admin's location)
-    const unpaidResult = await db
-      .select({ count: sql<number>`COUNT(*)` })
-      .from(pledge)
-      .innerJoin(contact, eq(pledge.contactId, contact.id))
-      .where(whereCondition ? and(whereCondition, sql`${pledge.totalPaidUsd} = 0 OR ${pledge.totalPaidUsd} IS NULL`, eq(contact.locationId, adminLocationId)) : and(sql`${pledge.totalPaidUsd} = 0 OR ${pledge.totalPaidUsd} IS NULL`, eq(contact.locationId, adminLocationId)));
+    let fullyPaidResult, partiallyPaidResult, unpaidResult;
+
+    try {
+      // Fully paid: sum of completed payments >= originalAmountUsd
+      console.log("Executing fully paid query...");
+      fullyPaidResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(pledge)
+        .innerJoin(contact, eq(pledge.contactId, contact.id))
+        .where(buildWhereCondition(sql`${pledge.originalAmountUsd} <= COALESCE((SELECT SUM(amount_usd) FROM payment WHERE payment.pledge_id = pledge.id AND payment.payment_status = 'completed'), 0)`));
+      console.log("Fully paid result:", fullyPaidResult);
+    } catch (error) {
+      console.error("Error in fully paid query:", error);
+      throw error;
+    }
+
+    try {
+      // Partially paid: sum of completed payments > 0 AND < originalAmountUsd
+      console.log("Executing partially paid query...");
+      partiallyPaidResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(pledge)
+        .innerJoin(contact, eq(pledge.contactId, contact.id))
+        .where(buildWhereCondition(sql`COALESCE((SELECT SUM(amount_usd) FROM payment WHERE payment.pledge_id = pledge.id AND payment.payment_status = 'completed'), 0) > 0 AND ${pledge.originalAmountUsd} > COALESCE((SELECT SUM(amount_usd) FROM payment WHERE payment.pledge_id = pledge.id AND payment.payment_status = 'completed'), 0)`));
+      console.log("Partially paid result:", partiallyPaidResult);
+    } catch (error) {
+      console.error("Error in partially paid query:", error);
+      throw error;
+    }
+
+    try {
+      // Unpaid: sum of completed payments = 0
+      console.log("Executing unpaid query...");
+      unpaidResult = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(pledge)
+        .innerJoin(contact, eq(pledge.contactId, contact.id))
+        .where(buildWhereCondition(sql`COALESCE((SELECT SUM(amount_usd) FROM payment WHERE payment.pledge_id = pledge.id AND payment.payment_status = 'completed'), 0) = 0`));
+      console.log("Unpaid result:", unpaidResult);
+    } catch (error) {
+      console.error("Error in unpaid query:", error);
+      throw error;
+    }
 
     const fullyPaid = fullyPaidResult[0]?.count || 0;
     const partiallyPaid = partiallyPaidResult[0]?.count || 0;

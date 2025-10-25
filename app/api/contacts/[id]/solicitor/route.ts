@@ -1,7 +1,9 @@
 import { db } from "@/lib/db";
-import { solicitor, contact } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { solicitor, contact, user } from "@/lib/db/schema";
+import { eq, isNotNull, and } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(
   request: NextRequest,
@@ -15,6 +17,27 @@ export async function GET(
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const contactExists = await db
       .select({ id: contact.id })
       .from(contact)
@@ -26,6 +49,14 @@ export async function GET(
     }
 
     // Get solicitor data for this contact
+    const whereCondition = isAdmin && currentUser.locationId
+      ? and(
+          eq(solicitor.contactId, contactId),
+          eq(solicitor.locationId, currentUser.locationId),
+          isNotNull(solicitor.locationId)
+        )
+      : eq(solicitor.contactId, contactId);
+
     const solicitorData = await db
       .select({
         id: solicitor.id,
@@ -46,7 +77,7 @@ export async function GET(
       })
       .from(solicitor)
       .leftJoin(contact, eq(solicitor.contactId, contact.id))
-      .where(eq(solicitor.contactId, contactId))
+      .where(whereCondition)
       .limit(1);
 
     if (solicitorData.length === 0) {
@@ -78,6 +109,28 @@ export async function POST(
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const body = await request.json();
     const {
       solicitorCode,
@@ -158,6 +211,7 @@ export async function POST(
         hireDate: hireDate || null,
         terminationDate: terminationDate || null,
         notes: notes || null,
+        locationId: isAdmin ? currentUser.locationId : null,
       })
       .returning({
         id: solicitor.id,
@@ -224,6 +278,28 @@ export async function PUT(
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const body = await request.json();
     const {
       solicitorCode,
@@ -253,10 +329,18 @@ export async function PUT(
     }
 
     // Check if solicitor exists for this contact
+    const whereCondition = isAdmin && currentUser.locationId
+      ? and(
+          eq(solicitor.contactId, contactId),
+          eq(solicitor.locationId, currentUser.locationId),
+          isNotNull(solicitor.locationId)
+        )
+      : eq(solicitor.contactId, contactId);
+
     const existingSolicitor = await db
       .select({ id: solicitor.id })
       .from(solicitor)
-      .where(eq(solicitor.contactId, contactId))
+      .where(whereCondition)
       .limit(1);
 
     if (existingSolicitor.length === 0) {

@@ -66,7 +66,7 @@ export default function AddUserPage() {
   };
 
   return (
-    <div className="max-w-md">
+    <div className="max-w-2xl mx-auto">
       <Card>
         <CardHeader>
           <CardTitle>Add New User</CardTitle>

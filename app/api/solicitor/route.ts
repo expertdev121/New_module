@@ -1,11 +1,35 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { eq, desc, sql, and } from "drizzle-orm";
-import { solicitor, contact, payment, bonusCalculation } from "@/lib/db/schema";
+import { eq, desc, sql, and, isNotNull } from "drizzle-orm";
+import { solicitor, contact, payment, bonusCalculation, user } from "@/lib/db/schema";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth";
 
 export async function GET(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const { searchParams } = new URL(request.url);
     const status = searchParams.get("status");
     const search = searchParams.get("search");
@@ -26,6 +50,12 @@ export async function GET(request: NextRequest) {
           LOWER(${solicitor.solicitorCode}) LIKE LOWER(${"%" + search + "%"})
         )`
       );
+    }
+
+    // Add locationId filtering for admins
+    if (isAdmin && currentUser.locationId) {
+      whereConditions.push(eq(solicitor.locationId, currentUser.locationId));
+      whereConditions.push(isNotNull(solicitor.locationId));
     }
 
     // Build the complete query with where conditions applied before groupBy
@@ -88,6 +118,28 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.email) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Get user details including locationId
+    const userDetails = await db
+      .select({
+        role: user.role,
+        locationId: user.locationId,
+      })
+      .from(user)
+      .where(eq(user.email, session.user.email))
+      .limit(1);
+
+    if (userDetails.length === 0) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const currentUser = userDetails[0];
+    const isAdmin = currentUser.role === "admin";
+
     const body = await request.json();
     const {
       contactId,
@@ -140,6 +192,7 @@ export async function POST(request: NextRequest) {
         commissionRate,
         hireDate,
         notes,
+        locationId: isAdmin ? currentUser.locationId : null,
       })
       .returning();
 

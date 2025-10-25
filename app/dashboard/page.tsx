@@ -126,6 +126,11 @@ export default function DashboardPage() {
     selectedLocationId || undefined
   );
 
+  // Pagination states
+  const [contributorsPage, setContributorsPage] = useState(1);
+  const [campaignsPage, setCampaignsPage] = useState(1);
+  const itemsPerPage = 10;
+
   const isLoading = overviewLoading || trendsLoading || paymentMethodsLoading || pledgeStatusLoading || topDonorsLoading || recentActivityLoading || contactAnalyticsLoading || campaignsLoading;
 
   if (status === "loading") return <div className="flex items-center justify-center h-screen">Loading...</div>;
@@ -287,7 +292,7 @@ export default function DashboardPage() {
     labels: pledgeStatusData.labels,
     datasets: [
       {
-        label: 'Number of Pledges',
+        label: 'Number of Committed Donations',
         data: pledgeStatusData.values,
         backgroundColor: [CHART_COLORS.green, CHART_COLORS.orange, CHART_COLORS.red],
         borderWidth: 1,
@@ -360,10 +365,9 @@ export default function DashboardPage() {
   return (
     <div className="bg-gray-50">
       {isAdmin || isSuperAdmin ? (
-        <div className="flex h-screen">
-          <main className="flex-1 p-8 overflow-y-auto">
-            {/* Header */}
-            <div className="flex justify-between items-center mb-8">
+        <>
+          {/* Header */}
+          <div className="flex justify-between items-center mb-8">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
                 <p className="text-gray-500 mt-1">Welcome back, {session.user.email}</p>
@@ -466,7 +470,7 @@ export default function DashboardPage() {
             >
               <TabsList>
                 <TabsTrigger value="overview">Overview</TabsTrigger>
-                <TabsTrigger value="pledges">Pledges</TabsTrigger>
+                <TabsTrigger value="pledges">Committed Donations</TabsTrigger>
                 <TabsTrigger value="payments">Payments</TabsTrigger>
                 <TabsTrigger value="contacts">Contacts</TabsTrigger>
                 <TabsTrigger value="campaigns">Campaigns</TabsTrigger>
@@ -491,12 +495,12 @@ export default function DashboardPage() {
 
                   <Card>
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                      <CardTitle className="text-sm font-medium text-gray-600">Total Pledges</CardTitle>
+                      <CardTitle className="text-sm font-medium text-gray-600">Total Committed Donations</CardTitle>
                       <FileText className="w-4 h-4 text-gray-400" />
                     </CardHeader>
                     <CardContent>
                       <div className="text-2xl font-bold">{formatCurrency(overviewData?.totalPledgeAmount || 0)}</div>
-                      <p className="text-xs text-gray-600 mt-1">{overviewData?.totalPledges || 0} pledges</p>
+                      <p className="text-xs text-gray-600 mt-1">{overviewData?.totalPledges || 0} Committed Donations</p>
                     </CardContent>
                   </Card>
 
@@ -532,7 +536,7 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle>Pledges vs Payments Trend</CardTitle>
+                      <CardTitle>Committed Donations vs Payments Trend</CardTitle>
                       <CardDescription>
                         Comparison over selected period
                       </CardDescription>
@@ -574,9 +578,9 @@ export default function DashboardPage() {
                               </div>
                               <div>
                                 <p className="font-medium">{donor.name}</p>
-                                <p className="text-sm text-gray-500">{donor.pledges} pledges</p>
+                                <p className="text-sm text-gray-500">{donor.pledges} Committed Donations</p>
                                 <div className="text-xs text-gray-400">
-                                  <span className="text-blue-600">Pledge: {formatCurrency(donor.pledgeAmount)}</span>
+                                  <span className="text-blue-600">Committed Donation: {formatCurrency(donor.pledgeAmount)}</span>
                                   {donor.thirdPartyAmount > 0 && (
                                     <span className="ml-2 text-purple-600">Third-party: {formatCurrency(donor.thirdPartyAmount)}</span>
                                   )}
@@ -604,7 +608,7 @@ export default function DashboardPage() {
                           <div key={index} className="flex items-center justify-between border-b pb-3 last:border-0">
                             <div className="flex items-center gap-3">
                               <div className={`w-2 h-2 rounded-full ${activity.type === 'payment' ? 'bg-green-500' :
-                                activity.type === 'pledge' ? 'bg-blue-500' : 'bg-purple-500'
+                                activity.type === 'Committed Donations' ? 'bg-blue-500' : 'bg-purple-500'
                                 }`} />
                               <div>
                                 <p className="font-medium text-sm">{activity.contactName}</p>
@@ -624,8 +628,8 @@ export default function DashboardPage() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   <Card className="lg:col-span-2">
                     <CardHeader>
-                      <CardTitle>Pledge Status Overview</CardTitle>
-                      <CardDescription>Current status of all pledges</CardDescription>
+                      <CardTitle>Committed Donations Status Overview</CardTitle>
+                      <CardDescription>Current status of all Committed Donations</CardDescription>
                     </CardHeader>
                     <CardContent>
                       <div className="h-[300px]">
@@ -636,11 +640,11 @@ export default function DashboardPage() {
 
                   <Card>
                     <CardHeader>
-                      <CardTitle>Pledge Statistics</CardTitle>
+                      <CardTitle>Committed Donations Statistics</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="flex justify-between items-center">
-                        <span className="text-gray-600">Average Pledge</span>
+                        <span className="text-gray-600">Average Committed Donations</span>
                         <span className="font-bold">{formatCurrency(overviewData?.avgPledgeSize || 0)}</span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -746,7 +750,7 @@ export default function DashboardPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle>Contact Engagement</CardTitle>
-                      <CardDescription>Contacts with pledges and payments</CardDescription>
+                      <CardDescription>Contacts with Committed Donations and payments</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="flex justify-between items-center">
@@ -754,7 +758,7 @@ export default function DashboardPage() {
                         <span className="font-bold">{contactAnalyticsData?.engagementData.totalContacts || 0}</span>
                       </div>
                       <div className="flex justify-between items-center">
-                        <span className="text-gray-600">With Pledges</span>
+                        <span className="text-gray-600">With Committed Donations</span>
                         <span className="font-bold text-blue-600">{contactAnalyticsData?.engagementData.contactsWithPledges || 0}</span>
                       </div>
                       <div className="flex justify-between items-center">
@@ -808,7 +812,7 @@ export default function DashboardPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle>Top Contributors</CardTitle>
-                    <CardDescription>Contacts with highest pledge and payment amounts</CardDescription>
+                    <CardDescription>Contacts with highest Committed Donations and payment amounts</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
@@ -821,7 +825,7 @@ export default function DashboardPage() {
                             <div>
                               <p className="font-medium">{contributor.name}</p>
                               <p className="text-sm text-gray-500">
-                                {contributor.pledges} pledges • {contributor.payments} payments
+                                {contributor.pledges} Committed Donations • {contributor.payments} payments
                               </p>
                             </div>
                           </div>
@@ -1146,11 +1150,11 @@ export default function DashboardPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-4">
-                      {campaignsData?.campaigns?.slice(0, 5).map((campaign, index) => (
+                      {campaignsData?.campaigns?.slice((campaignsPage - 1) * itemsPerPage, campaignsPage * itemsPerPage).map((campaign, index) => (
                         <div key={index} className="flex items-center justify-between border-b pb-3 last:border-0">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-semibold">
-                              {index + 1}
+                              {(campaignsPage - 1) * itemsPerPage + index + 1}
                             </div>
                             <div>
                               <p className="font-medium">{campaign.name}</p>
@@ -1163,6 +1167,35 @@ export default function DashboardPage() {
                         </div>
                       ))}
                     </div>
+                    {/* Pagination for Top Campaigns */}
+                    {campaignsData?.campaigns && campaignsData.campaigns.length > itemsPerPage && (
+                      <div className="flex items-center justify-between mt-6">
+                        <div className="text-sm text-gray-600">
+                          Showing {(campaignsPage - 1) * itemsPerPage + 1} to {Math.min(campaignsPage * itemsPerPage, campaignsData.campaigns.length)} of {campaignsData.campaigns.length} campaigns
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCampaignsPage(campaignsPage - 1)}
+                            disabled={campaignsPage === 1}
+                          >
+                            Previous
+                          </Button>
+                          <span className="text-sm text-gray-600">
+                            Page {campaignsPage} of {Math.ceil((campaignsData.campaigns.length || 0) / itemsPerPage)}
+                          </span>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setCampaignsPage(campaignsPage + 1)}
+                            disabled={campaignsPage >= Math.ceil((campaignsData.campaigns.length || 0) / itemsPerPage)}
+                          >
+                            Next
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -1224,8 +1257,7 @@ export default function DashboardPage() {
                 </Card>
               </TabsContent>
             </Tabs>
-          </main>
-        </div>
+        </>
       ) : null}
     </div>
   );
