@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { User, MapPin, Grid2x2, Trash2, LogOut } from "lucide-react";
 import { Contact, ContactRole, StudentRole } from "@/lib/db/schema";
-import ContactCategoriesCard from "./Contact-Category";
+import ContactCampaignsCard from "./Contact-Campaign";
 import { Category } from "@/lib/query/useContactCategories";
 import { DeleteConfirmationDialog } from "../ui/delete-confirmation-dialog";
 import { useDeleteContact } from "@/lib/mutation/useDeleteContact";
@@ -209,9 +209,9 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           </CardContent>
         </Card>
 
-        {/* Categories Section */}
+        {/* Campaigns Section */}
         <div className="lg:col-span-2">
-          <ContactCategoriesCard />
+          <ContactCampaignsCard />
         </div>
       </div>
 
