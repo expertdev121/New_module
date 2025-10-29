@@ -12,7 +12,7 @@ export function Sidebar() {
   const searchParams = useSearchParams();
 
   const handleSignOut = async () => {
-    await signOut({ callbackUrl: "/" });
+    await signOut({ callbackUrl: window.location.origin + "/" });
   };
 
   const isActive = (path: string) => {
@@ -59,7 +59,7 @@ export function Sidebar() {
         },
         // {
         //   path: "/pledges",
-        //   label: "Committed Donations",
+        //   label: "pledges/donations",
         //   icon: FileText,
         // },
         {

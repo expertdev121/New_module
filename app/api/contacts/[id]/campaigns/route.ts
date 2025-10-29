@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
-import { category, pledge, payment, user } from "@/lib/db/schema";
-import { sql,SQL, eq, desc, and, isNull, isNotNull } from "drizzle-orm";
+import { campaign, pledge, payment, user } from "@/lib/db/schema";
+import { sql,SQL, eq, desc, and, isNull } from "drizzle-orm";
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
@@ -41,32 +41,32 @@ export async function GET(
     const isAdmin = currentUser.role === "admin";
 
     // Apply location-based filtering for admins
-    let categoryWhereClause: SQL<unknown>;
+    let campaignWhereClause: SQL<unknown>;
 
     if (isAdmin && currentUser.locationId) {
-      categoryWhereClause = and(
-        eq(category.isActive, true),
-        eq(category.locationId, currentUser.locationId)
+      campaignWhereClause = and(
+        eq(campaign.status, "active"),
+        eq(campaign.locationId, currentUser.locationId)
       )!;
     } else if (isAdmin && !currentUser.locationId) {
-      // If admin has no locationId, they see no categories
-      categoryWhereClause = sql`FALSE`;
+      // If admin has no locationId, they see no campaigns
+      campaignWhereClause = sql`FALSE`;
     } else {
-      categoryWhereClause = eq(category.isActive, true);
+      campaignWhereClause = eq(campaign.status, "active");
     }
 
     const [totalResult] = await db
       .select({ total: sql<number>`COUNT(*)` })
-      .from(category)
-      .where(categoryWhereClause);
+      .from(campaign)
+      .where(campaignWhereClause);
 
     const total = parseInt(totalResult?.total?.toString() || "0");
 
-    const categoriesWithTotals = await db
+    const campaignsWithTotals = await db
       .select({
-        categoryId: category.id,
-        categoryName: category.name,
-        categoryDescription: category.description,
+        campaignId: campaign.id,
+        campaignName: campaign.name,
+        campaignDescription: campaign.description,
         totalPledgedUsd: sql<number>`COALESCE(SUM(${pledge.originalAmountUsd}), 0)`,
         totalPaidUsd: sql<number>`COALESCE(SUM(${pledge.totalPaidUsd}), 0)`,
         currentBalanceUsd: sql<number>`COALESCE(SUM(${pledge.balanceUsd}), 0)`,
@@ -76,23 +76,23 @@ export async function GET(
           (SELECT SUM(p_inner.amount_usd)
            FROM payment p_inner
            JOIN pledge pl_inner ON p_inner.pledge_id = pl_inner.id
-           WHERE pl_inner.category_id = ${category.id}
+           WHERE pl_inner.campaign_code = ${campaign.name}
            AND pl_inner.contact_id = ${contactId}
            AND p_inner.received_date IS NULL
           AND p_inner.payment_status IN ('pending', 'processing', 'expected')
           ), 0
         )`.as("scheduledUsd"),
       })
-      .from(category)
-      .leftJoin(pledge, and(eq(category.id, pledge.categoryId), eq(pledge.contactId, contactId)))
-      .where(categoryWhereClause)
-      .groupBy(category.id, category.name, category.description)
-      .orderBy(category.name)
+      .from(campaign)
+      .leftJoin(pledge, and(eq(campaign.name, pledge.campaignCode), eq(pledge.contactId, contactId)))
+      .where(campaignWhereClause)
+      .groupBy(campaign.id, campaign.name, campaign.description)
+      .orderBy(campaign.name)
       .limit(limit)
       .offset(offset);
 
-    return NextResponse.json({ 
-      categories: categoriesWithTotals, 
+    return NextResponse.json({
+      campaigns: campaignsWithTotals,
       pagination: {
         page,
         limit,
@@ -103,7 +103,7 @@ export async function GET(
   } catch (error) {
     console.log(error);
     return NextResponse.json(
-      { error: "Failed to fetch categories" },
+      { error: "Failed to fetch campaigns" },
       { status: 500 }
     );
   }

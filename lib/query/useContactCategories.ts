@@ -12,6 +12,17 @@ export interface Category {
   scheduledUsd?: number | string;
 }
 
+export interface Campaign {
+  campaignId: number;
+  campaignName: string;
+  campaignDescription: string | null;
+  totalPledgedUsd: number;
+  totalPaidUsd: number;
+  currentBalanceUsd: number;
+  pledgeCount: number;
+  scheduledUsd?: number | string;
+}
+
 export function useContactCategories(contactId: number, page: number = 1, limit: number = 10) {
   return useQuery<{
     categories: Category[];
@@ -25,6 +36,26 @@ export function useContactCategories(contactId: number, page: number = 1, limit:
     queryKey: ["contactCategories", contactId, page, limit],
     queryFn: async () => {
       const response = await axios.get(`/api/contacts/${contactId}/categories?page=${page}&limit=${limit}`);
+      return response.data;
+    },
+    retry: 2,
+    staleTime: 1000 * 60 * 5,
+  });
+}
+
+export function useContactCampaigns(contactId: number, page: number = 1, limit: number = 10) {
+  return useQuery<{
+    campaigns: Campaign[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  }>({
+    queryKey: ["contactCampaigns", contactId, page, limit],
+    queryFn: async () => {
+      const response = await axios.get(`/api/contacts/${contactId}/campaigns?page=${page}&limit=${limit}`);
       return response.data;
     },
     retry: 2,

@@ -243,9 +243,9 @@ const usePledgeWithContact = (pledgeId?: number | null) =>
   useQuery<{ pledge: Pledge; contact: Contact }>({
     queryKey: ["pledge-with-contact", pledgeId],
     queryFn: async () => {
-      if (!pledgeId) throw new Error("Committed Donations ID is required");
+      if (!pledgeId) throw new Error("pledges/donations ID is required");
       const response = await fetch(`/api/pledges/${pledgeId}`);
-      if (!response.ok) throw new Error("Failed to fetch Committed Donations");
+      if (!response.ok) throw new Error("Failed to fetch pledges/donations");
       return response.json();
     },
     enabled: !!pledgeId,
@@ -343,9 +343,9 @@ const editPaymentSchema = z
     amount: z.number().positive("Amount must be positive").optional(),
     currency: z.enum([...supportedCurrencies] as [string, ...string[]]).optional(),
     amountUsd: z.number().positive("Amount in USD must be positive").optional(),
-    amountInPledgeCurrency: z.number().positive("Amount in Committed Donations currency must be positive").optional(),
+    amountInPledgeCurrency: z.number().positive("Amount in pledges/donations currency must be positive").optional(),
     exchangeRate: z.number().positive("Exchange rate must be positive").optional(),
-    exchangeRateToPledgeCurrency: z.number().positive("Exchange rate to Committed Donations currency must be positive").optional(),
+    exchangeRateToPledgeCurrency: z.number().positive("Exchange rate to pledges/donations currency must be positive").optional(),
     paymentDate: z.string().min(1, "Payment date is required").optional(),
     receivedDate: z.string().optional().nullable(),
     methodDetail: z.string().optional().nullable(),
@@ -1182,7 +1182,7 @@ export default function EditPaymentDialog({
         if (!pledgeId) return null;
 
         const response = await fetch(`/api/pledges/${pledgeId}`);
-        if (!response.ok) throw new Error('Failed to fetch Committed Donations contact');
+        if (!response.ok) throw new Error('Failed to fetch pledges/donations contact');
 
         const data = await response.json();
         return {
