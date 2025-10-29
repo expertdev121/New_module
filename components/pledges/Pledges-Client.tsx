@@ -424,7 +424,7 @@ export default function PledgesTable() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
               <Input
-                placeholder="Search committed donations..."
+                placeholder="Search pledges/donations..."
                 value={search || ""}
                 onChange={(e) => setSearch(e.target.value || null)}
                 className="pl-10"
@@ -526,7 +526,7 @@ export default function PledgesTable() {
                 ) : data?.pledges.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={13} className="text-center py-8 text-gray-500">
-                      No committed donations found
+                      No pledges/donations found
                     </TableCell>
                   </TableRow>
                 ) : (

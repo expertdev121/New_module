@@ -59,7 +59,7 @@ export function Sidebar() {
         },
         // {
         //   path: "/pledges",
-        //   label: "Committed Donations",
+        //   label: "pledges/donations",
         //   icon: FileText,
         // },
         {

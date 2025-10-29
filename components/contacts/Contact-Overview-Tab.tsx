@@ -179,7 +179,7 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
             <dl className="space-y-4 divide-y">
               <div className="grid grid-cols-2 gap-1 py-2">
                 <dt className="text-muted-foreground font-medium">
-                  Committed Donations
+                  pledges/donations
                 </dt>
                 <dd className="text-right font-medium">
                   ${financialSummary.totalPledgedUsd.toLocaleString(
