@@ -12,7 +12,7 @@ export function Sidebar() {
   const searchParams = useSearchParams();
 
   const handleSignOut = async () => {
-    await signOut({ callbackUrl: "/" });
+    await signOut({ callbackUrl: window.location.origin + "/" });
   };
 
   const isActive = (path: string) => {
