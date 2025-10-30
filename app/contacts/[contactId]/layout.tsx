@@ -52,7 +52,7 @@ export default function SettingsLayout({
                   <TabLink href={`/contacts/${contactId}/solicitor`}>
                     Solicitor
                   </TabLink>
-                  <TabLink href={`/contacts/${contactId}/contact-roles`}>
+                  {/* <TabLink href={`/contacts/${contactId}/contact-roles`}>
                     Contact Roles
                   </TabLink>
                   <TabLink href={`/contacts/${contactId}/student-roles`}>
@@ -60,7 +60,7 @@ export default function SettingsLayout({
                   </TabLink>
                   <TabLink href={`/contacts/${contactId}/relationships`}>
                     Relationships
-                  </TabLink>
+                  </TabLink> */}
                 </>
               )}
             </nav>
