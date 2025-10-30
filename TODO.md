@@ -1,3 +1,0 @@
-- [x] Modify lib/auth.ts to configure NextAuth cookies for cross-origin iframe support
-- [x] Set SameSite to 'none' and secure based on environment for session, callback, and CSRF cookies
-- [ ] Test the iframe login functionality

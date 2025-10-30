@@ -104,7 +104,7 @@ export default function ContactCampaignsCard() {
           <TableHeader>
             <TableRow>
               <TableHead className="font-bold">Campaign</TableHead>
-              <TableHead className="font-bold text-right">Committed Donation</TableHead>
+              <TableHead className="font-bold text-right">Pledges/Donations</TableHead>
               <TableHead className="font-bold text-right">Paid</TableHead>
               <TableHead className="font-bold text-right">Balance</TableHead>
               <TableHead className="font-bold text-right">Pledges</TableHead>

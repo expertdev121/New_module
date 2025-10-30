@@ -101,15 +101,15 @@ import { useCategories } from "@/lib/query/useCategories";
 const pledgeSchema = z.object({
   contactId: z.number().positive("Contact ID is required"),
   categoryId: z.number().positive("Please select a category").optional(),
-  description: z.string().min(1, "Description is required"),
-  pledgeDate: z.string().min(1, "Committed Donation date is required"),
+  description: z.string().optional(),
+  pledgeDate: z.string().min(1, "Pledges/Donations date is required"),
   currency: z.enum(supportedCurrencies, {
     errorMap: () => ({ message: "Please select a valid currency" }),
   }),
   originalAmount: z
     .number()
-    .positive("Committed Donation amount must be greater than 0")
-    .min(0.01, "Committed Donation amount must be at least 0.01"),
+    .positive("Pledges/Donations amount must be greater than 0")
+    .min(0.01, "Pledges/Donations amount must be at least 0.01"),
   originalAmountUsd: z
     .number()
     .positive("USD amount must be greater than 0")
@@ -553,7 +553,7 @@ export default function PledgeDialog({
       }
 
       if (isEditMode && !pledgeData?.id) {
-        toast.error("Committed Donation ID is missing - cannot update");
+        toast.error("Pledges/Donations ID is missing - cannot update");
         return;
       }
 
@@ -562,7 +562,7 @@ export default function PledgeDialog({
         contactId: data.contactId,
         categoryId: data.categoryId,
         pledgeDate: data.pledgeDate,
-        description: data.description,
+        description: data.description || "",
         originalAmount: data.originalAmount,
         currency: data.currency,
         originalAmountUsd: data.originalAmountUsd,
@@ -579,7 +579,7 @@ export default function PledgeDialog({
         };
 
         const result = await updatePledgeMutation.mutateAsync(updateData);
-        toast.success("Committed Donation updated successfully!");
+        toast.success("Pledges/Donations updated successfully!");
         setOpen(false);
         if (onPledgeUpdated) onPledgeUpdated(pledgeData!.id!);
       } else {
@@ -588,14 +588,14 @@ export default function PledgeDialog({
             ...submissionData,
             shouldRedirectToPay: true,
           });
-          toast.success("Committed Donation created successfully!");
+          toast.success("Pledges/Donations created successfully!");
           resetForm();
           setOpen(false);
           setCreatedPledge(result.pledge);
           setPaymentDialogOpen(true);
         } else {
           const result = await createPledgeMutation.mutateAsync(submissionData);
-          toast.success("Committed Donation created successfully!");
+          toast.success("Pledges/Donations created successfully!");
           resetForm();
           setOpen(false);
           if (onPledgeCreated) onPledgeCreated(result.pledge.id);
@@ -603,7 +603,7 @@ export default function PledgeDialog({
       }
     } catch (error) {
       const action = isEditMode ? "update" : "create";
-      toast.error(error instanceof Error ? error.message : `Failed to ${action} Committed Donation`);
+      toast.error(error instanceof Error ? error.message : `Failed to ${action} Pledges/Donations`);
     }
   };
 
@@ -678,11 +678,11 @@ export default function PledgeDialog({
         )}
         <DialogContent className="sm:max-w-[650px] max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{isEditMode ? "Edit Committed Donation" : "Create Committed Donation"}</DialogTitle>
+            <DialogTitle>{isEditMode ? "Edit Pledges/Donations" : "Create Pledges/Donations"}</DialogTitle>
             <DialogDescription>
               {isEditMode
-                ? `Edit committed donation for ${getContactDisplayName()}.`
-                : `Add a new committed donation for ${getContactDisplayName()}.`}
+                ? `Edit Pledges/Donations for ${getContactDisplayName()}.`
+                : `Add a new Pledges/Donations for ${getContactDisplayName()}.`}
             </DialogDescription>
           </DialogHeader>
 
@@ -695,8 +695,8 @@ export default function PledgeDialog({
               {/* Pledge Details Card */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Committed Donation Details</CardTitle>
-                  <CardDescription>Basic information about the Committed Donation</CardDescription>
+                  <CardTitle>Pledges/Donations Details</CardTitle>
+                  <CardDescription>Basic information about the Pledges/Donations</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Category */}
@@ -851,7 +851,7 @@ export default function PledgeDialog({
                     name="description"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>Description *</FormLabel>
+                        <FormLabel>Description</FormLabel>
                         <Popover
                           open={itemSelectionPopoverOpen}
                           onOpenChange={setItemSelectionPopoverOpen}
@@ -1033,7 +1033,7 @@ export default function PledgeDialog({
                           </PopoverContent>
                         </Popover>
                         <FormDescription>
-                          Select tags to categorize this Committed Donation for better organization and filtering.
+                          Select tags to categorize this Pledges/Donations for better organization and filtering.
                         </FormDescription>
                         <FormMessage />
                       </FormItem>
@@ -1046,7 +1046,7 @@ export default function PledgeDialog({
                     name="pledgeDate"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Committed Donation Date *</FormLabel>
+                        <FormLabel>Pledges/Donations Date *</FormLabel>
                         <FormControl>
                           <Input
                             type="date"
@@ -1078,7 +1078,7 @@ export default function PledgeDialog({
                 <CardHeader>
                   <CardTitle>Amount & Currency</CardTitle>
                   <CardDescription>
-                    Enter the Committed Donation amount and currency details
+                    Enter the Pledges/Donations amount and currency details
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -1169,7 +1169,7 @@ export default function PledgeDialog({
                     name="originalAmount"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Committed Donation Amount ({watchedCurrency}) *</FormLabel>
+                        <FormLabel>Pledges/Donations Amount ({watchedCurrency}) *</FormLabel>
                         <FormControl>
                           <Input
                             type="number"
@@ -1197,7 +1197,7 @@ export default function PledgeDialog({
                     name="originalAmountUsd"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Committed Donation Amount (USD)</FormLabel>
+                        <FormLabel>Pledges/Donations Amount (USD)</FormLabel>
                         <FormControl>
                           <Input
                             type="text"
@@ -1272,7 +1272,7 @@ export default function PledgeDialog({
                       disabled={isSubmitting || isLoadingRates}
                       className="bg-green-600 hover:bg-green-700"
                     >
-                      {isSubmitting ? "Creating..." : "Create Committed Donation + Pay"}
+                      {isSubmitting ? "Creating..." : "Create Pledges/Donations + Pay"}
                     </Button>
                   </>
                 )}
