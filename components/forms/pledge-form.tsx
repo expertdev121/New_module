@@ -101,7 +101,7 @@ import { useCategories } from "@/lib/query/useCategories";
 const pledgeSchema = z.object({
   contactId: z.number().positive("Contact ID is required"),
   categoryId: z.number().positive("Please select a category").optional(),
-  description: z.string().min(1, "Description is required"),
+  description: z.string().optional(),
   pledgeDate: z.string().min(1, "Pledges/Donations date is required"),
   currency: z.enum(supportedCurrencies, {
     errorMap: () => ({ message: "Please select a valid currency" }),
@@ -562,7 +562,7 @@ export default function PledgeDialog({
         contactId: data.contactId,
         categoryId: data.categoryId,
         pledgeDate: data.pledgeDate,
-        description: data.description,
+        description: data.description || "",
         originalAmount: data.originalAmount,
         currency: data.currency,
         originalAmountUsd: data.originalAmountUsd,
@@ -851,7 +851,7 @@ export default function PledgeDialog({
                     name="description"
                     render={({ field }) => (
                       <FormItem className="flex flex-col">
-                        <FormLabel>Description *</FormLabel>
+                        <FormLabel>Description</FormLabel>
                         <Popover
                           open={itemSelectionPopoverOpen}
                           onOpenChange={setItemSelectionPopoverOpen}

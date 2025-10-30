@@ -5,6 +5,7 @@ import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText, Target, Tag } from "lucide-react";
+import { isInIframe, navigateInParent, signOutInIframe } from "@/lib/iframe-utils";
 
 export function Sidebar() {
   const router = useRouter();
@@ -12,7 +13,7 @@ export function Sidebar() {
   const searchParams = useSearchParams();
 
   const handleSignOut = async () => {
-    await signOut({ callbackUrl: window.location.origin + "/" });
+    await signOutInIframe();
   };
 
   const isActive = (path: string) => {
@@ -110,7 +111,13 @@ export function Sidebar() {
               key={item.path}
               variant={isActive(item.path) ? "default" : "ghost"}
               className={`w-full justify-start ${isActive(item.path) ? "text-white" : "text-gray-800"}`}
-              onClick={() => router.push(item.path)}
+              onClick={() => {
+                if (isInIframe()) {
+                  navigateInParent(item.path);
+                } else {
+                  router.push(item.path);
+                }
+              }}
             >
               <item.icon className="mr-2 h-4 w-4" />
               {item.label}

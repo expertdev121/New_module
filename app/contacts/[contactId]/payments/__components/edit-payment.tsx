@@ -2587,11 +2587,12 @@ export default function EditPaymentDialog({
                       {/* Multi-Contact Toggle */}
                       <div className="flex items-center space-x-2 pt-2 border-t border-blue-200">
                         <Switch
+                        className="hidden"
                           id="multi-contact-payment"
                           checked={showMultiContactSection}
                           onCheckedChange={handleMultiContactToggle}
                         />
-                        <label htmlFor="multi-contact-payment" className="text-sm font-medium">
+                        <label htmlFor="multi-contact-payment" className="text-sm font-medium hidden">
                           Split this payment across multiple contacts
                         </label>
                       </div>
@@ -3166,11 +3167,12 @@ export default function EditPaymentDialog({
                   {canConvertToSplit && !watchedIsThirdParty && (
                     <div className="flex items-center space-x-2">
                       <Switch
+                      className="hidden"
                         id="split-payment"
                         checked={watchedIsSplitPayment}
                         onCheckedChange={handleSplitPaymentToggle}
                       />
-                      <label htmlFor="split-payment" className="text-sm font-medium">
+                      <label htmlFor="split-payment" className="text-sm font-medium hidden">
                         Split this payment across multiple Pledges/Donations
                       </label>
                     </div>

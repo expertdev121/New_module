@@ -1212,13 +1212,14 @@ export default function PaymentFormDialog({
                       <div className="border-t pt-4">
                         <div className="flex items-center space-x-2">
                           <Switch
+                          className="hidden"
                             id="isMultiContactPayment"
                             checked={showMultiContactSection}
                             onCheckedChange={handleMultiContactToggle}
                           />
                           <label
                             htmlFor="isMultiContactPayment"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 hidden"
                           >
                             Multi-Contact Payment (Split payment across multiple contacts)
                           </label>
@@ -1240,6 +1241,7 @@ export default function PaymentFormDialog({
                   {!watchedIsMultiContactPayment && !watchedIsThirdParty && (
                     <div className="flex items-center space-x-2 md:col-span-2">
                       <Switch
+                      className="hidden"
                         id="isSplitPayment"
                         checked={watchedIsSplitPayment}
                         onCheckedChange={(checked) => {
@@ -1287,7 +1289,7 @@ export default function PaymentFormDialog({
                       />
                       <label
                         htmlFor="isSplitPayment"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 hidden "
                       >
                         Split Payment Across Multiple Pledges/Donations
                       </label>
