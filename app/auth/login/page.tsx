@@ -23,6 +23,11 @@ export default function LoginPage() {
     setLoading(true);
     setError("");
 
+    console.log("=== LOGIN DEBUG ===");
+    console.log("Is in iframe:", window.self !== window.top);
+    console.log("Current URL:", window.location.href);
+    console.log("Attempting login...");
+
     try {
       const result = await signIn("credentials", {
         email,
@@ -30,23 +35,40 @@ export default function LoginPage() {
         redirect: false,
       });
 
+      console.log("SignIn result:", result);
+
       if (result?.ok) {
-        // Get session to determine redirect
-        const session = await getSession();
+        console.log("Login successful, fetching session...");
         
-        // Use router.push (works in iframe with Link components)
-        if (session?.user?.role === "super_admin") {
+        // Wait a bit for cookie to be set
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const session = await getSession();
+        console.log("Session after login:", session);
+
+        if (!session) {
+          console.error("No session found after successful login!");
+          setError("Authentication failed. Please try again.");
+          setLoading(false);
+          return;
+        }
+
+        // Navigate based on role
+        if (session.user.role === "super_admin") {
+          console.log("Redirecting to super admin dashboard...");
           router.push("/admin/manage-admins");
-        } else if (session?.user?.role === "admin") {
+        } else if (session.user.role === "admin") {
+          console.log("Redirecting to admin dashboard...");
           router.push("/dashboard");
-        } else if (session?.user?.contactId) {
+        } else if (session.user.contactId) {
+          console.log("Redirecting to contact page...");
           router.push(`/contacts/${session.user.contactId}`);
         } else {
+          console.log("Redirecting to default contacts page...");
           router.push("/contacts/14066");
         }
-      }
-
-      if (result?.error) {
+      } else if (result?.error) {
+        console.error("Login error:", result.error);
         if (result.error.includes("suspended")) {
           setError("Your account has been suspended. Please contact an administrator.");
         } else {
@@ -54,7 +76,7 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
-      console.error("Login error:", err);
+      console.error("Login exception:", err);
       setError("An error occurred during login");
     } finally {
       setLoading(false);
@@ -66,7 +88,14 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>Login</CardTitle>
-          <CardDescription>Enter your credentials to access the admin dashboard</CardDescription>
+          <CardDescription>
+            Enter your credentials to access the admin dashboard
+            {window.self !== window.top && (
+              <span className="block mt-2 text-blue-600 text-xs">
+                (Running in iframe mode)
+              </span>
+            )}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">

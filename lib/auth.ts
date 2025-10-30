@@ -73,9 +73,9 @@ export const authOptions: NextAuthOptions = {
       name: `next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: "none",
+        sameSite: "none", // Required for iframe
         path: "/",
-        secure: true, // Always true for sameSite: "none"
+        secure: true, // Must be true for sameSite: "none"
       },
     },
     callbackUrl: {
@@ -118,5 +118,6 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/login",
   },
+  debug: true, 
   useSecureCookies: true,
 };
