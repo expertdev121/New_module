@@ -31,19 +31,19 @@ export default function LoginPage() {
       });
 
       if (result?.ok) {
-        // Small delay to ensure session is updated
-        setTimeout(async () => {
-          const session = await getSession();
-          if (session?.user?.role === "super_admin") {
-            router.push("/admin/manage-admins");
-          } else if (session?.user?.role === "admin") {
-            router.push("/dashboard");
-          } else if (session?.user?.contactId) {
-            router.push(`/contacts/${session.user.contactId}`);
-          } else {
-            router.push("/contacts/14066");
-          }
-        }, 100);
+        // Get session to determine redirect
+        const session = await getSession();
+        
+        // Use router.push (works in iframe with Link components)
+        if (session?.user?.role === "super_admin") {
+          router.push("/admin/manage-admins");
+        } else if (session?.user?.role === "admin") {
+          router.push("/dashboard");
+        } else if (session?.user?.contactId) {
+          router.push(`/contacts/${session.user.contactId}`);
+        } else {
+          router.push("/contacts/14066");
+        }
       }
 
       if (result?.error) {
@@ -54,7 +54,8 @@ export default function LoginPage() {
         }
       }
     } catch (err) {
-      setError("An error occurred");
+      console.error("Login error:", err);
+      setError("An error occurred during login");
     } finally {
       setLoading(false);
     }
@@ -77,6 +78,7 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
+                autoComplete="email"
               />
             </div>
             <div>
@@ -89,6 +91,7 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   required
                   className="pr-10"
+                  autoComplete="current-password"
                 />
                 <Button
                   type="button"

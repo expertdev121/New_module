@@ -20,7 +20,6 @@ export const authOptions: NextAuthOptions = {
         if (!credentials?.email || !credentials?.password) {
           return null;
         }
-
         const users = await db
           .select({
             id: user.id,
@@ -32,41 +31,29 @@ export const authOptions: NextAuthOptions = {
           .from(user)
           .where(eq(user.email, credentials.email))
           .limit(1);
-
         if (users.length === 0) {
           return null;
         }
-
         const foundUser = users[0];
         const isValid = await bcrypt.compare(credentials.password, foundUser.passwordHash);
-
         if (!isValid) {
           return null;
         }
-
-        // Check if account is suspended
         if (foundUser.status === "suspended") {
           throw new Error("Your account has been suspended. Please contact an administrator.");
         }
-
-        // Find the contact associated with this user
         const contacts = await db
           .select({ id: contact.id })
           .from(contact)
           .where(eq(contact.email, foundUser.email))
           .limit(1);
-
         const contactId = contacts.length > 0 ? contacts[0].id : null;
-
-        // Get user's locationId
         const userWithLocation = await db
           .select({ locationId: user.locationId })
           .from(user)
           .where(eq(user.id, foundUser.id))
           .limit(1);
-
         const locationId = userWithLocation.length > 0 ? userWithLocation[0].locationId : null;
-
         return {
           id: foundUser.id.toString(),
           email: foundUser.email,
@@ -79,6 +66,7 @@ export const authOptions: NextAuthOptions = {
   ],
   session: {
     strategy: "jwt",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   cookies: {
     sessionToken: {
@@ -87,7 +75,7 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "none",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: true, // Always true for sameSite: "none"
       },
     },
     callbackUrl: {
@@ -95,7 +83,7 @@ export const authOptions: NextAuthOptions = {
       options: {
         sameSite: "none",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: true,
       },
     },
     csrfToken: {
@@ -104,7 +92,7 @@ export const authOptions: NextAuthOptions = {
         httpOnly: true,
         sameSite: "none",
         path: "/",
-        secure: process.env.NODE_ENV === "production",
+        secure: true,
       },
     },
   },
@@ -130,4 +118,5 @@ export const authOptions: NextAuthOptions = {
   pages: {
     signIn: "/auth/login",
   },
+  useSecureCookies: true,
 };
