@@ -1139,7 +1139,7 @@ export default function PaymentFormDialog({
                       htmlFor="isThirdPartyPayment"
                       className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                     >
-                      Third-Party Payment (Pay for someone else&apos;s Committed Donation)
+                      Third-Party Payment (Pay for someone else&apos;s Pledges/Donations)
                     </label>
                   </div>
 
@@ -1190,7 +1190,7 @@ export default function PaymentFormDialog({
                                 Selected Contact: {selectedThirdPartyContact.fullName}
                               </div>
                               <div className="text-sm text-blue-700">
-                                Payment will apply to this contact&apos;s Committed Donation but appear in your account
+                                Payment will apply to this contact&apos;s Pledges/Donations but appear in your account
                               </div>
                             </div>
                             <Button
@@ -1289,7 +1289,7 @@ export default function PaymentFormDialog({
                         htmlFor="isSplitPayment"
                         className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
                       >
-                        Split Payment Across Multiple Committed Donation
+                        Split Payment Across Multiple Pledges/Donations
                       </label>
                     </div>
                   )}
@@ -1301,10 +1301,10 @@ export default function PaymentFormDialog({
                       render={({ field }) => (
                         <FormItem className="flex flex-col md:col-span-2">
                           <FormLabel>
-                            Select Committed Donation
+                            Select Pledges/Donations
                             {watchedIsThirdParty && selectedThirdPartyContact && (
                               <span className="text-sm text-muted-foreground ml-2">
-                                (from {selectedThirdPartyContact.fullName}&apos;s Committed Donation)
+                                (from {selectedThirdPartyContact.fullName}&apos;s Pledges/Donations)
                               </span>
                             )}
                           </FormLabel>
@@ -1325,10 +1325,10 @@ export default function PaymentFormDialog({
                                       (pledge: any) => pledge.value === field.value
                                     )?.label
                                     : isLoadingPledges
-                                      ? "Loading Committed Donation..."
+                                      ? "Loading Pledges/Donations..."
                                       : watchedIsThirdParty && !selectedThirdPartyContact
                                         ? "Select a contact first"
-                                        : "Select Committed Donation"}
+                                        : "Select Pledges/Donations"}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                               </FormControl>
@@ -1337,7 +1337,7 @@ export default function PaymentFormDialog({
                               <Command>
                                 <CommandInput placeholder="Search pledges..." className="h-9" />
                                 <CommandList className="max-h-[200px] overflow-y-auto">
-                                  <CommandEmpty>No Committed Donation found.</CommandEmpty>
+                                  <CommandEmpty>No Pledges/Donations found.</CommandEmpty>
                                   <CommandGroup>
                                     {pledgeOptions.map((pledge: any, index: number) => (
                                       <CommandItem
@@ -1461,7 +1461,7 @@ export default function PaymentFormDialog({
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>
-                          Committed Donation Exchange Rate (1 {watchedCurrency} = {field.value} {selectedPledgeCurrency || "USD"})
+                          Pledges/Donations Exchange Rate (1 {watchedCurrency} = {field.value} {selectedPledgeCurrency || "USD"})
                         </FormLabel>
                         <FormControl>
                           <Input type="number" step="0.0001" {...field} disabled />
@@ -1476,7 +1476,7 @@ export default function PaymentFormDialog({
                     name="amountInPledgeCurrency"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Amount in Committed Donation Currency ({selectedPledgeCurrency || "USD"})</FormLabel>
+                        <FormLabel>Amount in Pledges/Donations Currency ({selectedPledgeCurrency || "USD"})</FormLabel>
                         <FormControl>
                           <Input type="number" step="0.01" {...field} disabled />
                         </FormControl>
@@ -1767,10 +1767,10 @@ export default function PaymentFormDialog({
                                       const pledge = allPledgesData.find(p => p.id === allocation.pledgeId);
                                       return pledge
                                         ? `#${pledge.id} - ${pledge.description || "No description"} (${pledge.currency} ${parseFloat(pledge.balance).toLocaleString()})`
-                                        : "Unknown Committed Donation";
+                                        : "Unknown Pledges/Donations";
                                     })()
                                     : allocation.contactId && allocation.contactId > 0
-                                      ? "Select Committed Donation..."
+                                      ? "Select Pledges/Donations..."
                                       : "Select contact first"}
                                   <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
@@ -2037,7 +2037,7 @@ export default function PaymentFormDialog({
                                 className="flex flex-col"
                               >
                                 <FormLabel>
-                                  Select Committed Donation
+                                  Select Pledges/Donations
                                   {watchedIsThirdParty && selectedThirdPartyContact && (
                                     <span className="text-sm text-muted-foreground ml-2">
                                       (from {selectedThirdPartyContact.fullName}&apos;s pledges)
@@ -2064,7 +2064,7 @@ export default function PaymentFormDialog({
                                             ? "Loading pledges..."
                                             : watchedIsThirdParty && !selectedThirdPartyContact
                                               ? "Select a contact first"
-                                              : "Select Committed Donation"}
+                                              : "Select Pledges/Donations"}
                                         <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                       </Button>
                                     </FormControl>

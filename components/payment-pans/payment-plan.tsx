@@ -369,7 +369,7 @@ export default function PaymentPlansTable({
     return (
       <Alert className="mx-4 my-6">
         <AlertDescription>
-          No Committed Donation or contact specified. Please provide either a pledgeId in
+          No Pledges/Donations or contact specified. Please provide either a pledgeId in
           the URL or a contactId prop.
         </AlertDescription>
       </Alert>
@@ -439,13 +439,13 @@ export default function PaymentPlansTable({
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
                   <TableHead className="font-semibold text-gray-900">Type</TableHead>
-                  <TableHead className="font-semibold text-gray-900">Committed Donation Date</TableHead>
-                  <TableHead className="font-semibold text-gray-900">Committed Donation Detail</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Pledges/Donations Date</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Pledges/Donations Detail</TableHead>
                   <TableHead className="font-semibold text-gray-900">Third Party</TableHead>
                   <TableHead className="font-semibold text-gray-900">1st Inst</TableHead>
                   <TableHead className="font-semibold text-gray-900">Next Inst</TableHead>
                   <TableHead className="font-semibold text-gray-900">Last Inst</TableHead>
-                  <TableHead className="font-semibold text-gray-900">Applied Committed Donation Amount</TableHead>
+                  <TableHead className="font-semibold text-gray-900">Applied Pledges/Donations Amount</TableHead>
                   <TableHead className="font-semibold text-gray-900">Paid USD</TableHead>
                   <TableHead className="font-semibold text-gray-900">Paid</TableHead>
                   <TableHead className="font-semibold text-gray-900">Balance</TableHead>

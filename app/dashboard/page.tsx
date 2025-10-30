@@ -580,7 +580,7 @@ export default function DashboardPage() {
                                 <p className="font-medium">{donor.name}</p>
                                 <p className="text-sm text-gray-500">{donor.pledges} pledges/donations</p>
                                 <div className="text-xs text-gray-400">
-                                  <span className="text-blue-600">Committed Donation: {formatCurrency(donor.pledgeAmount)}</span>
+                                  <span className="text-blue-600">Pledges/Donations: {formatCurrency(donor.pledgeAmount)}</span>
                                   {donor.thirdPartyAmount > 0 && (
                                     <span className="ml-2 text-purple-600">Third-party: {formatCurrency(donor.thirdPartyAmount)}</span>
                                   )}

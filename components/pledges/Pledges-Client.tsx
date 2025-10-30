@@ -469,16 +469,16 @@ export default function PledgesTable() {
                 <TableRow>
                   <TableHead className="w-12"></TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Committed Donation Date
+                    Pledges/Donations Date
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900">
-                    Committed Donation Detail
+                    Pledges/Donations Detail
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900 text-center">
-                    Committed Donation Amount
+                    Pledges/Donations Amount
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900 text-center">
-                    Committed Donation Amount (USD)
+                    Pledges/Donations Amount (USD)
                   </TableHead>
                   <TableHead className="font-semibold text-gray-900 text-center">
                     Paid
@@ -664,12 +664,12 @@ export default function PledgesTable() {
                                 {/* Column 1 */}
                                 <div className="space-y-3">
                                   <h4 className="font-semibold text-gray-900">
-                                    Committed Donation Details
+                                    Pledges/Donations Details
                                   </h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
                                       <span className="text-gray-600">
-                                        Committed Donation Amount:
+                                        Pledges/Donations Amount:
                                       </span>
                                       <span className="font-medium">
                                         {formatCurrency(pledge.originalAmount, pledge.currency).symbol}
@@ -708,7 +708,7 @@ export default function PledgesTable() {
                                   <h4 className="font-semibold text-gray-900">USD Amounts</h4>
                                   <div className="space-y-2 text-sm">
                                     <div className="flex justify-between">
-                                      <span className="text-gray-600">Committed Donation Amount:</span>
+                                      <span className="text-gray-600">Pledges/Donations Amount:</span>
                                       <span className="font-medium">
                                         {formatUSDAmount(pledge.originalAmountUsd)}
                                       </span>
