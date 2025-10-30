@@ -1,19 +1,18 @@
 "use client";
-
 import { signOut, useSession } from "next-auth/react";
-import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText, Target, Tag } from "lucide-react";
-import { isInIframe, navigateInParent, signOutInIframe } from "@/lib/iframe-utils";
 
 export function Sidebar() {
-  const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { data: session } = useSession();
+  const userRole = session?.user?.role;
 
   const handleSignOut = async () => {
-    await signOutInIframe();
+    await signOut({ callbackUrl: "/auth/login" });
   };
 
   const isActive = (path: string) => {
@@ -26,11 +25,6 @@ export function Sidebar() {
     return pathname === path;
   };
 
-  // Get user role from session
-  const { data: session } = useSession();
-  const userRole = session?.user?.role;
-
-  // Define navigation items based on role
   const getNavigationItems = () => {
     if (userRole === "super_admin") {
       return [
@@ -46,7 +40,6 @@ export function Sidebar() {
         },
       ];
     } else {
-      // Regular admin navigation
       return [
         {
           path: "/dashboard",
@@ -58,11 +51,6 @@ export function Sidebar() {
           label: "Financial module",
           icon: Users,
         },
-        // {
-        //   path: "/pledges",
-        //   label: "pledges/donations",
-        //   icon: FileText,
-        // },
         {
           path: "/admin/campaigns",
           label: "Manage Campaigns",
@@ -111,10 +99,12 @@ export function Sidebar() {
               key={item.path}
               variant={isActive(item.path) ? "default" : "ghost"}
               className={`w-full justify-start ${isActive(item.path) ? "text-white" : "text-gray-800"}`}
-              onClick={() => router.push(item.path)}
+              asChild
             >
-              <item.icon className="mr-2 h-4 w-4" />
-              {item.label}
+              <Link href={item.path}>
+                <item.icon className="mr-2 h-4 w-4" />
+                {item.label}
+              </Link>
             </Button>
           ))}
         </nav>
