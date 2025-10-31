@@ -112,6 +112,88 @@ export async function GET(
   }
 }
 
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  const contactId = parseInt(id, 10);
+
+  if (isNaN(contactId) || contactId <= 0) {
+    return NextResponse.json({ error: "Invalid contact ID" }, { status: 400 });
+  }
+
+  try {
+    const body = await request.json();
+
+    // Validate required fields
+    const { firstName, lastName, email, phone, title, gender, address } = body;
+
+    if (!firstName || !lastName || !email) {
+      return NextResponse.json(
+        { error: "First name, last name, and email are required" },
+        { status: 400 }
+      );
+    }
+
+    // Check if contact exists
+    const existingContact = await db
+      .select({ id: contact.id })
+      .from(contact)
+      .where(eq(contact.id, contactId))
+      .limit(1);
+
+    if (existingContact.length === 0) {
+      return NextResponse.json({ error: "Contact not found" }, { status: 404 });
+    }
+
+    // Update the contact
+    const updateData: any = {
+      firstName,
+      lastName,
+      email,
+      updatedAt: new Date(),
+    };
+
+    if (phone !== undefined) updateData.phone = phone;
+    if (title !== undefined) updateData.title = title;
+    if (gender !== undefined) updateData.gender = gender;
+    if (address !== undefined) updateData.address = address;
+
+    const [updatedContact] = await db
+      .update(contact)
+      .set(updateData)
+      .where(eq(contact.id, contactId))
+      .returning({
+        id: contact.id,
+        firstName: contact.firstName,
+        lastName: contact.lastName,
+        displayName: contact.displayName,
+        email: contact.email,
+        phone: contact.phone,
+        title: contact.title,
+        gender: contact.gender,
+        address: contact.address,
+        updatedAt: contact.updatedAt,
+      });
+
+    return NextResponse.json({
+      message: "Contact updated successfully",
+      contact: updatedContact,
+    });
+  } catch (error) {
+    console.error("Failed to update contact", {
+      contactId,
+      error: error instanceof Error ? error.message : "Unknown error",
+      stack: error instanceof Error ? error.stack : undefined,
+    });
+    return NextResponse.json(
+      { error: "Failed to update contact" },
+      { status: 500 }
+    );
+  }
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
