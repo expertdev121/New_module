@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { user, contact, type NewUser, type NewContact } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 
 export async function POST(request: NextRequest) {
@@ -24,20 +24,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
 
-    // Check if user already exists
-    const existingUsers = await db
-      .select()
-      .from(user)
-      .where(eq(user.email, email))
-      .limit(1);
-
-    if (existingUsers.length > 0) {
-      return NextResponse.json({ error: "User already exists" }, { status: 400 });
-    }
-
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 12);
-
     // Get admin's locationId from database
     const adminUser = await db
       .select({ locationId: user.locationId })
@@ -46,6 +32,28 @@ export async function POST(request: NextRequest) {
       .limit(1);
 
     const adminLocationId = adminUser.length > 0 ? adminUser[0].locationId : null;
+
+    // Check if user already exists within the same location
+    const existingUsersQuery = adminLocationId
+      ? db
+          .select()
+          .from(user)
+          .where(and(eq(user.email, email), eq(user.locationId, adminLocationId)))
+          .limit(1)
+      : db
+          .select()
+          .from(user)
+          .where(eq(user.email, email))
+          .limit(1);
+
+    const existingUsers = await existingUsersQuery;
+
+    if (existingUsers.length > 0) {
+      return NextResponse.json({ error: "User already exists" }, { status: 400 });
+    }
+
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
 
     // Create user with the same locationId as the admin (only if admin has one)
     const userData: NewUser = {
