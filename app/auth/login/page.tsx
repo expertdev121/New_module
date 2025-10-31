@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { signIn, getSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
+import { navigateInParent } from "@/lib/iframe-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,18 +55,29 @@ export default function LoginPage() {
         }
 
         // Navigate based on role
+        const isInIframe = window.self !== window.top;
+        let redirectUrl = "";
+
         if (session.user.role === "super_admin") {
           console.log("Redirecting to super admin dashboard...");
-          router.push("/admin/manage-admins");
+          redirectUrl = "/admin/manage-admins";
         } else if (session.user.role === "admin") {
           console.log("Redirecting to admin dashboard...");
-          router.push("/dashboard");
+          redirectUrl = "/dashboard";
         } else if (session.user.contactId) {
           console.log("Redirecting to contact page...");
-          router.push(`/contacts/${session.user.contactId}`);
+          redirectUrl = `/contacts/${session.user.contactId}`;
         } else {
           console.log("Redirecting to default contacts page...");
-          router.push("/contacts/14066");
+          redirectUrl = "/contacts/14066";
+        }
+
+        if (isInIframe) {
+          console.log("Using navigateInParent for iframe navigation");
+          navigateInParent(redirectUrl);
+        } else {
+          console.log("Using router.push for normal navigation");
+          router.push(redirectUrl);
         }
       } else if (result?.error) {
         console.error("Login error:", result.error);
