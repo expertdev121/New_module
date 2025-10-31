@@ -33,14 +33,16 @@ export default function FinancialAccountingReportsPage() {
 
   const columns: ColumnDef<ReportData>[] = useMemo(() => {
     if (reportData.length === 0) return [];
-    return Object.keys(reportData[0]).map((header) => ({
-      accessorKey: header,
-      header: header,
-      cell: ({ getValue }) => {
-        const value = getValue() as string;
-        return <span className="text-sm">{value}</span>;
-      },
-    }));
+    return Object.keys(reportData[0])
+      .filter((header) => header !== 'Restricted vs. Unrestricted Funds')
+      .map((header) => ({
+        accessorKey: header,
+        header: header,
+        cell: ({ getValue }) => {
+          const value = getValue() as string;
+          return <span className="text-sm">{value}</span>;
+        },
+      }));
   }, [reportData]);
 
   const table = useReactTable({
