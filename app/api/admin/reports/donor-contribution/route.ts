@@ -6,6 +6,22 @@ import { contact, payment, pledge, paymentAllocations } from '@/lib/db/schema';
 import { sql } from 'drizzle-orm';
 import { stringify } from 'csv-stringify/sync';
 
+interface DonorContributionRow {
+  donorId: number | null;
+  donorFirstName: string | null;
+  donorLastName: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  totalGiving: number | null;
+  lastGiftDate: Date | null;
+  lastGiftAmount: number | null;
+  campaign_code: string | null;
+  year: number | null;
+  totalGivingByEvent: number | null;
+  recordNumber: number | null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -150,42 +166,48 @@ export async function POST(request: NextRequest) {
 
     // Execute query
     const results = await db.execute(sql.raw(querySQL));
-    const rows = (results as any).rows || [];
+    const rows = (results as { rows: unknown[] }).rows || [];
 
     // For preview, return JSON data
     if (preview) {
-      const previewData = rows.slice(0, 10).map((row: any) => ({
-        'Donor First Name': row.donorFirstName || '',
-        'Donor Last Name': row.donorLastName || '',
-        'Email': row.email || '',
-        'Phone': row.phone || '',
-        'Address': row.address || '',
-        'Total Giving to Date': (parseFloat(row.totalGiving || 0)).toFixed(2),
-        'Date of Last Gift': row.lastGiftDate ? new Date(row.lastGiftDate).toLocaleDateString('en-US') : '',
-        'Last Gift Amount': (parseFloat(row.lastGiftAmount || 0)).toFixed(2),
-        'Event Code': row.campaign_code || '',
-        'Year(s) of Donation': row.year ? row.year.toString() : '',
-        'Total Amount Given Per Event': (parseFloat(row.totalGivingByEvent || 0)).toFixed(2),
-        'Record Number': row.recordNumber || '',
-      }));
+      const previewData = rows.slice(0, 10).map((row: unknown) => {
+        const typedRow = row as DonorContributionRow;
+        return {
+          'Donor First Name': typedRow.donorFirstName || '',
+          'Donor Last Name': typedRow.donorLastName || '',
+          'Email': typedRow.email || '',
+          'Phone': typedRow.phone || '',
+          'Address': typedRow.address || '',
+          'Total Giving to Date': (parseFloat(typedRow.totalGiving?.toString() || '0')).toFixed(2),
+          'Date of Last Gift': typedRow.lastGiftDate ? new Date(typedRow.lastGiftDate).toLocaleDateString('en-US') : '',
+          'Last Gift Amount': (parseFloat(typedRow.lastGiftAmount?.toString() || '0')).toFixed(2),
+          'Event Code': typedRow.campaign_code || '',
+          'Year(s) of Donation': typedRow.year ? typedRow.year.toString() : '',
+          'Total Amount Given Per Event': (parseFloat(typedRow.totalGivingByEvent?.toString() || '0')).toFixed(2),
+          'Record Number': typedRow.recordNumber?.toString() || '',
+        };
+      });
       return NextResponse.json({ data: previewData, total: rows.length });
     }
 
     // Generate CSV
-    const csvData = rows.map((row: any) => ({
-      'Donor First Name': row.donorFirstName || '',
-      'Donor Last Name': row.donorLastName || '',
-      'Email': row.email || '',
-      'Phone': row.phone || '',
-      'Address': row.address || '',
-      'Total Giving to Date': (parseFloat(row.totalGiving || 0)).toFixed(2),
-      'Date of Last Gift': row.lastGiftDate ? new Date(row.lastGiftDate).toLocaleDateString('en-US') : '',
-      'Last Gift Amount': (parseFloat(row.lastGiftAmount || 0)).toFixed(2),
-      'Event Code': row.campaign_code || '',
-      'Year(s) of Donation': row.year ? row.year.toString() : '',
-      'Total Amount Given Per Event': (parseFloat(row.totalGivingByEvent || 0)).toFixed(2),
-      'Record Number': row.recordNumber || '',
-    }));
+    const csvData = rows.map((row: unknown) => {
+      const typedRow = row as DonorContributionRow;
+      return {
+        'Donor First Name': typedRow.donorFirstName || '',
+        'Donor Last Name': typedRow.donorLastName || '',
+        'Email': typedRow.email || '',
+        'Phone': typedRow.phone || '',
+        'Address': typedRow.address || '',
+        'Total Giving to Date': (parseFloat(typedRow.totalGiving?.toString() || '0')).toFixed(2),
+        'Date of Last Gift': typedRow.lastGiftDate ? new Date(typedRow.lastGiftDate).toLocaleDateString('en-US') : '',
+        'Last Gift Amount': (parseFloat(typedRow.lastGiftAmount?.toString() || '0')).toFixed(2),
+        'Event Code': typedRow.campaign_code || '',
+        'Year(s) of Donation': typedRow.year ? typedRow.year.toString() : '',
+        'Total Amount Given Per Event': (parseFloat(typedRow.totalGivingByEvent?.toString() || '0')).toFixed(2),
+        'Record Number': typedRow.recordNumber?.toString() || '',
+      };
+    });
 
     const csv = stringify(csvData, { header: true });
 

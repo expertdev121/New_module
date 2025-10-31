@@ -6,6 +6,16 @@ import { contact, payment, pledge, paymentAllocations } from '@/lib/db/schema';
 import { sql } from 'drizzle-orm';
 import { stringify } from 'csv-stringify/sync';
 
+interface FinancialAccountingRow {
+  donation_source: string | null;
+  is_restricted: boolean | null;
+  campaign_code: string | null;
+  year: number | null;
+  total_donations: number | null;
+  year_end_total: number | null;
+  previous_year_total: number | null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -120,38 +130,44 @@ export async function POST(request: NextRequest) {
 
     // Execute query
     const results = await db.execute(sql.raw(querySQL));
-    const rows = (results as any).rows || [];
+    const rows = (results as { rows: unknown[] }).rows || [];
 
     // For preview, return JSON data
     if (preview) {
-      const previewData = rows.slice(0, 10).map((row: any) => ({
-        'Year': row.year ? row.year.toString() : '',
-        'Event Code': row.campaign_code || '',
-        'Donation Source': row.donation_source || 'Not Specified',
-        'Restricted vs. Unrestricted Funds': row.is_restricted ? 'Restricted' : 'Unrestricted',
-        'Total Donations Received': (parseFloat(row.total_donations || 0)).toFixed(2),
-        'Year-End Total for Event': (parseFloat(row.year_end_total || 0)).toFixed(2),
-        'Previous Year Total': (parseFloat(row.previous_year_total || 0)).toFixed(2),
-        'Year-over-Year Change': row.previous_year_total > 0 
-          ? (((parseFloat(row.year_end_total || 0) - parseFloat(row.previous_year_total || 0)) / parseFloat(row.previous_year_total)) * 100).toFixed(2) + '%'
-          : 'N/A',
-      }));
+      const previewData = rows.slice(0, 10).map((row) => {
+        const typedRow = row as FinancialAccountingRow;
+        return {
+          'Year': typedRow.year ? typedRow.year.toString() : '',
+          'Event Code': typedRow.campaign_code || '',
+          'Donation Source': typedRow.donation_source || 'Not Specified',
+          'Restricted vs. Unrestricted Funds': typedRow.is_restricted ? 'Restricted' : 'Unrestricted',
+          'Total Donations Received': (parseFloat(typedRow.total_donations?.toString() || '0')).toFixed(2),
+          'Year-End Total for Event': (parseFloat(typedRow.year_end_total?.toString() || '0')).toFixed(2),
+          'Previous Year Total': (parseFloat(typedRow.previous_year_total?.toString() || '0')).toFixed(2),
+          'Year-over-Year Change': typedRow.previous_year_total && typedRow.previous_year_total > 0
+            ? (((parseFloat(typedRow.year_end_total?.toString() || '0') - parseFloat(typedRow.previous_year_total.toString())) / parseFloat(typedRow.previous_year_total.toString())) * 100).toFixed(2) + '%'
+            : 'N/A',
+        };
+      });
       return NextResponse.json({ data: previewData, total: rows.length });
     }
 
     // Generate CSV
-    const csvData = rows.map((row: any) => ({
-      'Year': row.year ? row.year.toString() : '',
-      'Event Code': row.campaign_code || '',
-      'Donation Source': row.donation_source || 'Not Specified',
-      'Restricted vs. Unrestricted Funds': row.is_restricted ? 'Restricted' : 'Unrestricted',
-      'Total Donations Received': (parseFloat(row.total_donations || 0)).toFixed(2),
-      'Year-End Total for Event': (parseFloat(row.year_end_total || 0)).toFixed(2),
-      'Previous Year Total': (parseFloat(row.previous_year_total || 0)).toFixed(2),
-      'Year-over-Year Change': row.previous_year_total > 0 
-        ? (((parseFloat(row.year_end_total || 0) - parseFloat(row.previous_year_total || 0)) / parseFloat(row.previous_year_total)) * 100).toFixed(2) + '%'
-        : 'N/A',
-    }));
+    const csvData = rows.map((row) => {
+      const typedRow = row as FinancialAccountingRow;
+      return {
+        'Year': typedRow.year ? typedRow.year.toString() : '',
+        'Event Code': typedRow.campaign_code || '',
+        'Donation Source': typedRow.donation_source || 'Not Specified',
+        'Restricted vs. Unrestricted Funds': typedRow.is_restricted ? 'Restricted' : 'Unrestricted',
+        'Total Donations Received': (parseFloat(typedRow.total_donations?.toString() || '0')).toFixed(2),
+        'Year-End Total for Event': (parseFloat(typedRow.year_end_total?.toString() || '0')).toFixed(2),
+        'Previous Year Total': (parseFloat(typedRow.previous_year_total?.toString() || '0')).toFixed(2),
+        'Year-over-Year Change': typedRow.previous_year_total && typedRow.previous_year_total > 0
+          ? (((parseFloat(typedRow.year_end_total?.toString() || '0') - parseFloat(typedRow.previous_year_total.toString())) / parseFloat(typedRow.previous_year_total.toString())) * 100).toFixed(2) + '%'
+          : 'N/A',
+      };
+    });
 
     const csv = stringify(csvData, { header: true });
 

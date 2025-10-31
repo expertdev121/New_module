@@ -28,6 +28,31 @@ export default function DonorSegmentationReportsPage() {
     locationId: session?.user?.locationId || ""
   });
 
+  const columns: ColumnDef<ReportData>[] = useMemo(() => {
+    if (reportData.length === 0) return [];
+    return Object.keys(reportData[0]).map((header) => ({
+      accessorKey: header,
+      header: header,
+      cell: ({ getValue }) => {
+        const value = getValue() as string;
+        return <span className="text-sm">{value}</span>;
+      },
+    }));
+  }, [reportData]);
+
+  const table = useReactTable({
+    data: reportData,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    initialState: {
+      pagination: {
+        pageSize: 10,
+      },
+    },
+  });
+
   useEffect(() => {
     if (status === "loading") return;
     if (!session) {
@@ -44,14 +69,6 @@ export default function DonorSegmentationReportsPage() {
       setInitialLoad(false);
     }
   }, [session, initialLoad]);
-
-  if (status === "loading") {
-    return <div className="text-center py-8">Loading...</div>;
-  }
-
-  if (!session || session.user.role !== "admin") {
-    return null; // Will redirect
-  }
 
   const fetchReportData = async () => {
     setLoading(true);
@@ -114,30 +131,13 @@ export default function DonorSegmentationReportsPage() {
     }
   };
 
-  const columns: ColumnDef<ReportData>[] = useMemo(() => {
-    if (reportData.length === 0) return [];
-    return Object.keys(reportData[0]).map((header) => ({
-      accessorKey: header,
-      header: header,
-      cell: ({ getValue }) => {
-        const value = getValue() as string;
-        return <span className="text-sm">{value}</span>;
-      },
-    }));
-  }, [reportData]);
+  if (status === "loading") {
+    return <div className="text-center py-8">Loading...</div>;
+  }
 
-  const table = useReactTable({
-    data: reportData,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
-    getFilteredRowModel: getFilteredRowModel(),
-    initialState: {
-      pagination: {
-        pageSize: 10,
-      },
-    },
-  });
+  if (!session || session.user.role !== "admin") {
+    return null; // Will redirect
+  }
 
   return (
     <div className="space-y-6">

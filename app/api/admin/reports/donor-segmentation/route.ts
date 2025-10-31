@@ -6,6 +6,28 @@ import { contact, payment, pledge, paymentAllocations } from '@/lib/db/schema';
 import { sql } from 'drizzle-orm';
 import { stringify } from 'csv-stringify/sync';
 
+interface DonorSegmentationRow {
+  donor_id: number | null;
+  donor_first_name: string | null;
+  donor_last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  total_lifetime_giving: number | null;
+  first_year: number | null;
+  last_year: number | null;
+  largest_gift: number | null;
+  years_active: number | null;
+  giving_history: string | null;
+  campaign_code: string | null;
+  total_giving_by_event: number | null;
+  largest_gift_by_event: number | null;
+  first_year_event: number | null;
+  last_year_event: number | null;
+  donor_segment: string | null;
+  donor_tenure: string | null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -153,54 +175,60 @@ export async function POST(request: NextRequest) {
 
     // Execute query
     const results = await db.execute(sql.raw(querySQL));
-    const rows = (results as any).rows || [];
+    const rows = (results as { rows: unknown[] }).rows || [];
 
     // For preview, return JSON data
     if (preview) {
-      const previewData = rows.slice(0, 10).map((row: any) => ({
-        'Donor First Name': row.donor_first_name || '',
-        'Donor Last Name': row.donor_last_name || '',
-        'Email': row.email || '',
-        'Phone': row.phone || '',
-        'Address': row.address || '',
-        'Donor Segment': row.donor_segment || '',
-        'Donor Tenure': row.donor_tenure || '',
-        'Total Lifetime Giving': (parseFloat(row.total_lifetime_giving || 0)).toFixed(2),
-        'Years Active': row.years_active ? row.years_active.toString() : '0',
-        'First Year': row.first_year ? row.first_year.toString() : 'N/A',
-        'Last Year': row.last_year ? row.last_year.toString() : 'N/A',
-        'Largest Gift Ever': (parseFloat(row.largest_gift || 0)).toFixed(2),
-        'Giving History & Trends': row.giving_history || '',
-        'Campaign Code': row.campaign_code || 'All Campaigns',
-        'Total Given to Event': (parseFloat(row.total_giving_by_event || 0)).toFixed(2),
-        'Largest Gift to Event': (parseFloat(row.largest_gift_by_event || 0)).toFixed(2),
-        'First Year at Event': row.first_year_event ? row.first_year_event.toString() : 'N/A',
-        'Last Year at Event': row.last_year_event ? row.last_year_event.toString() : 'N/A',
-      }));
+      const previewData = rows.slice(0, 10).map((row: unknown) => {
+        const typedRow = row as DonorSegmentationRow;
+        return {
+          'Donor First Name': typedRow.donor_first_name || '',
+          'Donor Last Name': typedRow.donor_last_name || '',
+          'Email': typedRow.email || '',
+          'Phone': typedRow.phone || '',
+          'Address': typedRow.address || '',
+          'Donor Segment': typedRow.donor_segment || '',
+          'Donor Tenure': typedRow.donor_tenure || '',
+          'Total Lifetime Giving': (parseFloat(typedRow.total_lifetime_giving?.toString() || '0')).toFixed(2),
+          'Years Active': typedRow.years_active ? typedRow.years_active.toString() : '0',
+          'First Year': typedRow.first_year ? typedRow.first_year.toString() : 'N/A',
+          'Last Year': typedRow.last_year ? typedRow.last_year.toString() : 'N/A',
+          'Largest Gift Ever': (parseFloat(typedRow.largest_gift?.toString() || '0')).toFixed(2),
+          'Giving History & Trends': typedRow.giving_history || '',
+          'Campaign Code': typedRow.campaign_code || 'All Campaigns',
+          'Total Given to Event': (parseFloat(typedRow.total_giving_by_event?.toString() || '0')).toFixed(2),
+          'Largest Gift to Event': (parseFloat(typedRow.largest_gift_by_event?.toString() || '0')).toFixed(2),
+          'First Year at Event': typedRow.first_year_event ? typedRow.first_year_event.toString() : 'N/A',
+          'Last Year at Event': typedRow.last_year_event ? typedRow.last_year_event.toString() : 'N/A',
+        };
+      });
       return NextResponse.json({ data: previewData, total: rows.length });
     }
 
     // Generate CSV
-    const csvData = rows.map((row: any) => ({
-      'Donor First Name': row.donor_first_name || '',
-      'Donor Last Name': row.donor_last_name || '',
-      'Email': row.email || '',
-      'Phone': row.phone || '',
-      'Address': row.address || '',
-      'Donor Segment': row.donor_segment || '',
-      'Donor Tenure': row.donor_tenure || '',
-      'Total Lifetime Giving': (parseFloat(row.total_lifetime_giving || 0)).toFixed(2),
-      'Years Active': row.years_active ? row.years_active.toString() : '0',
-      'First Year': row.first_year ? row.first_year.toString() : 'N/A',
-      'Last Year': row.last_year ? row.last_year.toString() : 'N/A',
-      'Largest Gift Ever': (parseFloat(row.largest_gift || 0)).toFixed(2),
-      'Giving History & Trends': row.giving_history || '',
-      'Campaign Code': row.campaign_code || 'All Campaigns',
-      'Total Given to Event': (parseFloat(row.total_giving_by_event || 0)).toFixed(2),
-      'Largest Gift to Event': (parseFloat(row.largest_gift_by_event || 0)).toFixed(2),
-      'First Year at Event': row.first_year_event ? row.first_year_event.toString() : 'N/A',
-      'Last Year at Event': row.last_year_event ? row.last_year_event.toString() : 'N/A',
-    }));
+    const csvData = rows.map((row: unknown) => {
+      const typedRow = row as DonorSegmentationRow;
+      return {
+        'Donor First Name': typedRow.donor_first_name || '',
+        'Donor Last Name': typedRow.donor_last_name || '',
+        'Email': typedRow.email || '',
+        'Phone': typedRow.phone || '',
+        'Address': typedRow.address || '',
+        'Donor Segment': typedRow.donor_segment || '',
+        'Donor Tenure': typedRow.donor_tenure || '',
+        'Total Lifetime Giving': (parseFloat(typedRow.total_lifetime_giving?.toString() || '0')).toFixed(2),
+        'Years Active': typedRow.years_active ? typedRow.years_active.toString() : '0',
+        'First Year': typedRow.first_year ? typedRow.first_year.toString() : 'N/A',
+        'Last Year': typedRow.last_year ? typedRow.last_year.toString() : 'N/A',
+        'Largest Gift Ever': (parseFloat(typedRow.largest_gift?.toString() || '0')).toFixed(2),
+        'Giving History & Trends': typedRow.giving_history || '',
+        'Campaign Code': typedRow.campaign_code || 'All Campaigns',
+        'Total Given to Event': (parseFloat(typedRow.total_giving_by_event?.toString() || '0')).toFixed(2),
+        'Largest Gift to Event': (parseFloat(typedRow.largest_gift_by_event?.toString() || '0')).toFixed(2),
+        'First Year at Event': typedRow.first_year_event ? typedRow.first_year_event.toString() : 'N/A',
+        'Last Year at Event': typedRow.last_year_event ? typedRow.last_year_event.toString() : 'N/A',
+      };
+    });
 
     const csv = stringify(csvData, { header: true });
 

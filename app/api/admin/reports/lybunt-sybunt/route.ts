@@ -6,6 +6,22 @@ import { contact, payment, pledge, paymentAllocations } from '@/lib/db/schema';
 import { sql } from 'drizzle-orm';
 import { stringify } from 'csv-stringify/sync';
 
+interface LybuntSybuntRow {
+  donor_id: number | null;
+  donor_first_name: string | null;
+  donor_last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  address: string | null;
+  last_gift_date: Date | null;
+  last_gift_amount: number | null;
+  total_lifetime_giving: number | null;
+  campaign_codes: string | null;
+  years_of_giving: string | null;
+  years_active: number | null;
+  most_recent_year?: number | null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -176,51 +192,57 @@ export async function POST(request: NextRequest) {
 
     // Execute query
     const results = await db.execute(sql.raw(querySQL));
-    const rows = (results as any).rows || [];
+    const rows = (results as { rows: unknown[] }).rows || [];
 
     // For preview, return JSON data
     if (preview) {
-      const previewData = rows.slice(0, 10).map((row: any) => ({
-        'Donor First Name': row.donor_first_name || '',
-        'Donor Last Name': row.donor_last_name || '',
-        'Email': row.email || '',
-        'Phone': row.phone || '',
-        'Address': row.address || '',
-        'Last Gift Date': row.last_gift_date ? new Date(row.last_gift_date).toLocaleDateString('en-US') : '',
-        'Last Gift Amount': (parseFloat(row.last_gift_amount || 0)).toFixed(2),
-        'Total Lifetime Giving': (parseFloat(row.total_lifetime_giving || 0)).toFixed(2),
-        'Years Active': row.years_active ? row.years_active.toString() : '0',
-        'Years of Giving': row.years_of_giving || '',
-        'Campaign Codes': row.campaign_codes || '',
-        'Most Recent Year': reportType === 'sybunt' && row.most_recent_year ? row.most_recent_year.toString() : '',
-        'Segment': reportType.toUpperCase(),
-        'Status': reportType === 'lybunt' 
-          ? `Gave in ${lastYear}, Not in ${currentYear}`
-          : `Last gave in ${row.most_recent_year || 'past'}, Not in ${currentYear}`,
-      }));
+      const previewData = rows.slice(0, 10).map((row) => {
+        const typedRow = row as LybuntSybuntRow;
+        return {
+          'Donor First Name': typedRow.donor_first_name || '',
+          'Donor Last Name': typedRow.donor_last_name || '',
+          'Email': typedRow.email || '',
+          'Phone': typedRow.phone || '',
+          'Address': typedRow.address || '',
+          'Last Gift Date': typedRow.last_gift_date ? new Date(typedRow.last_gift_date).toLocaleDateString('en-US') : '',
+          'Last Gift Amount': (parseFloat(typedRow.last_gift_amount?.toString() || '0')).toFixed(2),
+          'Total Lifetime Giving': (parseFloat(typedRow.total_lifetime_giving?.toString() || '0')).toFixed(2),
+          'Years Active': typedRow.years_active ? typedRow.years_active.toString() : '0',
+          'Years of Giving': typedRow.years_of_giving || '',
+          'Campaign Codes': typedRow.campaign_codes || '',
+          'Most Recent Year': reportType === 'sybunt' && typedRow.most_recent_year ? typedRow.most_recent_year.toString() : '',
+          'Segment': reportType.toUpperCase(),
+          'Status': reportType === 'lybunt'
+            ? `Gave in ${lastYear}, Not in ${currentYear}`
+            : `Last gave in ${typedRow.most_recent_year || 'past'}, Not in ${currentYear}`,
+        };
+      });
       return NextResponse.json({ data: previewData, total: rows.length });
     }
 
     // Generate CSV
-    const csvData = rows.map((row: any) => ({
-      'Donor First Name': row.donor_first_name || '',
-      'Donor Last Name': row.donor_last_name || '',
-      'Email': row.email || '',
-      'Phone': row.phone || '',
-      'Address': row.address || '',
-      'Last Gift Date': row.last_gift_date ? new Date(row.last_gift_date).toLocaleDateString('en-US') : '',
-      'Last Gift Amount': (parseFloat(row.last_gift_amount || 0)).toFixed(2),
-      'Total Lifetime Giving': (parseFloat(row.total_lifetime_giving || 0)).toFixed(2),
-      'Years Active': row.years_active ? row.years_active.toString() : '0',
-      'Years of Giving': row.years_of_giving || '',
-      'Campaign Codes': row.campaign_codes || '',
-      'Most Recent Year': reportType === 'sybunt' && row.most_recent_year ? row.most_recent_year.toString() : '',
-      'Segment': reportType.toUpperCase(),
-      'Status': reportType === 'lybunt' 
-        ? `Gave in ${lastYear}, Not in ${currentYear}`
-        : `Last gave in ${row.most_recent_year || 'past'}, Not in ${currentYear}`,
-      'Record Number': row.donor_id || '',
-    }));
+    const csvData = rows.map((row) => {
+      const typedRow = row as LybuntSybuntRow;
+      return {
+        'Donor First Name': typedRow.donor_first_name || '',
+        'Donor Last Name': typedRow.donor_last_name || '',
+        'Email': typedRow.email || '',
+        'Phone': typedRow.phone || '',
+        'Address': typedRow.address || '',
+        'Last Gift Date': typedRow.last_gift_date ? new Date(typedRow.last_gift_date).toLocaleDateString('en-US') : '',
+        'Last Gift Amount': (parseFloat(typedRow.last_gift_amount?.toString() || '0')).toFixed(2),
+        'Total Lifetime Giving': (parseFloat(typedRow.total_lifetime_giving?.toString() || '0')).toFixed(2),
+        'Years Active': typedRow.years_active ? typedRow.years_active.toString() : '0',
+        'Years of Giving': typedRow.years_of_giving || '',
+        'Campaign Codes': typedRow.campaign_codes || '',
+        'Most Recent Year': reportType === 'sybunt' && typedRow.most_recent_year ? typedRow.most_recent_year.toString() : '',
+        'Segment': reportType.toUpperCase(),
+        'Status': reportType === 'lybunt'
+          ? `Gave in ${lastYear}, Not in ${currentYear}`
+          : `Last gave in ${typedRow.most_recent_year || 'past'}, Not in ${currentYear}`,
+        'Record Number': typedRow.donor_id?.toString() || '',
+      };
+    });
 
     const csv = stringify(csvData, { header: true });
 

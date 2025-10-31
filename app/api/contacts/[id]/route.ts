@@ -148,7 +148,7 @@ export async function PUT(
     }
 
     // Update the contact
-    const updateData: any = {
+    const updateData: Record<string, string | Date | null> = {
       firstName,
       lastName,
       email,

@@ -6,6 +6,21 @@ import { contact, payment, pledge, campaign, paymentAllocations } from '@/lib/db
 import { sql } from 'drizzle-orm';
 import { stringify } from 'csv-stringify/sync';
 
+interface CampaignFundraisingRow {
+  campaign_code: string | null;
+  campaign_name: string | null;
+  total_raised: number | null;
+  total_donors: number | null;
+  avg_gift: number | null;
+  donor_id: number | null;
+  donor_first_name: string | null;
+  donor_last_name: string | null;
+  donor_email: string | null;
+  donor_phone: string | null;
+  donor_address: string | null;
+  donor_contribution: number | null;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -133,40 +148,46 @@ export async function POST(request: NextRequest) {
 
     // Execute query
     const results = await db.execute(sql.raw(querySQL));
-    const rows = (results as any).rows || [];
+    const rows = (results as { rows: unknown[] }).rows || [];
 
     // For preview, return JSON data
     if (preview) {
-      const previewData = rows.slice(0, 10).map((row: any) => ({
-        'Campaign Name': row.campaign_name || row.campaign_code || '',
-        'Campaign Code': row.campaign_code || '',
-        'Total Raised at Event': (parseFloat(row.total_raised || 0)).toFixed(2),
-        'Number of Donors at Event': (parseInt(row.total_donors || 0)).toString(),
-        'Average Gift Size': (parseFloat(row.avg_gift || 0)).toFixed(2),
-        'Donor First Name': row.donor_first_name || '',
-        'Donor Last Name': row.donor_last_name || '',
-        'Donor Email': row.donor_email || '',
-        'Donor Phone': row.donor_phone || '',
-        'Donor Address': row.donor_address || '',
-        'Donor Total Contribution': (parseFloat(row.donor_contribution || 0)).toFixed(2),
-      }));
+      const previewData = rows.slice(0, 10).map((row: unknown) => {
+        const typedRow = row as CampaignFundraisingRow;
+        return {
+          'Campaign Name': typedRow.campaign_name || typedRow.campaign_code || '',
+          'Campaign Code': typedRow.campaign_code || '',
+          'Total Raised at Event': (parseFloat(typedRow.total_raised?.toString() || '0')).toFixed(2),
+          'Number of Donors at Event': (parseInt(typedRow.total_donors?.toString() || '0')).toString(),
+          'Average Gift Size': (parseFloat(typedRow.avg_gift?.toString() || '0')).toFixed(2),
+          'Donor First Name': typedRow.donor_first_name || '',
+          'Donor Last Name': typedRow.donor_last_name || '',
+          'Donor Email': typedRow.donor_email || '',
+          'Donor Phone': typedRow.donor_phone || '',
+          'Donor Address': typedRow.donor_address || '',
+          'Donor Total Contribution': (parseFloat(typedRow.donor_contribution?.toString() || '0')).toFixed(2),
+        };
+      });
       return NextResponse.json({ data: previewData, total: rows.length });
     }
 
     // Generate CSV
-    const csvData = rows.map((row: any) => ({
-      'Campaign Name': row.campaign_name || row.campaign_code || '',
-      'Campaign Code': row.campaign_code || '',
-      'Total Raised at Event': (parseFloat(row.total_raised || 0)).toFixed(2),
-      'Number of Donors at Event': (parseInt(row.total_donors || 0)).toString(),
-      'Average Gift Size': (parseFloat(row.avg_gift || 0)).toFixed(2),
-      'Donor First Name': row.donor_first_name || '',
-      'Donor Last Name': row.donor_last_name || '',
-      'Donor Email': row.donor_email || '',
-      'Donor Phone': row.donor_phone || '',
-      'Donor Address': row.donor_address || '',
-      'Donor Total Contribution': (parseFloat(row.donor_contribution || 0)).toFixed(2),
-    }));
+    const csvData = rows.map((row: unknown) => {
+      const typedRow = row as CampaignFundraisingRow;
+      return {
+        'Campaign Name': typedRow.campaign_name || typedRow.campaign_code || '',
+        'Campaign Code': typedRow.campaign_code || '',
+        'Total Raised at Event': (parseFloat(typedRow.total_raised?.toString() || '0')).toFixed(2),
+        'Number of Donors at Event': (parseInt(typedRow.total_donors?.toString() || '0')).toString(),
+        'Average Gift Size': (parseFloat(typedRow.avg_gift?.toString() || '0')).toFixed(2),
+        'Donor First Name': typedRow.donor_first_name || '',
+        'Donor Last Name': typedRow.donor_last_name || '',
+        'Donor Email': typedRow.donor_email || '',
+        'Donor Phone': typedRow.donor_phone || '',
+        'Donor Address': typedRow.donor_address || '',
+        'Donor Total Contribution': (parseFloat(typedRow.donor_contribution?.toString() || '0')).toFixed(2),
+      };
+    });
 
     const csv = stringify(csvData, { header: true });
 
