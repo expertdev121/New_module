@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { user, contact } from "@/lib/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 
 export async function PUT(
   request: NextRequest,
@@ -18,7 +18,7 @@ export async function PUT(
     // Await params in Next.js 15
     const { id } = await params;
     const userId = parseInt(id);
-    
+
     if (isNaN(userId)) {
       return NextResponse.json({ error: "Invalid user ID" }, { status: 400 });
     }
@@ -41,19 +41,6 @@ export async function PUT(
       return NextResponse.json({ error: "Invalid password format" }, { status: 400 });
     }
 
-    // Check if email is already taken by another user
-    if (email) {
-      const existingUser = await db
-        .select()
-        .from(user)
-        .where(eq(user.email, email))
-        .limit(1);
-
-      if (existingUser.length > 0 && existingUser[0].id !== userId) {
-        return NextResponse.json({ error: "Email already in use" }, { status: 400 });
-      }
-    }
-
     // Get admin's locationId from database
     const adminUser = await db
       .select({ locationId: user.locationId })
@@ -62,6 +49,27 @@ export async function PUT(
       .limit(1);
 
     const adminLocationId = adminUser.length > 0 ? adminUser[0].locationId : null;
+
+    // Check if email is already taken by another user within the same location
+    if (email) {
+      const existingUserQuery = adminLocationId
+        ? db
+          .select()
+          .from(user)
+          .where(and(eq(user.email, email), eq(user.locationId, adminLocationId)))
+          .limit(1)
+        : db
+          .select()
+          .from(user)
+          .where(eq(user.email, email))
+          .limit(1);
+
+      const existingUser = await existingUserQuery;
+
+      if (existingUser.length > 0 && existingUser[0].id !== userId) {
+        return NextResponse.json({ error: "Email already in use" }, { status: 400 });
+      }
+    }
 
     // Update user data
     const updateData: Partial<Pick<typeof user.$inferSelect, 'email' | 'passwordHash' | 'status' | 'role' | 'locationId' | 'updatedAt'>> = {};

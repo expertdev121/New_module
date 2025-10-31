@@ -266,7 +266,7 @@ export const userStatusEnum = pgEnum("user_status", ["active", "suspended"]);
 
 export const user = pgTable("user", {
   id: serial("id").primaryKey(),
-  email: text("email").notNull().unique(),
+  email: text("email").notNull(),
   passwordHash: text("password_hash").notNull(),
   locationId: text("location_id"),
   role: roleEnum("role").notNull().default("user"),
