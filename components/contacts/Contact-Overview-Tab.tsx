@@ -3,7 +3,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
-import { User, MapPin, Grid2x2, Trash2, LogOut } from "lucide-react";
+import { User, MapPin, Grid2x2, Trash2, LogOut, Edit } from "lucide-react";
 import { Contact, ContactRole, StudentRole } from "@/lib/db/schema";
 import ContactCampaignsCard from "./Contact-Campaign";
 import { Category } from "@/lib/query/useContactCategories";
@@ -12,6 +12,7 @@ import { useDeleteContact } from "@/lib/mutation/useDeleteContact";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import ContactFormDialog from "../forms/contact-form";
 
 interface ContactWithRoles extends Contact {
   contactRoles: ContactRole[];
@@ -100,15 +101,39 @@ const ContactOverviewTab: React.FC<ContactOverviewTabProps> = ({
           )}
 
           {session?.user?.role === "admin" && (
-            <Button
-              variant="destructive"
-              onClick={handleDeleteClick}
-              disabled={deleteContactMutation.isPending}
-              className="flex items-center gap-2"
-            >
-              <Trash2 className="h-4 w-4" />
-              {deleteContactMutation.isPending ? "Deleting..." : "Delete Contact"}
-            </Button>
+            <>
+              <ContactFormDialog
+                isEditMode={true}
+                contactData={{
+                  id: contact.id,
+                  firstName: contact.firstName,
+                  lastName: contact.lastName,
+                  email: contact.email || "",
+                  phone: contact.phone || undefined,
+                  title: contact.title || undefined,
+                  gender: contact.gender || undefined,
+                  address: contact.address || undefined,
+                }}
+                trigger={
+                  <Button
+                    variant="outline"
+                    className="flex items-center gap-2"
+                  >
+                    <Edit className="h-4 w-4" />
+                    Edit Contact
+                  </Button>
+                }
+              />
+              <Button
+                variant="destructive"
+                onClick={handleDeleteClick}
+                disabled={deleteContactMutation.isPending}
+                className="flex items-center gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                {deleteContactMutation.isPending ? "Deleting..." : "Delete Contact"}
+              </Button>
+            </>
           )}
         </div>
       </div>

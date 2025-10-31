@@ -4,7 +4,7 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText, Target, Tag } from "lucide-react";
+import { LogOut, Users, Home, UserPlus, UserCog, FolderOpen, CreditCard, FileText, Target, Tag, BarChart3 } from "lucide-react";
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -80,6 +80,11 @@ export function Sidebar() {
           path: "/admin/tags",
           label: "Manage Tags",
           icon: Tag,
+        },
+        {
+          path: "/admin/reports",
+          label: "Reports",
+          icon: BarChart3,
         },
       ];
     }

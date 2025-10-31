@@ -31,12 +31,32 @@ import {
 } from "@/components/ui/dialog";
 import { contactFormSchema } from "@/lib/form-schemas/contact";
 import { useCreateContact } from "@/lib/mutation/useCreateContact";
-import { useState } from "react";
+import { useUpdateContact } from "@/lib/mutation/useUpdateContact";
+import { useState, useEffect } from "react";
 import { PlusCircleIcon } from "lucide-react";
 
 export type ContactFormValues = z.infer<typeof contactFormSchema>;
 
-export default function ContactFormDialog() {
+interface ContactFormDialogProps {
+  isEditMode?: boolean;
+  contactData?: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone?: string;
+    title?: string;
+    gender?: string;
+    address?: string;
+  };
+  trigger?: React.ReactNode;
+}
+
+export default function ContactFormDialog({
+  isEditMode = false,
+  contactData,
+  trigger
+}: ContactFormDialogProps) {
   const [open, setOpen] = useState(false);
   const form = useForm<ContactFormValues>({
     resolver: zodResolver(contactFormSchema),
@@ -51,30 +71,72 @@ export default function ContactFormDialog() {
     },
   });
 
-  const { mutate: createContact, isPending } = useCreateContact(
+  const { mutate: createContact, isPending: isCreating } = useCreateContact(
     form.setError as any
   );
 
+  const { mutate: updateContact, isPending: isUpdating } = useUpdateContact(
+    form.setError as any
+  );
+
+  // Set form values when in edit mode
+  useEffect(() => {
+    if (isEditMode && contactData && open) {
+      form.reset({
+        firstName: contactData.firstName || "",
+        lastName: contactData.lastName || "",
+        email: contactData.email || "",
+        phone: contactData.phone || "",
+        title: contactData.title as any || undefined,
+        gender: contactData.gender as any || undefined,
+        address: contactData.address || "",
+      });
+    } else if (!isEditMode && open) {
+      form.reset({
+        firstName: "",
+        lastName: "",
+        email: "",
+        phone: "",
+        title: undefined,
+        gender: undefined,
+        address: "",
+      });
+    }
+  }, [isEditMode, contactData, open, form]);
+
   const onSubmit = (values: ContactFormValues) => {
-    createContact(values, {
-      onSuccess: () => {
-        form.reset();
-        setOpen(false);
-      },
-    });
+    if (isEditMode && contactData) {
+      updateContact(
+        { contactId: contactData.id, data: values },
+        {
+          onSuccess: () => {
+            form.reset();
+            setOpen(false);
+          },
+        }
+      );
+    } else {
+      createContact(values, {
+        onSuccess: () => {
+          form.reset();
+          setOpen(false);
+        },
+      });
+    }
   };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      {/* <DialogTrigger asChild>
-        <Button size="sm" className="border-dashed text-white">
-          <PlusCircleIcon />
-          New Contact
-        </Button>
-      </DialogTrigger> */}
+      {trigger && (
+        <DialogTrigger asChild>
+          {trigger}
+        </DialogTrigger>
+      )}
       <DialogContent>
         <DialogHeader>
-          <DialogTitle className="text-2xl">Creation of a Contact</DialogTitle>
+          <DialogTitle className="text-2xl">
+            {isEditMode ? "Edit Contact" : "Creation of a Contact"}
+          </DialogTitle>
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
@@ -239,9 +301,9 @@ export default function ContactFormDialog() {
               <Button
                 type="submit"
                 className="h-12 text-lg"
-                disabled={isPending}
+                disabled={isCreating || isUpdating}
               >
-                {isPending ? "Submitting..." : "Submit"}
+                {(isCreating || isUpdating) ? "Submitting..." : (isEditMode ? "Update" : "Submit")}
               </Button>
             </div>
           </form>

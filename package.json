@@ -44,6 +44,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "csv-stringify": "^6.6.0",
     "date-fns": "^4.1.0",
     "dlx": "^0.2.1",
     "dotenv": "^16.5.0",
